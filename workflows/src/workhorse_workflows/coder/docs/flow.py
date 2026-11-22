@@ -5,8 +5,9 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from pydantic import PositiveInt
+from workhorse._vendor.stablemate_core import books
 from workhorse.pyflow import AgentTimeout, Await, Continue, Done, WorkflowFailed
-from workhorse_workflows.kit import find_book_root, find_docs_root
+from workhorse_workflows.kit import find_book_package, find_book_root, find_docs_root
 from workhorse_workflows.coder.shared import paths, roles
 from workhorse_workflows.coder.shared.dev import read_operator_context
 from workhorse_workflows.coder.book_qa.nodes import covered_services, verify_book_spec
@@ -37,12 +38,12 @@ from workhorse_workflows.coder.shared.schemas.story import StoryPaths
 from workhorse_workflows.kit.telemetry import counter_labels
 
 
-def unbooked_message(names: list[str], book_root: Path) -> str:
+def unbooked_message(names: list[str], service_books: Path) -> str:
     """The refusal for a story that names a service with no executable book."""
     named = ", ".join(f"`{name}`" for name in names)
     return (
-        f"{named} has no book: no `{book_root}/services/<name>/service.py` and no "
-        f"`{book_root}/services/<name>/*/service.py`. Write it with "
+        f"{named} has no book: no `{service_books}/<name>/service.py` and no "
+        f"`{service_books}/<name>/*/service.py`. Write it with "
         "`workhorse-okf-book run python_book`, then run the story again."
     )
 
@@ -110,7 +111,7 @@ class Docs(Resolving):
                 "there is nothing to document."
             )
         if self._unbooked:
-            raise WorkflowFailed(unbooked_message(self._unbooked, find_book_root(self.repo_dir)))
+            raise WorkflowFailed(unbooked_message(self._unbooked, find_book_root(self.repo_dir) / books.package_folder(find_book_package(self.repo_dir))))
         if not self.ctx.story_services:
             return self._ends(
                 DocsResult(
@@ -162,6 +163,8 @@ class Docs(Resolving):
             "epic": self.epic,
             "docs_root": str(find_docs_root(self.repo_dir)),
             "book_root": str(find_book_root(self.repo_dir)),
+            "service_package": find_book_package(self.repo_dir),
+            "service_books": str(find_book_root(self.repo_dir) / books.package_folder(find_book_package(self.repo_dir))),
             "epic_path": self._epic_path,
         }
 

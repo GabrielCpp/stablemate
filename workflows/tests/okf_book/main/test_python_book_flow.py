@@ -267,14 +267,14 @@ def test_a_two_surface_prompt_asks_for_one_model_and_judges_each_surface(tmp_pat
 def test_in_a_workspace_the_book_is_written_and_committed_in_the_artifacts_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     flow, _runner, laid = workspace_flow(tmp_path, monkeypatch)
     api_head = git(laid.api, "rev-parse", "HEAD")
-    (laid.artifacts / "services/ledger").mkdir(parents=True)
-    (laid.artifacts / "services/ledger/service.py").write_text("NAME = 'ledger'\n", encoding="utf-8")
+    (laid.artifacts / "services/api/ledger").mkdir(parents=True)
+    (laid.artifacts / "services/api/ledger/service.py").write_text("NAME = 'ledger'\n", encoding="utf-8")
 
     step = flow.commit(lap=1)
 
     assert flow.root == laid.artifacts.resolve()
     assert isinstance(step, Done)
-    assert git(laid.artifacts, "show", "--name-only", "--format=", "HEAD").split() == ["services/ledger/service.py"]
+    assert git(laid.artifacts, "show", "--name-only", "--format=", "HEAD").split() == ["services/api/ledger/service.py"]
     assert git(laid.api, "rev-parse", "HEAD") == api_head
 
 
@@ -285,14 +285,14 @@ def test_in_a_worktree_run_the_book_is_written_and_committed_in_the_artifacts_wo
     flow = WritePythonBook(repo_dir=str(trees.api), service="ledger", kind="cli", source_folder="ledger")
     flow._bind(Engine(run_env(tmp_path / "runs", ScriptedRunner({}))))  # pyright: ignore[reportPrivateUsage]
     main_head = git(laid.artifacts, "rev-parse", "HEAD")
-    (trees.artifacts / "services/ledger").mkdir(parents=True)
-    (trees.artifacts / "services/ledger/service.py").write_text("NAME = 'ledger'\n", encoding="utf-8")
+    (trees.artifacts / "services/api/ledger").mkdir(parents=True)
+    (trees.artifacts / "services/api/ledger/service.py").write_text("NAME = 'ledger'\n", encoding="utf-8")
 
     step = flow.commit(lap=1)
 
     assert flow.root == trees.artifacts.resolve()
     assert isinstance(step, Done)
-    assert git(trees.artifacts, "show", "--name-only", "--format=", "HEAD").split() == ["services/ledger/service.py"]
+    assert git(trees.artifacts, "show", "--name-only", "--format=", "HEAD").split() == ["services/api/ledger/service.py"]
     assert git(laid.artifacts, "rev-parse", "HEAD") == main_head
 
 

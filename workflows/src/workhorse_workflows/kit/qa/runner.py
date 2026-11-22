@@ -14,6 +14,7 @@ from ostler.environments import leases, runtime, spec
 from ostler.environments.render import SHARED
 from ostler.qa import devices, stack
 from ostler.qa.outcome import QaOutcome
+from workhorse._vendor.stablemate_core import books
 
 from workhorse_workflows.kit.qa.schemas import QaPlanRun, QaStatus, StackStatus
 from workhorse_workflows.kit import find_book_root, find_docs_root, find_repo_root
@@ -27,14 +28,15 @@ RUN_STATUSES: dict[str, QaStatus] = {
     "invalid": "invalid",
 }
 
-def story_near(root: Path, services: Sequence[str] = ()) -> str:
+def story_near(root: Path, services: Sequence[str] = (), package: str = spec.BOOKS_DIR) -> str:
     """The one named service whose book has a stack file beside it, else nothing."""
+    folder = root / books.package_folder(package)
     beside = [
         name
         for name in dict.fromkeys(services)
-        if (root / spec.BOOKS_DIR / name / spec.OPS_DIR / spec.STACK_FILE).is_file()
+        if (folder / name / spec.OPS_DIR / spec.STACK_FILE).is_file()
     ]
-    return str(root / spec.BOOKS_DIR / beside[0]) if len(beside) == 1 else ""
+    return str(folder / beside[0]) if len(beside) == 1 else ""
 
 
 def copy_lease(*parts: str) -> str:

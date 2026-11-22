@@ -39,6 +39,10 @@ def find_book_root(repo_dir: str | Path = "") -> Path:
     return books.book_home(find_repo_root(repo_dir))
 
 
+def find_book_package(repo_dir: str | Path = "") -> str:
+    return books.service_package(find_repo_root(repo_dir))
+
+
 def find_docs_root(repo_dir: str | Path = "") -> Path:
     """The docs root: the artifacts repo while a workspace is active, else the repo root."""
     return docs_home_or(find_repo_root(repo_dir))

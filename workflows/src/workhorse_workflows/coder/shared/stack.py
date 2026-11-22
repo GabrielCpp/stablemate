@@ -11,7 +11,7 @@ from workhorse_workflows.coder.shared.schemas.qa import (
     StackTarget,
     StackTornDown,
 )
-from workhorse_workflows.kit import find_book_root
+from workhorse_workflows.kit import find_book_package, find_book_root
 from workhorse_workflows.kit.qa import runner as _qa_runner
 
 TEARDOWN_STATES: dict[str, Literal["yes", "no", "skipped"]] = {
@@ -31,7 +31,7 @@ def stack_target(
 ) -> StackTarget:
     """The book whose stack this story's QA runs against, and the copy *lease* names there."""
     root = find_book_root(repo_dir)
-    near = _qa_runner.story_near(root, services or ()) if story else ""
+    near = _qa_runner.story_near(root, services or (), find_book_package(repo_dir)) if story else ""
     env = _qa_runner.stack_env(root, near=near, lease=lease)
     logger.info("QA stack for %s: near=%s lease=%s", story, near or "(none)", lease or "(none)")
     return StackTarget(near=near, lease=lease, env=env)

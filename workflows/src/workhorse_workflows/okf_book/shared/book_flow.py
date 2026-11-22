@@ -9,6 +9,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
 from workhorse.pyflow import AgentTimeout, AgentTurnFailed, Await, Continue, Transition, Workflow
+from workhorse._vendor.stablemate_core import books
 from workhorse.runner.failure import OutputParseError
 from workhorse_workflows.kit import commit_returning_refusal
 from workhorse_workflows.kit.answer import answer_below
@@ -77,15 +78,15 @@ def render_book_agent_files(logger: logging.Logger, root: Path) -> str:
     return render_agent_files_returning_failure(root)
 
 
-def _own_folder_only(_logger: logging.Logger, _root: Path, service: str) -> list[str]:
-    return [f"services/{service}"]
+def _own_folder_only(_logger: logging.Logger, _root: Path, module: str) -> list[str]:
+    return [module.replace(".", "/")]
 
 
 @blueprint.node(stub=_own_folder_only)
-def book_paths(logger: logging.Logger, root: Path, service: str) -> list[str]:
-    """The paths a commit of the service's book takes: its folder and the files it imports from outside it. A dry run names the folder alone."""
+def book_paths(logger: logging.Logger, root: Path, module: str) -> list[str]:
+    """The paths a commit of the book of *module* takes: its folder and the files it imports from outside it. A dry run names the folder alone."""
     del logger
-    return list(book_pathspecs(root, service))
+    return list(book_pathspecs(root, module))
 
 
 @blueprint.node(stub=_nothing_refused_in_dry_run)
@@ -188,7 +189,7 @@ class BookFlow(Workflow):
 
     def _paths(self, service: str) -> tuple[str, ...]:
         """What a commit of the service's book takes: its folder and the files it imports from outside it."""
-        return tuple(self.call(book_paths, self.root, service))
+        return tuple(self.call(book_paths, self.root, books.service_module(self.code_root, service)))
 
     def _commit_or_await[**P, T: Transition](
         self, message: str, pathspecs: tuple[str, ...], replay: Callable[[], T | None], retry: Callable[P, Transition], *args: P.args, **kwargs: P.kwargs

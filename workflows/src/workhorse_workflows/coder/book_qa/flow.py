@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from pydantic import PositiveInt
+from workhorse._vendor.stablemate_core import books
 from workhorse.pyflow import AgentTimeout, Await, Continue, Done
 
 from workhorse_workflows.coder.book_qa.nodes import (
@@ -50,7 +51,7 @@ from workhorse_workflows.coder.shared.schemas.qa import (
 )
 from workhorse_workflows.coder.shared.stack import ensure_stack, hold_copy, stack_target
 from workhorse_workflows.coder.shared.walk import story_criteria
-from workhorse_workflows.kit import find_book_root, find_docs_root
+from workhorse_workflows.kit import find_book_package, find_book_root, find_docs_root
 from workhorse_workflows.kit.leased_env import scoped_envs
 from workhorse_workflows.kit.qa.runner import copy_lease
 
@@ -125,6 +126,8 @@ class BookQa(QaOwner):
             "epic": self.epic,
             "docs_root": str(find_docs_root(self.repo_dir)),
             "book_root": str(find_book_root(self.repo_dir)),
+            "service_package": find_book_package(self.repo_dir),
+            "service_books": str(find_book_root(self.repo_dir) / books.package_folder(find_book_package(self.repo_dir))),
             "target_env": self.target_env,
             "services": self.output(covered_services).services,
             "story_base": self.output(story_base_of).base,
@@ -180,6 +183,7 @@ class BookQa(QaOwner):
     ) -> Continue | Await | Done:
         """Check each covered service's book, let `ostler book affected` select what to play from the story's diff, play it, and send what failed to the seat, the operator or the developer, then hand a green pass to the end review. `calls` is read by no check: an old checkpoint may still carry it."""
         services = self.output(covered_services).services
+        package = find_book_package(self.repo_dir)
         target = self.output(stack_target)
         self.call(hold_copy, lease=target.lease)
         out_dir = str(Path(self.ctx.spec_dir) / BOOK_OUT)
@@ -189,12 +193,12 @@ class BookQa(QaOwner):
         for name in services:
             checked = self.call(book_check, name)
             if checked.exit_code:
-                return self._lap(checked, [_gate(f"ostler book check services.{name}", checked.output)], laps, blocks)
+                return self._lap(checked, [_gate(f"ostler book check {package}.{name}", checked.output)], laps, blocks)
             plan = self.call(book_plan, name, self.ctx.spec_dir, story_slug=self.ctx.story_slug, story_id=self.ctx.story_id)
             plans.append(plan)
             if plan.exit_code == AFFECTED_USAGE_EXIT:
                 self.call(write_qa_plan, self.ctx.spec_dir, plans, exits)
-                return self._lap(plan, [_gate(f"ostler book affected services.{name}", plan.output)], laps, blocks)
+                return self._lap(plan, [_gate(f"ostler book affected {package}.{name}", plan.output)], laps, blocks)
             if plan.uncovered:
                 self.call(write_qa_plan, self.ctx.spec_dir, plans, exits)
                 listing = "\n".join(f"- `{entry}`" for entry in plan.uncovered)
@@ -203,7 +207,7 @@ class BookQa(QaOwner):
                     "Each changed file or function the story touched must be named by an element's `source=` or by an "
                     "ignore pattern of the book. The plays cannot be selected until it is."
                 )
-                return self._lap(plan, [_gate(f"ostler book affected services.{name}", text)], laps, blocks)
+                return self._lap(plan, [_gate(f"ostler book affected {package}.{name}", text)], laps, blocks)
             scope = self.call(book_scope, name, list(self.preexisting))
             owed = [*(plan.owed_reasons if plan.plan == "whole" else []), *([", ".join(scope.shared)] if scope.shared else [])]
             if plan.plan == "whole" and not owed:
@@ -233,9 +237,9 @@ class BookQa(QaOwner):
                 self.logger.warning("the play of %s was cut: %s", name, play.owed)
             self.call(write_qa_plan, self.ctx.spec_dir, plans, exits)
             if play.exit_code == ENVIRONMENT_EXIT:
-                return self._ask(_gate(f"ostler book run services.{name}", play.output), "the QA environment", blocks)
+                return self._ask(_gate(f"ostler book run {package}.{name}", play.output), "the QA environment", blocks)
             if play.exit_code:
-                return self._lap(play, [_gate(f"ostler book run services.{name}", play.output)], laps, blocks)
+                return self._lap(play, [_gate(f"ostler book run {package}.{name}", play.output)], laps, blocks)
         self.call(write_qa_plan, self.ctx.spec_dir, plans, exits)
         total = sum(plan.changed for plan in plans)
         owed_reasons = [f"- `{plan.service}`: {plan.owed}" for plan in plans if plan.owed]

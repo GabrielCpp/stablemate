@@ -3,17 +3,21 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from workhorse._vendor.stablemate_core import books
 
-def book_module(service: str) -> str:
-    return f"services.{service}"
+
+def book_module(package: str, service: str) -> str:
+    return f"{package}.{service}"
 
 
 def owner_chain(service: str) -> str:
     return f"pybook:{service}"
 
 
-def finished_books(root: Path, service: str) -> list[str]:
-    """The repo's other book packages, which the owner reads for the shape of each file."""
-    patterns = ("services/*/service.py", "services/*/*/service.py")
-    found = {path.relative_to(root).parts[1] for pattern in patterns for path in root.glob(pattern)}
-    return [f"services/{name}" for name in sorted(found - {service})]
+def finished_books(root: Path, package: str, service: str) -> list[str]:
+    """The package's other book folders, which the owner reads for the shape of each file."""
+    folder = books.package_folder(package)
+    depth = len(folder.split("/"))
+    patterns = (f"{folder}/*/service.py", f"{folder}/*/*/service.py")
+    found = {path.relative_to(root).parts[depth] for pattern in patterns for path in root.glob(pattern)}
+    return [f"{folder}/{name}" for name in sorted(found - {service})]

@@ -4,6 +4,8 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
+from workhorse._vendor.stablemate_core import books
+
 KIND_CHARS = 60
 REGISTER_FILE = "DECLINED.md"
 WHOLE_KIND = "*"
@@ -61,21 +63,21 @@ def entries_for(lines: Iterable[str], notes: Sequence[str]) -> list[str]:
     return list(found.values())
 
 
-def register_path(root: Path, service: str) -> Path:
-    return root / "services" / service / REGISTER_FILE
+def register_path(root: Path, service: str, package: str = "services") -> Path:
+    return root / books.package_folder(package) / service / REGISTER_FILE
 
 
-def read_register(root: Path, service: str) -> list[str]:
+def read_register(root: Path, service: str, package: str = "services") -> list[str]:
     """Every entry of the book's register, in file order, or none when the book has no register."""
-    path = register_path(root, service)
+    path = register_path(root, service, package)
     if not path.is_file():
         return []
     return [line[2:].strip() for line in path.read_text(encoding="utf-8").splitlines() if line.startswith("- ")]
 
 
-def write_register(root: Path, service: str, entries: Iterable[str]) -> list[str]:
+def write_register(root: Path, service: str, entries: Iterable[str], package: str = "services") -> list[str]:
     """Merge *entries* into the book's register, a later entry for the same element and kind replacing an earlier one, write the file and return all entries."""
-    merged = {_pair(entry): entry for entry in [*read_register(root, service), *entries]}
-    path = register_path(root, service)
+    merged = {_pair(entry): entry for entry in [*read_register(root, service, package), *entries]}
+    path = register_path(root, service, package)
     _ = path.write_text("\n".join([HEADING, "", *(f"- {entry}" for entry in merged.values())]) + "\n", encoding="utf-8")
     return list(merged.values())

@@ -1,6 +1,6 @@
 # okf_book
 
-The `okf-book` workflow. It writes the Python book of one service under `services/<name>/`.
+The `okf-book` workflow. It writes the Python book of one service under `services/<name>/`, or under `services/<repo>/<name>/` where the book lives in the artifacts folder and the code repository keeps no book of its own.
 
 ## Launch
 

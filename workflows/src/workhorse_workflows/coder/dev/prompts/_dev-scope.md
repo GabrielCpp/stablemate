@@ -54,8 +54,8 @@ finding for the operator, and it goes in `notes`.
 
 {% if book_services %}## The book
 
-The story's claims for {% for name in book_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %} live in its executable book under `{{ workhorse_var('book_root') }}/services/<name>/`, written before you started. The book lane
-updates the book after review, so the plan lists no edit under `{{ workhorse_var('book_root') }}/services/<name>/`, and the build and
+The story's claims for {% for name in book_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %} live in its executable book under `{{ workhorse_var('service_books') }}/<name>/`, written before you started. The book lane
+updates the book after review, so the plan lists no edit under `{{ workhorse_var('service_books') }}/<name>/`, and the build and
 review phases change nothing there. A claim in it you cannot meet is a block that names the claim.
 {% endif %}
 

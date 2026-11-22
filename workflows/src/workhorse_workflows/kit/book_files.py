@@ -32,19 +32,19 @@ def without_compiled(paths: Iterable[str]) -> list[str]:
     return [path for path in paths if not is_compiled(path)]
 
 
-def outside_paths(root: Path, service: str) -> tuple[str, ...]:
+def outside_paths(root: Path, module: str) -> tuple[str, ...]:
     """The files under the book root, outside the service's folder, that its book imports, as `ostler book files --outside` lists them. Empty, with a warning, when the verb cannot answer."""
-    done = run_tool(book_command("files", f"services.{service}", "--outside"), cwd=root, env=BOOK_ENV)
+    done = run_tool(book_command("files", module, "--outside"), cwd=root, env=BOOK_ENV)
     if done.returncode != 0:
         logger.warning("could not list the files the book of %s imports, so its commit takes its own folder alone: %s",
-                       service, (done.stderr or done.stdout or "").strip()[-300:])
+                       module, (done.stderr or done.stdout or "").strip()[-300:])
         return ()
     return tuple(line for line in done.stdout.splitlines() if line.strip())
 
 
-def book_pathspecs(root: Path, service: str) -> tuple[str, ...]:
-    """What a commit of the service's book stages: its own folder, then the files it imports from outside that folder."""
-    return (f"services/{service}", *outside_paths(root, service))
+def book_pathspecs(root: Path, module: str) -> tuple[str, ...]:
+    """What a commit of the book of *module* stages: its own folder, then the files it imports from outside that folder."""
+    return (module.replace(".", "/"), *outside_paths(root, module))
 
 
 def stageable(root: Path, pathspecs: Iterable[str]) -> list[str]:

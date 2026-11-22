@@ -49,8 +49,8 @@ def history_repo() -> Path | None:
     return None
 
 
-def mark_path(book_root: Path, service: str) -> Path:
-    return book_root / "services" / service / MARK_FILE
+def mark_path(book_root: Path, folder: str) -> Path:
+    return book_root / folder / MARK_FILE
 
 
 class _Unreadable(Exception):
@@ -66,8 +66,8 @@ def _git(logger: logging.Logger, repo: Path, *args: str) -> str:
     return done.stdout.strip()
 
 
-def _book_date(logger: logging.Logger, book_root: Path, service: str) -> str:
-    done = run_tool(["git", "-C", str(book_root), "log", "-1", "--format=%cI", "--", f"services/{service}"], logger=logger)
+def _book_date(logger: logging.Logger, book_root: Path, folder: str) -> str:
+    done = run_tool(["git", "-C", str(book_root), "log", "-1", "--format=%cI", "--", folder], logger=logger)
     return done.stdout.strip() if done.returncode == 0 else ""
 
 
@@ -82,16 +82,16 @@ def _readable(_logger: logging.Logger, *_args: object) -> FormatDelta:
 
 
 @blueprint.node(stub=_readable)
-def book_format_delta(logger: logging.Logger, book_root: Path, service: str, history: str) -> FormatDelta:
+def book_format_delta(logger: logging.Logger, book_root: Path, folder: str, history: str) -> FormatDelta:
     """Read the commits of the writer's instructions that a book has not been judged against, from its FORMAT mark or, where it has none, from the last instructions commit before the book's own last commit."""
     repo = Path(history) if history else history_repo()
     if repo is None:
         return FormatDelta(unreadable=f"no checkout holding `{SKILL_DIR}` was found above the workflow package, and no history was named")
-    path = mark_path(book_root, service)
+    path = mark_path(book_root, folder)
     try:
         head = _git(logger, repo, "rev-list", "-1", "HEAD", "--", SKILL_DIR)
         derived = not path.is_file()
-        written = _book_date(logger, book_root, service) if derived else ""
+        written = _book_date(logger, book_root, folder) if derived else ""
         if not derived:
             mark = path.read_text(encoding="utf-8").strip()
         elif written:
@@ -112,9 +112,9 @@ def _marked(_logger: logging.Logger, *_args: object) -> None:
 
 
 @blueprint.node(stub=_marked)
-def mark_book_format(logger: logging.Logger, book_root: Path, service: str, head: str) -> None:
+def mark_book_format(logger: logging.Logger, book_root: Path, service: str, folder: str, head: str) -> None:
     """Record the commit of the writer's instructions a book was judged against, in the book's package."""
-    path = mark_path(book_root, service)
+    path = mark_path(book_root, folder)
     path.parent.mkdir(parents=True, exist_ok=True)
     _ = path.write_text(f"{head}\n", encoding="utf-8")
     logger.info("%s: format mark %s", service, head)

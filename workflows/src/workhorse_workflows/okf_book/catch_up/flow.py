@@ -6,6 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import NamedTuple
 
+from workhorse._vendor.stablemate_core import books
 from workhorse.pyflow import Await, Continue, Done, Transition
 from workhorse.worklist import WorkItem
 from workhorse_workflows.kit.schema import schema_block
@@ -79,7 +80,7 @@ class CatchUpBooks(BookFlow):
         if report.for_format:
             done = len(self._log(service).done)
             checks = report.checks if not done else [self._fresh(service, module) for module in self._modules(service)]
-            plan = plan_batch(done + 1, checks, self.call(catch_up_declined, self.root, service, (), ()), self.batch_notes)
+            plan = plan_batch(done + 1, checks, self.call(catch_up_declined, self.root, books.service_module(self.code_root, service), (), ()), self.batch_notes)
             _ = self.call(catch_up_batch, self.run_dir, service, BatchLog(current=plan))
         return Continue(None, self.write, service=service, gate="", lap=1, added=added, ignored=ignored).because("update the book")
 
@@ -131,11 +132,11 @@ class CatchUpBooks(BookFlow):
         """One owner turn updates the book from its stale report and the diff, opening on what the last gate printed. A turn that ends without a reply starts the next one fresh, and the gates judge what it left."""
         report = self._report(service)
         plan = self._plan(service)
-        register = self.call(catch_up_declined, self.root, service, (), ()) if report.for_format else []
+        register = self.call(catch_up_declined, self.root, books.service_module(self.code_root, service), (), ()) if report.for_format else []
         changed = self._app_changed(service)
         args = {
             "service": service,
-            "package": f"services/{service}",
+            "package": books.service_folder(self.code_root, service),
             "modules": [module.module for module in report.modules],
             "book_root": self.root.as_posix(),
             "app_root": self.code_root.as_posix(),
@@ -158,7 +159,7 @@ class CatchUpBooks(BookFlow):
         )
         _ = self.call(catch_up_format_notes, self.run_dir, service, tuple(reply.format))
         if report.for_format:
-            _ = self.call(catch_up_declined, self.root, service, tuple(reply.declined), tuple(plan.pending))
+            _ = self.call(catch_up_declined, self.root, books.service_module(self.code_root, service), tuple(reply.declined), tuple(plan.pending))
             _ = self.call(catch_up_batch, self.run_dir, service, BatchLog(current=plan.model_copy(update={"minutes": plan.minutes + self._turn_minutes(service)})))
         if reply.blocked:
             question = blocked_question(service, reply.blocked)
@@ -198,7 +199,7 @@ class CatchUpBooks(BookFlow):
         report = self._report(service)
         if not report.for_format:
             return gate, None
-        register = self.call(catch_up_declined, self.root, service, (), ())
+        register = self.call(catch_up_declined, self.root, books.service_module(self.code_root, service), (), ())
         plan = self._plan(service)
         left = [note for check in after for note in check.noted]
         kinds = kind_moves(report.noted, left, register)
@@ -272,7 +273,7 @@ class CatchUpBooks(BookFlow):
             if gate.exit_code != 0:
                 return self._judged("verified", module, gate, Lap(service, lap, added, ignored), self.stamp)
         if report.format is not None and report.format_behind:
-            _ = self.call(mark_book_format, self.root, service, report.format.head)
+            _ = self.call(mark_book_format, self.root, service, books.service_folder(self.code_root, service), report.format.head)
         return Continue(gate, self.render, service=service, lap=lap, added=added, ignored=ignored).because("the book is stamped")
 
     def render(self, service: str, lap: int, added: list[str], ignored: list[str]) -> Continue[...] | Await[...]:
@@ -289,7 +290,7 @@ class CatchUpBooks(BookFlow):
         if waiting:
             return waiting
         notes = self.call(catch_up_format_notes, self.run_dir, service, ())
-        register = self.call(catch_up_declined, self.root, service, (), ()) if report.for_format else []
+        register = self.call(catch_up_declined, self.root, books.service_module(self.code_root, service), (), ()) if report.for_format else []
         log = self._log(service)
         plan = self._plan(service)
         if report.for_format:
@@ -333,7 +334,7 @@ class CatchUpBooks(BookFlow):
         subject = self._subject(service, plan.number)
         if not self._report(service).for_format:
             return subject
-        batch = batch_outcome(plan, self.call(catch_up_declined, self.root, service, (), ()), self._move(service), lap)
+        batch = batch_outcome(plan, self.call(catch_up_declined, self.root, books.service_module(self.code_root, service), (), ()), self._move(service), lap)
         lines = [batch_line(batch), *(kind.said for kind in self._move(service).kinds)]
         body = "\n".join(textwrap.fill(line, BODY_WIDTH, subsequent_indent="  ") for line in lines)
         return f"{subject}\n\n{body}"

@@ -39,9 +39,9 @@ from that path before you act.
 
 ## The decisions the executable books keep
 
-A service of this story may have an executable book at `{{ workhorse_var('book_root') }}/services/<name>/`,
-with a `service.py`. For each one, read `{{ workhorse_var('book_root') }}/services/<name>/decisions/*.md` and
-`{{ workhorse_var('book_root') }}/services/<name>/DISAGREEMENTS.md` before you plan. A decision says why the service behaves as
+A service of this story may have an executable book at `{{ workhorse_var('service_books') }}/<name>/`,
+with a `service.py`. For each one, read `{{ workhorse_var('service_books') }}/<name>/decisions/*.md` and
+`{{ workhorse_var('service_books') }}/<name>/DISAGREEMENTS.md` before you plan. A decision says why the service behaves as
 it does and which story settled it. Where your plan changes a behaviour a decision explains,
 cite the decision in the plan and say whether the story keeps it or overturns it.
 
@@ -65,7 +65,7 @@ make every claim pass before you hand off. A claim you cannot meet is a block th
 claim, not a change you make silently. You do not edit these paths. The book lane plays them after
 you and keeps their `source=` pointers and index current.
 
-To see a claim pass, play only the calls those paths state: `ostler book run services.<name>
+To see a claim pass, play only the calls those paths state: `ostler book run {{ workhorse_var('service_package') }}.<name>
 --only <call>`. Never play a whole book in this turn, whatever the repository's own instructions
 say of a finished story: the book lane plays it after you, and a whole play can outlast the turn.
 Start a play as a background command and wait on its exit, never on a sleep.

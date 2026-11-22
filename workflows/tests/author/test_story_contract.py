@@ -197,7 +197,7 @@ def test_in_a_workspace_a_story_naming_an_artifacts_book_is_accepted(
 ) -> None:
     laid = lay_out(tmp_path, run_git)
     name_members(tmp_path, monkeypatch, laid)
-    write_book(laid.artifacts, "api-service")
+    write_book(laid.artifacts, "api/api-service")
 
     errors = service_errors(Ostler(agents_repo_root(str(laid.api))), "the story", ["api-service"])
 

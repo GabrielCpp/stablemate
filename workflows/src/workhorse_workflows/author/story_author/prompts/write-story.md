@@ -66,8 +66,8 @@ the required choice would do one of those things or the supplied sources genuine
 ## Ground the story in the book
 
 Search the book of each service the story names with `ostler book search`, and `ostler book explain`
-each entry the story changes. Name those entries in `## Context` as plain text (`services.<name>`
-`<ClassName>`) and do not copy them into the story. If the book models no entry for this surface,
+each entry the story changes. Name those entries in `## Context` as plain text (`<module>`
+`<ClassName>`, the module as search prints it) and do not copy them into the story. If the book models no entry for this surface,
 link the design mockup instead and say in one clause that the surface is new. If no mockup was
 designed either, a backend-only story where the mockup gate deliberately produced none, ground the
 Context in the epic's seeds this story `covers` and say in that same clause that the surface is new

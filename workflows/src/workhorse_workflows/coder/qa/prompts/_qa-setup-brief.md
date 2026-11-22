@@ -19,7 +19,7 @@ prints the URL the copy publishes a service at, and the plan's targets name that
 inside a service of the copy goes through `ostler env compose --copy {{ lease }} -- <args>`.
 
 Run every `ostler book` and `ostler env` command from `{{ workhorse_var('book_root') }}`.
-The stack is declared in `{{ workhorse_var('book_root') }}/services/<name>/ops/stack.yml`, one per service book.
+The stack is declared in `{{ workhorse_var('service_books') }}/<name>/ops/stack.yml`, one per service book.
 `ostler env check` checks that every `stack.yml` fits together; run it after you change one.
 
 ### What to repair

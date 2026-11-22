@@ -1,4 +1,4 @@
-"""One service's Python book. A book reached by a screen surface whose package exists first gets a breadth pass, one skeleton screen per entry file the book names nowhere, and a reasons pass, the decisions for the screens no decision names. A screen-reached book with no package starts with the owner, whose first lap writes the package. A pass never drops work silently: a turn without a reply or a failed listing waits for the operator. Then one owner turn per lap writes `services/<service>/`, the run judges it with the book's own check and run, and a green book is committed."""
+"""One service's Python book. A book reached by a screen surface whose package exists first gets a breadth pass, one skeleton screen per entry file the book names nowhere, and a reasons pass, the decisions for the screens no decision names. A screen-reached book with no package starts with the owner, whose first lap writes the package. A pass never drops work silently: a turn without a reply or a failed listing waits for the operator. Then one owner turn per lap writes the service's book folder, the run judges it with the book's own check and run, and a green book is committed."""
 from __future__ import annotations
 
 import logging
@@ -6,6 +6,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from pydantic import BaseModel
+from workhorse._vendor.stablemate_core import books
 from workhorse.pyflow import Await, Continue, Done, Transition, dry_run
 from workhorse_workflows.kit.schema import schema_block
 from workhorse_workflows.kit.tools import run_tool
@@ -82,7 +83,7 @@ class WritePythonBook(BookFlow):
 
     @property
     def package(self) -> str:
-        return f"services/{self.service}"
+        return books.service_folder(self.code_root, self.service)
 
     @property
     def written(self) -> bool:
@@ -96,7 +97,7 @@ class WritePythonBook(BookFlow):
     @property
     def modules(self) -> tuple[str, ...]:
         """One module per surface the service is reached by. A book with one surface is its package's module."""
-        base = book_module(self.service)
+        base = book_module(books.service_package(self.code_root), self.service)
         return (base,) if len(self.kinds) <= 1 else tuple(f"{base}.{kind}" for kind in self.kinds)
 
     @property
@@ -104,7 +105,7 @@ class WritePythonBook(BookFlow):
         """The modules whose surface is a screen."""
         if len(self.kinds) <= 1:
             return self.modules if SCREEN_KINDS & set(self.kinds) else ()
-        base = book_module(self.service)
+        base = book_module(books.service_package(self.code_root), self.service)
         return tuple(f"{base}.{kind}" for kind in self.kinds if kind in SCREEN_KINDS)
 
     def start(self) -> Continue[...] | Await[...]:
@@ -113,7 +114,7 @@ class WritePythonBook(BookFlow):
             self.run_dir.mkdir(parents=True, exist_ok=True)
             (self.run_dir / FIRST_BOOK_MARK).write_text("", encoding="utf-8")
         if self.written:
-            delta = self.call(book_format_delta, self.root, self.service, self.format_history)
+            delta = self.call(book_format_delta, self.root, self.package, self.format_history)
             if delta.unreadable:
                 return Await(self.run_dir / FORMAT_GATE, format_question(self.service, delta.unreadable), self.start).because("the format history could not be read")
         if self.screen_modules and self.written:
@@ -273,7 +274,7 @@ class WritePythonBook(BookFlow):
     def _format(self) -> dict[str, object] | None:
         if not self.written:
             return None
-        delta = self.call(book_format_delta, self.root, self.service, self.format_history)
+        delta = self.call(book_format_delta, self.root, self.package, self.format_history)
         if not delta.behind:
             return None
         return {"commits": [{"short": commit.sha[:7], "subject": commit.subject} for commit in delta.commits], "diff": delta.diff}
@@ -289,7 +290,7 @@ class WritePythonBook(BookFlow):
             "book_root": self.root.as_posix(),
             "source_root": self.source_root.as_posix(),
             "app_root": self.code_root.as_posix(),
-            "references": finished_books(self.root, self.service),
+            "references": finished_books(self.root, books.service_package(self.code_root), self.service),
             "stack_copy": self.stack_copy,
             "format": self._format(),
             "gate": gate,
@@ -345,13 +346,13 @@ class WritePythonBook(BookFlow):
         gate, red = self._each("verified", self.stamp, lap, lambda module: self.call(python_book_verified, self.root, module, self.code_root))
         if red:
             return red
-        delta = self.call(book_format_delta, self.root, self.service, self.format_history)
+        delta = self.call(book_format_delta, self.root, self.package, self.format_history)
         if delta.unreadable and (self.run_dir / FIRST_BOOK_MARK).is_file():
             (self.run_dir / FORMAT_UNMARKED).write_text(delta.unreadable, encoding="utf-8")
         elif delta.unreadable:
             return Await(self.run_dir / FORMAT_GATE, format_question(self.service, delta.unreadable), self.stamp, lap=lap).because("the format history could not be read")
         elif delta.head:
-            _ = self.call(mark_book_format, self.root, self.service, delta.head)
+            _ = self.call(mark_book_format, self.root, self.service, self.package, delta.head)
         return Continue(gate, self.render, lap=lap).because("the book is stamped")
 
     @staticmethod

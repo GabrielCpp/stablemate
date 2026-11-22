@@ -1048,7 +1048,7 @@ class _Stack:
         self.only: list[str] = []
 
     def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(qa_runner, "story_near", lambda _root, _services=(): "book")
+        monkeypatch.setattr(qa_runner, "story_near", lambda _root, _services=(), _package="": "book")
         monkeypatch.setattr(qa_runner, "stack_env", self.env)
         monkeypatch.setattr(qa_runner, "ensure_stack", self.ensure)
         monkeypatch.setattr(qa_runner, "run_qa_plan", self.run)

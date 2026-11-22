@@ -129,14 +129,14 @@ def alongside(
     return docs
 
 
-def _served_by(root: Path, write: Callable[[Path, str], Path], *services: str, covered: tuple[str, ...]) -> None:
+def _served_by(root: Path, write: Callable[[Path, str], Path], *services: str, covered: tuple[str, ...], under: str = "services") -> None:
     """Name the story's services, and give each covered one an executable book."""
     write(
         epics_root() / STORY_REL / "story.md",
         STORY_MD.replace("type: story\n", f"type: story\nservices: [{', '.join(services)}]\n"),
     )
     for name in covered:
-        write(root / "services" / name / "service.py", "SERVICE = 1\n")
+        write(root / under / name / "service.py", "SERVICE = 1\n")
     subprocess.run(["git", "add", "-A"], cwd=root, check=True)
     subprocess.run(["git", "commit", "-qm", "the story and its books"], cwd=root, check=True)
 
@@ -300,7 +300,7 @@ def test_in_a_workspace_a_story_whose_book_is_in_the_artifacts_folder_is_not_ref
 ) -> None:
     write(epics_root() / EPIC / "epic.md", EPIC_MD)
     write(spec_dir() / "plan-context.json", json.dumps(_plan_context("api"), indent=2))
-    _served_by(workspace.artifacts, write, "api", covered=("api",))
+    _served_by(workspace.artifacts, write, "api", covered=("api",), under="services/api")
     monkeypatch.setattr(book_nodes, "_play", _Checks())
 
     result = drive_flow(Docs(story=STORY, epic=EPIC), env(), _Agent())
@@ -324,7 +324,7 @@ def test_a_story_whose_book_is_missing_is_refused_naming_where_the_book_goes(
     with pytest.raises(WorkflowFailed) as refused:
         drive_flow(Docs(story=STORY, epic=EPIC), env(), _Agent())
 
-    assert f"{workspace.artifacts}/services/<name>/service.py" in str(refused.value), refused.value
+    assert f"{workspace.artifacts}/services/api/<name>/service.py" in str(refused.value), refused.value
 
 
 def test_a_surface_book_under_a_service_is_a_book(

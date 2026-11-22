@@ -109,6 +109,7 @@ def _spec_dir() -> Path:
 
 MODULE_CALLS = {
     "services.api": ["ListX", "BuildX"],
+    "services.api.api": ["ListX", "BuildX"],
     "services.api.http": ["ListX"],
     "services.api.web": ["BuildX"],
     "services.web": ["ShowHome"],
@@ -267,7 +268,9 @@ class _Agent:
         reviews: tuple[dict[str, Any], ...] = (REVIEWED,),
         review_cut: bool = False,
         on_review: Callable[[], None] | None = None,
+        folder: str = "services/api",
     ) -> None:
+        self.folder = folder
         self.cut = cut
         self.reviews = reviews
         self.review_cut = review_cut
@@ -310,7 +313,7 @@ class _Agent:
             raise TurnDeadlineExceeded(stem, node.deadline, node.deadline + 1.0)
         nth = self.calls.count(stem)
         reply = self.replies[min(nth, len(self.replies)) - 1]
-        book = self.repo / "services" / "api" / self.touch
+        book = self.repo / self.folder / self.touch
         book.parent.mkdir(parents=True, exist_ok=True)
         book.write_text(f"# turn {nth}\n", encoding="utf-8")
         if self.stray:
@@ -1032,6 +1035,19 @@ def test_a_product_edit_outside_the_book_is_refused_and_sent_back_unlanded(
     assert not (_spec_dir() / "book-qa.json").exists()
 
 
+WORKSPACE_BOOK = "services/api/api"
+WORKSPACE_SHARED = ("services/api/shared/accounts.py", "services/api/shared/answers.py")
+
+
+def _import_shared_in_namespace(root: Path) -> None:
+    book = root / WORKSPACE_BOOK
+    book.mkdir(parents=True, exist_ok=True)
+    (book / "service.py").write_text("from ..shared.accounts import ACCOUNTS\nfrom ..shared.answers import ANSWER\n", encoding="utf-8")
+    for rel in WORKSPACE_SHARED:
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text("ACCOUNTS = ANSWER = 1\n", encoding="utf-8")
+
+
 @pytest.fixture
 def workspace_lane(
     workspace: Workspace,
@@ -1042,8 +1058,8 @@ def workspace_lane(
     write(epics_root() / EPIC / "epic.md", EPIC_MD)
     write(epics_root() / EPIC / "stories" / STORY / "story.md", STORY_MD)
     write(_spec_dir() / "plan-context.json", json.dumps({"story": STORY, "services": []}))
-    write(workspace.artifacts / "services" / "api" / "service.py", "# the api book\n")
-    write(workspace.artifacts / "services" / "api" / "journeys" / "existing.py", "# base\n")
+    write(workspace.artifacts / "services" / "api" / "api" / "service.py", "# the api book\n")
+    write(workspace.artifacts / "services" / "api" / "api" / "journeys" / "existing.py", "# base\n")
     git(workspace.artifacts, "add", "-A")
     git(workspace.artifacts, "commit", "-qm", "chore: add the api book")
     return workspace
@@ -1066,7 +1082,7 @@ def test_in_a_workspace_the_book_plays_from_the_artifacts_folder(
 ) -> None:
     scripted = book()
 
-    result = drive_flow(_flow(), env(), _Agent(workspace_lane.artifacts))
+    result = drive_flow(_flow(), env(), _Agent(workspace_lane.artifacts, folder=WORKSPACE_BOOK))
 
     assert result.status == "passed", result
     assert scripted.cwds and {Path(cwd) for cwd in scripted.cwds if cwd not in scripted.run_cwds} == {workspace_lane.artifacts}
@@ -1086,11 +1102,11 @@ def test_in_a_workspace_the_book_change_commits_in_the_artifacts_repo(
     api_head = git(workspace_lane.api, "rev-parse", "HEAD").stdout
     book()
 
-    drive_flow(_flow(), env(), _Agent(workspace_lane.artifacts))
+    drive_flow(_flow(), env(), _Agent(workspace_lane.artifacts, folder=WORKSPACE_BOOK))
 
     landed = git(workspace_lane.artifacts, "show", "--name-only", "--format=%s", "HEAD").stdout
     assert landed.startswith("test("), landed
-    assert "services/api/journeys/added.py" in landed, landed
+    assert "services/api/api/journeys/added.py" in landed, landed
     assert git(workspace_lane.api, "rev-parse", "HEAD").stdout == api_head
 
 
@@ -1103,7 +1119,7 @@ def test_in_a_workspace_a_code_edit_by_the_book_seat_is_refused(
     drive_flow: Callable[..., Any],
 ) -> None:
     book()
-    agent = _Agent(workspace_lane.artifacts, stray=str(workspace_lane.api / "app.py"))
+    agent = _Agent(workspace_lane.artifacts, folder=WORKSPACE_BOOK, stray=str(workspace_lane.api / "app.py"))
 
     with patch.object(pyflow_park, "wait_for_answer", _parked_at([])), pytest.raises(_Parked):
         drive_flow(_flow(), env(), agent)
@@ -1134,7 +1150,7 @@ def test_in_a_worktree_run_the_book_plays_from_the_artifacts_worktree(
 ) -> None:
     scripted = book()
 
-    result = drive_flow(_flow(), env(), _Agent(run_trees.artifacts))
+    result = drive_flow(_flow(), env(), _Agent(run_trees.artifacts, folder=WORKSPACE_BOOK))
 
     assert result.status == "passed", result
     assert scripted.cwds and {Path(cwd) for cwd in scripted.cwds if cwd not in scripted.run_cwds} == {run_trees.artifacts}
@@ -1155,20 +1171,20 @@ def test_in_a_worktree_run_the_book_change_commits_on_the_run_branch_of_the_arti
     main_head = git(workspace_lane.artifacts, "rev-parse", "HEAD").stdout
     book()
 
-    drive_flow(_flow(), env(), _Agent(run_trees.artifacts))
+    drive_flow(_flow(), env(), _Agent(run_trees.artifacts, folder=WORKSPACE_BOOK))
 
     assert git(workspace_lane.artifacts, "rev-parse", "HEAD").stdout == main_head
     landed = git(run_trees.artifacts, "show", "--name-only", "--format=%s", "HEAD").stdout
     assert landed.startswith("test("), landed
-    assert "services/api/journeys/added.py" in landed, landed
+    assert "services/api/api/journeys/added.py" in landed, landed
 
 
 def test_in_a_worktree_run_a_book_path_outside_the_covered_services_is_not_a_stray_code_edit(
     run_trees: Workspace,
     write: Callable[[Path, str], Path],
 ) -> None:
-    write(run_trees.artifacts / "services" / "other" / "x.py", "x\n")
-    write(run_trees.artifacts / "services" / "api" / "journeys" / "added.py", "y\n")
+    write(run_trees.artifacts / "services" / "api" / "other" / "x.py", "x\n")
+    write(run_trees.artifacts / "services" / "api" / "api" / "journeys" / "added.py", "y\n")
 
     result = book_nodes.commit_service_book(
         logging.getLogger("test"), ["api"], repo_dir=str(run_trees.api)
@@ -1195,13 +1211,13 @@ def test_a_monorepo_book_commit_takes_the_files_it_imports_and_no_compiled_file(
 def test_in_a_workspace_the_book_commit_takes_the_files_it_imports_and_no_compiled_file(
     workspace_lane: Workspace, git: Callable[..., subprocess.CompletedProcess[str]]
 ) -> None:
-    import_shared(workspace_lane.artifacts, "api")
+    _import_shared_in_namespace(workspace_lane.artifacts)
 
     result = book_nodes.commit_service_book(logging.getLogger("test"), ["api"], repo_dir=str(workspace_lane.api))
 
     assert result.refused == "", result.refused
     landed = git(workspace_lane.artifacts, "show", "--name-only", "--format=", "HEAD").stdout.split()
-    assert sorted(landed) == sorted([*SHARED_FILES, "services/api/service.py"])
+    assert sorted(landed) == sorted([*WORKSPACE_SHARED, "services/api/api/service.py"])
     assert "pyc" not in git(workspace_lane.artifacts, "ls-files").stdout
 
 
@@ -1209,15 +1225,15 @@ def test_an_imported_file_the_commit_leaves_untracked_is_refused_with_its_path(
     workspace_lane: Workspace, git: Callable[..., subprocess.CompletedProcess[str]]
 ) -> None:
     root = workspace_lane.artifacts
-    import_shared(root, "api")
-    kept = [f"{rel}\0{digest(root, rel)}" for rel in SHARED_FILES]
+    _import_shared_in_namespace(root)
+    kept = [f"{rel}\0{digest(root, rel)}" for rel in WORKSPACE_SHARED]
 
     result = book_nodes.commit_service_book(
         logging.getLogger("test"), ["api"], preexisting=kept, repo_dir=str(workspace_lane.api)
     )
 
     assert result.committed
-    for rel in SHARED_FILES:
+    for rel in WORKSPACE_SHARED:
         assert f"- `{rel}`" in result.refused, result.refused
 
 
@@ -1244,7 +1260,7 @@ def test_a_book_root_with_no_git_lands_nothing_and_does_not_raise(
     workspace_lane: Workspace, tmp_path: Path
 ) -> None:
     shutil.rmtree(workspace_lane.artifacts / ".git")
-    (workspace_lane.artifacts / "services" / "api" / "journeys" / "added.py").write_text("x\n", encoding="utf-8")
+    (workspace_lane.artifacts / "services" / "api" / "api" / "journeys" / "added.py").write_text("x\n", encoding="utf-8")
 
     result = book_nodes.commit_service_book(
         logging.getLogger("test"), ["api"], repo_dir=str(workspace_lane.api)
@@ -1392,7 +1408,24 @@ def test_a_play_of_the_named_calls_registers_nothing(
 
 
 def test_the_register_is_a_record_no_play_reads_for_scope() -> None:
-    assert book_nodes.shared_book_paths("api", {"services/api/UNDERSPECIFIED.md": True}) == []
+    assert book_nodes.shared_book_paths("services/api", {"services/api/UNDERSPECIFIED.md": True}) == []
+
+
+def test_the_modules_of_a_namespaced_book_are_found_under_its_repository_folder(tmp_path: Path) -> None:
+    for surface in ("http", "web"):
+        (tmp_path / "services" / "acme" / "groom" / surface).mkdir(parents=True)
+        (tmp_path / "services" / "acme" / "groom" / surface / "service.py").write_text("SERVICE = 1\n", encoding="utf-8")
+    (tmp_path / "services" / "acme" / "api").mkdir(parents=True)
+    (tmp_path / "services" / "acme" / "api" / "service.py").write_text("SERVICE = 1\n", encoding="utf-8")
+
+    assert book_nodes.book_modules(tmp_path, "services.acme", "groom") == ("services.acme.groom.http", "services.acme.groom.web")
+    assert book_nodes.book_modules(tmp_path, "services.acme", "api") == ("services.acme.api",)
+    assert book_nodes.book_dir("services.acme", "api") == "services/acme/api"
+
+
+def test_a_book_reads_no_surface_from_its_own_module() -> None:
+    assert book_nodes._surface("services.acme.api", "services.acme.api") == ""  # pyright: ignore[reportPrivateUsage]
+    assert book_nodes._surface("services.acme.groom.http", "services.acme.groom") == "http"  # pyright: ignore[reportPrivateUsage]
 
 
 def test_the_seat_prompt_leaves_the_register_to_the_owner(tmp_path: Path) -> None:
@@ -1419,7 +1452,7 @@ def test_the_shared_rule_names_what_a_play_reads() -> None:
         "services/other/model/records.py": True,
     }
 
-    shared = book_nodes.shared_book_paths("api", changed)
+    shared = book_nodes.shared_book_paths("services/api", changed)
 
     assert shared == ["services/api/journeys/old.py", "services/api/model/records.py"], shared
 
@@ -1433,7 +1466,7 @@ def test_the_shared_rule_reads_each_surface_folder_as_a_book_of_its_own() -> Non
         "services/api/model/records.py": False,
     }
 
-    shared = book_nodes.shared_book_paths("api", changed, frozenset({"http", "web"}))
+    shared = book_nodes.shared_book_paths("services/api", changed, frozenset({"http", "web"}))
 
     assert shared == [
         "services/api/http/journeys/old.py",

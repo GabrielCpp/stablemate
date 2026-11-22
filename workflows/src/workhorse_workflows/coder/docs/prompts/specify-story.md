@@ -43,9 +43,9 @@ assumption in the story, the model or the book. Do not raise the same block agai
 
 ## The decisions the executable books keep
 
-These services have an executable book at `{{ workhorse_var('book_root') }}/services/<name>/`, with a
-`service.py`: {% for name in book_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %}. For each one, read `{{ workhorse_var('book_root') }}/services/<name>/decisions/*.md` and
-`{{ workhorse_var('book_root') }}/services/<name>/DISAGREEMENTS.md` before you model. A decision says why the service behaves as
+These services have an executable book at `{{ workhorse_var('service_books') }}/<name>/`, with a
+`service.py`: {% for name in book_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %}. For each one, read `{{ workhorse_var('service_books') }}/<name>/decisions/*.md` and
+`{{ workhorse_var('service_books') }}/<name>/DISAGREEMENTS.md` before you model. A decision says why the service behaves as
 it does and which story settled it. Where the story changes a behaviour a decision explains,
 name the decision in the model and say whether the story keeps it or overturns it.
 
@@ -94,17 +94,17 @@ Write the story's claims into each covered service's book as intent, before any 
   with what the story adds.
 - Every decided cell of the model becomes a claim the run can judge. The empty value, the bound and
   the refusal each get their own, not only the happy path.
-- A decision the story settles goes in `services/<name>/decisions/` with the story that settled it.
+- A decision the story settles goes in `{{ workhorse_var('service_books') }}/<name>/decisions/` with the story that settled it.
 - Name an endpoint by the method and path the epic or the book's existing conventions give it.
   Where nothing names it, choose the name and state it in the book. Dev builds to that name.
 - A claim no call or backstage step can observe stays in the model and out of the book. Say so in
   `notes`.
 
 You do not run the app, and you do not play the book. The new claims are expected to fail against
-the current app until the build. Edit only under `{{ workhorse_var('book_root') }}/services/<name>/` and the spec dir.
+the current app until the build. Edit only under `{{ workhorse_var('service_books') }}/<name>/` and the spec dir.
 
 Run every `ostler book` and `ostler env` command from `{{ workhorse_var('book_root') }}`.
-Run `ostler book check services.<name>` for each service until it exits 0. It builds
+Run `ostler book check {{ workhorse_var('service_package') }}.<name>` for each service until it exits 0. It builds
 everything the book declares with no stack, so a claim the format cannot read fails there. The
 workflow reads the changed book paths from the tree.
 
@@ -131,7 +131,7 @@ reviewer to `worker`.
 
 ## Converge
 
-Run `ostler book check services.<name>` for each service. Fix, re-run and repeat until
+Run `ostler book check {{ workhorse_var('service_package') }}.<name>` for each service. Fix, re-run and repeat until
 each exits 0.
 
 ## Blocked

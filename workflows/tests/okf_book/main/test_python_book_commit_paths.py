@@ -63,10 +63,20 @@ def test_a_commit_that_leaves_an_imported_file_behind_waits_on_the_operator_nami
 
 def test_in_a_workspace_the_commit_of_the_book_takes_the_imported_files_into_the_artifacts_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     flow, _runner, laid = workspace_flow(tmp_path, monkeypatch)
-    shared = import_shared(laid.artifacts, "ledger")
+    book = laid.artifacts / "services/api/ledger"
+    shared = laid.artifacts / "services/api/shared"
+    book.mkdir(parents=True)
+    shared.mkdir(parents=True)
+    (book / "service.py").write_text("from ..shared.accounts import ACCOUNTS\nfrom ..shared.answers import ANSWER\n", encoding="utf-8")
+    (shared / "accounts.py").write_text("ACCOUNTS = 1\n", encoding="utf-8")
+    (shared / "answers.py").write_text("ANSWER = 1\n", encoding="utf-8")
 
     step = flow.commit(lap=1)
 
     assert isinstance(step, Done)
-    assert sorted(git(laid.artifacts, "show", "--name-only", "--format=", "HEAD").split()) == sorted([*shared, "services/ledger/service.py"])
+    assert sorted(git(laid.artifacts, "show", "--name-only", "--format=", "HEAD").split()) == [
+        "services/api/ledger/service.py",
+        "services/api/shared/accounts.py",
+        "services/api/shared/answers.py",
+    ]
     assert "pyc" not in git(laid.artifacts, "ls-files")

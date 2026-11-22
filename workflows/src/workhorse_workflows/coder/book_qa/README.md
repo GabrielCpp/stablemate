@@ -1,6 +1,6 @@
 # book_qa
 
-The book lane of the coder workflow. A story that touches a service with an executable book (`services/<name>/service.py` under the book root: the artifacts folder, or the repository with `book.home: repo`) has that service judged by a run of the book. The scenario QA in `qa/` is a separate lane. The main loop hands off to this one first, and enters the scenario QA only when no service of the story has a book. Both return a `QaFlowResult`.
+The book lane of the coder workflow. A story that touches a service with an executable book (`services/<name>/service.py` under the book root when the repository keeps its book, `services/<repo>/<name>/service.py` in the artifacts folder) has that service judged by a run of the book. The scenario QA in `qa/` is a separate lane. The main loop hands off to this one first, and enters the scenario QA only when no service of the story has a book. Both return a `QaFlowResult`.
 
 The lane costs one seat turn and one end review turn. The verdict costs no model call. A story with no covered service ends here as `passed` with no agent call and no stack.
 

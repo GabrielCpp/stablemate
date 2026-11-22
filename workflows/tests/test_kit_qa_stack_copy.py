@@ -207,6 +207,15 @@ def test_the_one_named_service_with_a_stack_file_picks_its_book(tmp_path: Path) 
     assert runner.story_near(tmp_path, ["api"]) == str(tmp_path / "services" / "api")
 
 
+def test_a_namespaced_package_looks_for_the_stack_under_its_repository_folder(tmp_path: Path) -> None:
+    stack = tmp_path / "services" / "acme" / "api" / "ops" / "stack.yml"
+    stack.parent.mkdir(parents=True)
+    stack.write_text("services: {}\n", encoding="utf-8")
+
+    assert runner.story_near(tmp_path, ["api"], "services.acme") == str(tmp_path / "services" / "acme" / "api")
+    assert runner.story_near(tmp_path, ["api"]) == ""
+
+
 def test_two_named_services_with_stack_files_pick_no_book(tmp_path: Path) -> None:
     _stack_beside(tmp_path, "api", "web")
 
@@ -245,14 +254,13 @@ def test_in_a_workspace_the_stack_target_is_the_artifacts_book(tmp_path: Path, m
     config = tmp_path / "home-config.toml"
     config.write_text(f'[workspaces]\nacme = ["{laid.api}", "{laid.web}"]\n', encoding="utf-8")
     monkeypatch.setenv("STABLEMATE_CONFIG", str(config))
-    for base in (laid.artifacts, laid.api):
-        stack = base / "services" / "api" / "ops" / "stack.yml"
+    for stack in (laid.artifacts / "services" / "api" / "api" / "ops" / "stack.yml", laid.api / "services" / "api" / "ops" / "stack.yml"):
         stack.parent.mkdir(parents=True)
         stack.write_text(yaml.safe_dump({"services": {}}), encoding="utf-8")
 
     target = stack_target(LOG, "S", "l", repo_dir=str(laid.api), services=["api"])
 
-    assert target.near == str(laid.artifacts / "services" / "api")
+    assert target.near == str(laid.artifacts / "services" / "api" / "api")
 
 
 def _name_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -268,13 +276,13 @@ def test_in_a_worktree_run_the_stack_is_read_from_the_artifacts_worktree(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     laid, trees = _name_workspace(tmp_path, monkeypatch)
-    stack = trees.artifacts / "services" / "api" / "ops" / "stack.yml"
+    stack = trees.artifacts / "services" / "api" / "api" / "ops" / "stack.yml"
     stack.parent.mkdir(parents=True)
     stack.write_text(yaml.safe_dump({"services": {}}), encoding="utf-8")
 
     target = stack_target(LOG, "S", "l", repo_dir=str(trees.api), services=["api"])
 
-    assert target.near == str(trees.artifacts / "services" / "api")
+    assert target.near == str(trees.artifacts / "services" / "api" / "api")
 
 
 def test_run_qa_plan_reads_specs_from_the_docs_root_and_the_lease_from_the_book_root(

@@ -6,7 +6,7 @@ agent: agent
 
 You own the service-book pass of one story, in this one turn. You read the story, play the
 calls its claims bear on, bring each covered service's book up to the claims, and play the
-calls again. The workflow, not you, selects what it plays afterwards. The turn ends with the book edited under `{{ workhorse_var('book_root') }}/services/<name>/`, a targeted run
+calls again. The workflow, not you, selects what it plays afterwards. The turn ends with the book edited under `{{ workhorse_var('service_books') }}/<name>/`, a targeted run
 that exits 0 for every covered service, and the JSON result below. You spawn no subagent.
 
 QA never fixes the product. A claim the app does not meet is a finding you return, and the
@@ -23,7 +23,7 @@ turn.
 - Book root: `{{ workhorse_var('book_root') }}`
 - Target environment: `{{ workhorse_var('target_env') }}`
 - Story base commit: `{{ workhorse_var('story_base') }}`
-- Covered services, each with an executable book at `{{ workhorse_var('book_root') }}/services/<name>/`:
+- Covered services, each with an executable book at `{{ workhorse_var('service_books') }}/<name>/`:
 {% for name in services %}  - `{{ name }}`
 {% endfor %}
 A service may be in this list because the story's commits changed the app source its book points at, though the story did not name it. Bring that book up to the diff all the same.
@@ -61,11 +61,11 @@ earlier assumption in the story, the book or a finding. Do not raise the same bl
    `qa-evidence.json`, `qa/`). Your judgement must not come from another QA's
    work.
 3. **Play the base.** For each covered service, pick the calls the story's claims bear on,
-   and play them before any edit: `ostler book run services.<name> --only <calls>`. You may
+   and play them before any edit: `ostler book run {{ workhorse_var('service_package') }}.<name> --only <calls>`. You may
    play any calls while you work. A call is
    an endpoint class of the book, or an interaction class in a screen book. A journey is not a
    call. `ostler book search <term> --kind endpoint` or `--kind interaction` lists them.
-   `ostler book affected services.<name> --app <root> --since <base> --story <id>` prints what the workflow will play for the
+   `ostler book affected {{ workhorse_var('service_package') }}.<name> --app <root> --since <base> --story <id>` prints what the workflow will play for the
    story's diff, with the story base commit above as `<base>`, the story id above as `<id>` and the repository root as `<root>`. Run every
    `ostler book` and `ostler env` command from `{{ workhorse_var('book_root') }}`. A red
    base is not yours to repair. Report `blocked` with the output.
@@ -99,11 +99,11 @@ earlier assumption in the story, the book or a finding. Do not raise the same bl
 8. **Run until green.** Run `ostler book check`, then the targeted run, until the run exits
    0. Never run the whole book yourself: the workflow plays only what the diff selects. Run one at a time. Exit 3 means the environment is not
    healthy. Report `blocked` and repair nothing.
-9. **Stay in the book.** Edit only under `{{ workhorse_var('book_root') }}/services/<name>/` of the covered services. Put no
+9. **Stay in the book.** Edit only under `{{ workhorse_var('service_books') }}/<name>/` of the covered services. Put no
    sleep, timer or retry loop in the book.
    No document pass runs after this turn, so you keep every touched endpoint's `source=` pointers and
    `index.tsv` current with the code the story changed.
-10. **Leave the register alone.** `{{ workhorse_var('book_root') }}/services/<name>/UNDERSPECIFIED.md` is the product owner's list of
+10. **Leave the register alone.** `{{ workhorse_var('service_books') }}/<name>/UNDERSPECIFIED.md` is the product owner's list of
     fields the book models no dimension for. A scheduled whole play, outside any story, adds a finding there when it lies
     outside the calls the story's diff selects, and reports it as known. A finding on a call it selects is yours:
     model the dimension or return a finding. Never edit or delete an entry, and never declare

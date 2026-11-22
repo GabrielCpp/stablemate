@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 
 from ostler import path as okf_path, registry
+from workhorse._vendor.stablemate_core import books
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.coder.shared import commits, paths, story_status
 from workhorse_workflows.coder.shared.blueprint import blueprint
@@ -28,6 +29,7 @@ from workhorse_workflows.kit.book_files import is_compiled, left_behind, left_be
 from workhorse_workflows.kit import (
     GitError,
     commit_paths,
+    find_book_package,
     find_book_root,
     find_docs_root,
     find_repo_root,
@@ -347,11 +349,12 @@ def commit_book_delta(
     story_id: str = "",
     book_services: list[str] | None = None,
 ) -> StoryCommitted:
-    """Commit the book files the spec pass left uncommitted, so an owner's clean-repo check never counts the book as its leftovers. A service's book is committed by its `services/<name>/` folder."""
+    """Commit the book files the spec pass left uncommitted, so an owner's clean-repo check never counts the book as its leftovers. A service's book is committed by its book folder."""
     slug = story_slug or "story"
     root = find_book_root(repo_dir)
-    folders = [(root / "services" / name).resolve() for name in book_services or []]
-    imported = {path for name in book_services or [] for path in outside_paths(root, name)}
+    package = find_book_package(repo_dir)
+    folders = [(root / books.package_folder(package) / name).resolve() for name in book_services or []]
+    imported = {path for name in book_services or [] for path in outside_paths(root, f"{package}.{name}")}
     excused = untouched_since(root, tuple(preexisting or ()))
     rels = [
         rel

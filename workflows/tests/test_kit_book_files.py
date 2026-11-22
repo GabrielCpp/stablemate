@@ -50,31 +50,35 @@ def test_a_compiled_file_and_a_bytecode_folder_are_compiled() -> None:
 def test_the_pathspecs_are_the_books_folder_then_what_it_imports(root: Path) -> None:
     _ = import_shared(root, "ticket")
 
-    assert book_pathspecs(root, "ticket") == ("services/ticket", *SHARED_FILES)
+    assert book_pathspecs(root, "services.ticket") == ("services/ticket", *SHARED_FILES)
 
 
 def test_the_init_files_on_the_way_are_taken_where_they_exist(root: Path) -> None:
     _ = import_shared(root, "ticket")
     (root / "services/__init__.py").write_text("", encoding="utf-8")
 
-    assert outside_paths(root, "ticket") == ("services/__init__.py", *SHARED_FILES)
+    assert outside_paths(root, "services.ticket") == ("services/__init__.py", *SHARED_FILES)
 
 
 def test_a_book_that_imports_nothing_outside_its_folder_has_only_its_folder(root: Path) -> None:
     (root / "services/solo").mkdir(parents=True)
     (root / "services/solo/service.py").write_text("import os\n", encoding="utf-8")
 
-    assert book_pathspecs(root, "solo") == ("services/solo",)
+    assert book_pathspecs(root, "services.solo") == ("services/solo",)
+
+
+def test_a_namespaced_book_stages_its_repository_folder(root: Path) -> None:
+    assert book_pathspecs(root, "services.acme.ticket")[0] == "services/acme/ticket"
 
 
 def test_a_service_with_no_folder_has_only_its_folder_in_the_list(root: Path) -> None:
-    assert book_pathspecs(root, "absent") == ("services/absent",)
+    assert book_pathspecs(root, "services.absent") == ("services/absent",)
 
 
 def test_what_a_commit_may_stage_holds_the_folder_and_the_shared_files_and_no_compiled_file(root: Path) -> None:
     _ = import_shared(root, "ticket")
 
-    staged = stageable(root, book_pathspecs(root, "ticket"))
+    staged = stageable(root, book_pathspecs(root, "services.ticket"))
 
     assert staged == ["services/shared/accounts.py", "services/shared/answers.py", "services/ticket/service.py"]
 
@@ -90,7 +94,7 @@ def test_a_deletion_already_staged_is_still_staged(root: Path) -> None:
 
 def test_what_a_commit_left_behind_names_untracked_and_modified_files_but_not_compiled_ones(root: Path) -> None:
     _ = import_shared(root, "ticket")
-    specs = book_pathspecs(root, "ticket")
+    specs = book_pathspecs(root, "services.ticket")
     assert left_behind(root, specs) == ["services/shared/accounts.py", "services/shared/answers.py", "services/ticket/service.py"]
     _git(root, "add", *stageable(root, specs))
     _git(root, "commit", "-qm", "book")
@@ -112,4 +116,4 @@ def test_a_verb_that_cannot_answer_lists_nothing_outside(root: Path, monkeypatch
 
     monkeypatch.setattr(book_files, "run_tool", _broken)
 
-    assert outside_paths(root, "ticket") == ()
+    assert outside_paths(root, "services.ticket") == ()

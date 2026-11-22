@@ -148,6 +148,6 @@ def test_a_prompt_that_writes_or_reviews_reads_the_book(prompt: Path) -> None:
 def test_the_book_partial_names_the_three_commands() -> None:
     text = _prose(AUTHOR / "pm/prompts/books.md")
 
-    assert "`ostler book search <term> --service services.<name>" in text
-    assert "`ostler book explain services.<name> <ClassName>`" in text
-    assert "`ostler book decisions services.<name>`" in text
+    assert "`ostler book search <term> --service <module>" in text
+    assert "`ostler book explain <module> <ClassName>`" in text
+    assert "`ostler book decisions <module>`" in text

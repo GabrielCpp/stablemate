@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 from typing import cast
 
+from workhorse._vendor.stablemate_core import books
 from workhorse.worklist import WORK_FILE, JsonBackend, WorkItem, WorkList
 from workhorse_workflows.kit.git import open_repo
 from workhorse_workflows.okf_book.catch_up.models import CURRENT, FIRST_BOOK, STALE, UNJUDGED, BatchLog, BookOutcome, BookReport, Filed, FormatMove, ModuleCheck, ModuleReport, Roots
@@ -24,14 +25,16 @@ BATCHES_DIR = "batches"
 DIFF_LIMIT_CHARS = 60000
 
 
-def book_modules(root: Path) -> dict[str, list[str]]:
-    """The modules of each service book under the book root: the package itself, or one per surface where the package has none."""
-    packages = {path.relative_to(root).parts[1] for path in root.glob("services/*/service.py")}
-    found = {name: [f"services.{name}"] for name in packages}
-    for path in sorted(root.glob("services/*/*/service.py")):
+def book_modules(root: Path, package: str = "services") -> dict[str, list[str]]:
+    """The modules of each service book under the book package: the folder itself, or one per surface where the folder has none."""
+    folder = books.package_folder(package)
+    depth = len(folder.split("/"))
+    packages = {path.relative_to(root).parts[depth] for path in root.glob(f"{folder}/*/service.py")}
+    found = {name: [f"{package}.{name}"] for name in packages}
+    for path in sorted(root.glob(f"{folder}/*/*/service.py")):
         parts = path.relative_to(root).parts
-        if parts[1] not in packages:
-            found.setdefault(parts[1], []).append(".".join(parts[:-1]))
+        if parts[depth] not in packages:
+            found.setdefault(parts[depth], []).append(".".join(parts[:-1]))
     return found
 
 
@@ -57,14 +60,15 @@ def catch_up_fill(logger: logging.Logger, roots: Roots, services: tuple[str, ...
     """File each book with something stale in the app, or with nothing stale and a red check or a note its register of declined notes does not cover, on the run's work list, and record the books that need no turn: current and first books. The check runs for every filed book, and one that is red or that printed an uncovered note makes its findings and notes the book's work list for the format. The writer's history comes along as context when it can be read. A book whose stale report or check could not be read is neither filed nor recorded, so the next visit reads it again. A book filed or recorded by an earlier visit is left alone."""
     work = WorkList(JsonBackend(run_dir / WORK_FILE))
     root = roots.book
-    modules = book_modules(root)
+    package = books.service_package(roots.app)
+    modules = book_modules(root, package)
     names = list(services) if services else sorted(modules)
     done = {item.id for item in work.items(BOOK)}
     filed = Filed()
     for order, service in enumerate(names):
         if service in done or outcome_path(run_dir, service).is_file():
             continue
-        report = BookReport(service=service, modules=[_survey(logger, root, module, roots.app) for module in modules.get(service, [])], declined=read_register(root, service))
+        report = BookReport(service=service, modules=[_survey(logger, root, module, roots.app) for module in modules.get(service, [])], declined=read_register(root, service, package))
         if report.verdict == UNJUDGED:
             filed.unread[service] = "\n\n".join(_unread(module) for module in report.modules if module.verdict == UNJUDGED)
         elif not report.modules:
@@ -102,7 +106,7 @@ def _cannot(check: ModuleCheck) -> str:
 
 
 def _item(logger: logging.Logger, report: BookReport, roots: Roots, order: int) -> WorkItem:
-    delta = book_format_delta(logger, roots.book, report.service, roots.history)
+    delta = book_format_delta(logger, roots.book, books.service_folder(roots.app, report.service), roots.history)
     if delta.unreadable:
         logger.info("%s: the format history was not available (%s), the check's findings are the work list", report.service, delta.unreadable)
     else:
@@ -222,14 +226,15 @@ def catch_up_batch(logger: logging.Logger, run_dir: Path, service: str, update: 
     return merged
 
 
-def _no_declined(_logger: logging.Logger, _root: Path, _service: str, _lines: tuple[str, ...], _notes: tuple[str, ...]) -> list[str]:
+def _no_declined(_logger: logging.Logger, _root: Path, _module: str, _lines: tuple[str, ...], _notes: tuple[str, ...]) -> list[str]:
     return []
 
 
 @blueprint.node(stub=_no_declined)
-def catch_up_declined(logger: logging.Logger, root: Path, service: str, lines: tuple[str, ...], notes: tuple[str, ...]) -> list[str]:
-    """Write the lines an owner turn declined notes with into the book's register, `services/<service>/DECLINED.md`, read against the notes the check prints, a later line for the same element and kind replacing an earlier one, and return every entry the register holds."""
+def catch_up_declined(logger: logging.Logger, root: Path, module: str, lines: tuple[str, ...], notes: tuple[str, ...]) -> list[str]:
+    """Write the lines an owner turn declined notes with into the book's register, `DECLINED.md` in the book's folder, read against the notes the check prints, a later line for the same element and kind replacing an earlier one, and return every entry the register holds."""
+    package, _, service = module.rpartition(".")
     fresh = entries_for(lines, notes)
-    kept = write_register(root, service, fresh) if fresh else read_register(root, service)
+    kept = write_register(root, service, fresh, package) if fresh else read_register(root, service, package)
     logger.info("%s: %d notes declined", service, len(kept))
     return kept

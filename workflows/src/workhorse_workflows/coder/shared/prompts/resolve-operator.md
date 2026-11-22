@@ -52,7 +52,7 @@ Then check whether the question is already decided. In descending order of autho
 
 1. **Standing decisions.** `{{ decisions_dir }}/*/decision.md` holds those a human made, or a previous
    resolver recorded on their behalf. The company, team and product pages and the book's
-   `services/<name>/decisions/*.md` stand with them, before the story. Their order of authority is company, team,
+   `{{ service_books }}/<name>/decisions/*.md` stand with them, before the story. Their order of authority is company, team,
    product, service decision, story. Search them first, from `{{ book_root }}`, once for each main noun of the
    question: `ostler book search <term> --kind company`, `ostler book search <term> --kind team`,
    `ostler book search <term> --kind product` and `ostler book search <term> --kind decision`. A record or a

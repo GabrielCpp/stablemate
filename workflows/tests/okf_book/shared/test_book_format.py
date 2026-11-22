@@ -28,7 +28,7 @@ def test_a_book_with_no_mark_is_judged_against_the_last_instructions_commit_befo
     shas = skill_history(tmp_path / "history", monkeypatch)
     book = book_repo(tmp_path / "book", monkeypatch)
 
-    delta = book_format_delta(LOGGER, book, "ledger", str(tmp_path / "history"))
+    delta = book_format_delta(LOGGER, book, "services/ledger", str(tmp_path / "history"))
 
     assert delta.unreadable == ""
     assert (delta.mark, delta.derived, delta.head) == (shas[0], True, shas[2])
@@ -41,9 +41,9 @@ def test_a_book_with_no_mark_is_judged_against_the_last_instructions_commit_befo
 def test_a_book_marked_at_the_head_is_not_behind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     shas = skill_history(tmp_path / "history", monkeypatch)
     book = book_repo(tmp_path / "book", monkeypatch)
-    mark_book_format(LOGGER, book, "ledger", shas[2])
+    mark_book_format(LOGGER, book, "ledger", "services/ledger", shas[2])
 
-    delta = book_format_delta(LOGGER, book, "ledger", str(tmp_path / "history"))
+    delta = book_format_delta(LOGGER, book, "services/ledger", str(tmp_path / "history"))
 
     assert (delta.mark, delta.derived, delta.head) == (shas[2], False, shas[2])
     assert delta.commits == []
@@ -55,9 +55,9 @@ def test_a_book_marked_at_the_head_is_not_behind(tmp_path: Path, monkeypatch: py
 def test_a_mark_in_the_middle_lists_only_the_commits_after_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     shas = skill_history(tmp_path / "history", monkeypatch)
     book = book_repo(tmp_path / "book", monkeypatch)
-    mark_book_format(LOGGER, book, "ledger", shas[1])
+    mark_book_format(LOGGER, book, "ledger", "services/ledger", shas[1])
 
-    delta = book_format_delta(LOGGER, book, "ledger", str(tmp_path / "history"))
+    delta = book_format_delta(LOGGER, book, "services/ledger", str(tmp_path / "history"))
 
     assert [commit.sha for commit in delta.commits] == [shas[2]]
 
@@ -67,7 +67,7 @@ def test_a_book_with_no_commit_is_never_behind(tmp_path: Path, monkeypatch: pyte
     book = tmp_path / "book"
     (book / "services/ledger").mkdir(parents=True)
 
-    delta = book_format_delta(LOGGER, book, "ledger", str(tmp_path / "history"))
+    delta = book_format_delta(LOGGER, book, "services/ledger", str(tmp_path / "history"))
 
     assert (delta.mark, delta.head) == (shas[2], shas[2])
     assert not delta.behind
@@ -77,7 +77,7 @@ def test_a_book_older_than_every_instructions_commit_lists_them_all(tmp_path: Pa
     shas = skill_history(tmp_path / "history", monkeypatch)
     book = book_repo(tmp_path / "book", monkeypatch, "2026-10-01T12:00:00+00:00")
 
-    delta = book_format_delta(LOGGER, book, "ledger", str(tmp_path / "history"))
+    delta = book_format_delta(LOGGER, book, "services/ledger", str(tmp_path / "history"))
 
     assert delta.mark == ""
     assert [commit.sha for commit in delta.commits] == shas
@@ -87,7 +87,7 @@ def test_a_history_that_cannot_be_read_says_which_command_failed(tmp_path: Path,
     book = book_repo(tmp_path / "book", monkeypatch)
     (tmp_path / "nowhere").mkdir()
 
-    delta = book_format_delta(LOGGER, book, "ledger", str(tmp_path / "nowhere"))
+    delta = book_format_delta(LOGGER, book, "services/ledger", str(tmp_path / "nowhere"))
 
     assert "git -C" in delta.unreadable and "rev-list" in delta.unreadable and "exited" in delta.unreadable
     assert delta.commits == [] and delta.head == "" and not delta.behind
@@ -97,7 +97,7 @@ def test_no_checkout_above_the_package_is_unreadable(tmp_path: Path, monkeypatch
     monkeypatch.setattr(book_format, "history_repo", lambda: None)
     book = book_repo(tmp_path / "book", monkeypatch)
 
-    delta = book_format_delta(LOGGER, book, "ledger", "")
+    delta = book_format_delta(LOGGER, book, "services/ledger", "")
 
     assert SKILL_DIR in delta.unreadable
     assert not delta.behind
@@ -110,9 +110,9 @@ def test_a_diff_past_the_limit_is_cut_and_names_the_command_that_shows_each_comm
     git(history, "add", SKILL_DIR)
     commit_at(history, "docs(base-library): teach a lot", "2026-11-06T12:00:00+00:00", monkeypatch)
     book = book_repo(tmp_path / "book", monkeypatch)
-    mark_book_format(LOGGER, book, "ledger", shas[2])
+    mark_book_format(LOGGER, book, "ledger", "services/ledger", shas[2])
 
-    delta = book_format_delta(LOGGER, book, "ledger", str(history))
+    delta = book_format_delta(LOGGER, book, "services/ledger", str(history))
 
     assert len(delta.diff) < 61000
     assert f"the diff is cut here: read each commit with `git -C {history} show <sha> -- {SKILL_DIR}`" in delta.diff
@@ -122,3 +122,14 @@ def test_the_checkout_the_package_runs_from_holds_the_instructions() -> None:
     found = book_format.history_repo()
 
     assert found is not None and (found / SKILL_DIR).is_dir()
+
+
+def test_a_book_in_a_repository_folder_keeps_its_mark_in_that_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    shas = skill_history(tmp_path / "history", monkeypatch)
+    book = tmp_path / "book"
+    (book / "services/acme/ledger").mkdir(parents=True)
+
+    mark_book_format(LOGGER, book, "ledger", "services/acme/ledger", shas[2])
+
+    assert (book / "services/acme/ledger/FORMAT").read_text(encoding="utf-8") == f"{shas[2]}\n"
+    assert book_format_delta(LOGGER, book, "services/acme/ledger", str(tmp_path / "history")).mark == shas[2]

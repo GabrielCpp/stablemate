@@ -462,11 +462,11 @@ def test_in_a_workspace_the_spec_delta_commits_in_the_artifacts_repo(
     write: Callable[[Path, str], Path],
     git: Callable[..., subprocess.CompletedProcess],
 ) -> None:
-    write(workspace.artifacts / "services" / "api" / "service.py", "SERVICE = 1\n")
+    write(workspace.artifacts / "services" / "api" / "api" / "service.py", "SERVICE = 1\n")
     git(workspace.artifacts, "add", "-A")
     git(workspace.artifacts, "commit", "-qm", "the api book")
     api_head = git(workspace.api, "rev-parse", "HEAD").stdout
-    write(workspace.artifacts / "services" / "api" / "journeys" / "fresh.py", "JOURNEY = 1\n")
+    write(workspace.artifacts / "services" / "api" / "api" / "journeys" / "fresh.py", "JOURNEY = 1\n")
 
     result = story_commit.commit_book_delta(
         logger, story_slug=SLUG, repo_dir=str(workspace.api), book_services=["api"]
@@ -475,7 +475,7 @@ def test_in_a_workspace_the_spec_delta_commits_in_the_artifacts_repo(
     assert result.committed
     landed = git(workspace.artifacts, "show", "--name-only", "--format=%s", "HEAD").stdout.split("\n")
     assert landed[0].startswith("docs("), landed
-    assert [line for line in landed[1:] if line] == ["services/api/journeys/fresh.py"]
+    assert [line for line in landed[1:] if line] == ["services/api/api/journeys/fresh.py"]
     assert git(workspace.api, "rev-parse", "HEAD").stdout == api_head
 
 
@@ -501,12 +501,12 @@ def test_commit_book_delta_commits_in_the_artifacts_worktree_of_the_run(
     write: Callable[[Path, str], Path],
     git: Callable[..., subprocess.CompletedProcess],
 ) -> None:
-    write(workspace.artifacts / "services" / "api" / "service.py", "SERVICE = 1\n")
+    write(workspace.artifacts / "services" / "api" / "api" / "service.py", "SERVICE = 1\n")
     git(workspace.artifacts, "add", "-A")
     git(workspace.artifacts, "commit", "-qm", "the api book")
     trees = cut_run_worktrees(workspace, tmp_path / "trees", "run/coder-t", git)
     main_head = git(workspace.artifacts, "rev-parse", "HEAD").stdout
-    write(trees.artifacts / "services" / "api" / "journeys" / "fresh.py", "JOURNEY = 1\n")
+    write(trees.artifacts / "services" / "api" / "api" / "journeys" / "fresh.py", "JOURNEY = 1\n")
 
     result = story_commit.commit_book_delta(
         logger, story_slug=SLUG, repo_dir=str(trees.api), book_services=["api"]
@@ -515,7 +515,7 @@ def test_commit_book_delta_commits_in_the_artifacts_worktree_of_the_run(
     assert result.committed
     landed = git(trees.artifacts, "show", "--name-only", "--format=%s", "HEAD").stdout.split("\n")
     assert landed[0].startswith("docs(") and "run-coder" not in landed[0], landed
-    assert [line for line in landed[1:] if line] == ["services/api/journeys/fresh.py"]
+    assert [line for line in landed[1:] if line] == ["services/api/api/journeys/fresh.py"]
     assert git(workspace.artifacts, "rev-parse", "HEAD").stdout == main_head
 
 

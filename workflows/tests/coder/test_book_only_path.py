@@ -31,6 +31,8 @@ def _rendered(prompt: str, tmp_path: Path, with_skill: bool, **args: object) -> 
         "services": ["api"],
         "story_services": ["api"],
         "book_services": ["api"],
+        "service_package": "services",
+        "service_books": str(tmp_path / "repo" / "services"),
         "spec_book_paths": BOOK_PATHS,
         "opening_brief": "",
         "follow_up_title": "",

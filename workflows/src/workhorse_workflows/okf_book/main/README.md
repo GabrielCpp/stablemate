@@ -1,6 +1,6 @@
 # okf_book main
 
-The python book flow, which writes one service book under `services/<name>/`.
+The python book flow, which writes one service book under `services/<name>/`, or `services/<repo>/<name>/` where the book lives in the artifacts folder.
 
 A book reached by a screen surface whose package exists gets a breadth pass before the owner. One with no package starts with the owner, whose first lap writes the package, because the survey cannot list a book that does not exist. The pass lists the entry files the book names nowhere and writes one skeleton screen per entry file, eight per turn. A file handed once is never handed again. The notes of each turn sit under `<run_dir>/breadth/`. A turn that ends without a reply records nothing and waits on an operator gate that names its files. The answer sends the same batch to a new turn, which opens on the answer.
 
