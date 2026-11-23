@@ -172,6 +172,42 @@ def test_a_held_refresh_keeps_the_old_figures_on_screen_with_no_busy_state():
             page.close()
 
 
+def test_a_refresh_that_fails_keeps_the_old_figures_and_catches_up_with_no_new_telemetry():
+    from playwright.sync_api import expect
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    with _isolated_run("refresh-retry") as run:
+        page = _open(live)
+        answers: list[int] = []
+
+        def answer(route) -> None:
+            answers.append(1)
+            if len(answers) == 1:
+                route.fulfill(status=503, body="{}", content_type="application/json")
+            else:
+                route.continue_()
+
+        try:
+            _pick(page, run)
+            panel = page.get_by_role("tabpanel")
+            expect(panel).to_contain_text("$3.50")
+            page.route(f"**/api/run/{run}/overview", answer)
+            _post_turn(live, "00000000000000c7", usd=1.0, run=run, node="dev")
+            deadline = 40
+            while not answers and deadline:
+                page.wait_for_timeout(250)
+                deadline -= 1
+            assert len(answers) == 1
+
+            expect(page.locator("#detail-cost-tile")).to_contain_text("$3.50")
+            expect(panel.locator("[role='alert']")).to_have_count(0)
+            expect(page.locator("#detail-cost-tile")).to_contain_text("$4.50", timeout=15000)
+            assert len(answers) == 2
+        finally:
+            page.close()
+
+
 def test_a_finished_node_loses_the_running_mark_and_the_next_node_gains_it():
     from playwright.sync_api import expect
 

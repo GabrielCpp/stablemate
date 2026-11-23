@@ -1255,6 +1255,13 @@ function Breakdown({ data, running, finished }) {
 }
 
 let overviewSeq = 0;
+const OVERVIEW_RETRY_MS = 5000;
+
+function retryOverview(seq, runId, rev, archived) {
+  const { detail, overview } = store.get();
+  if (seq !== overviewSeq || !detail || detail.run_id !== runId || overview.runId !== runId) return;
+  loadOverview(runId, rev, true, archived);
+}
 
 async function loadOverview(runId, rev = 0, refresh = false, archived = false) {
   const seq = ++overviewSeq;
@@ -1269,8 +1276,10 @@ async function loadOverview(runId, rev = 0, refresh = false, archived = false) {
     }
   } catch (err) {
     if (seq !== overviewSeq) return;
-    if (refresh) store.set({ overview: { ...store.get().overview, rev } });
-    else store.set({ overview: { runId, status: "failed", data: null, rev } });
+    if (refresh) {
+      store.set({ overview: { ...store.get().overview, rev } });
+      setTimeout(() => retryOverview(seq, runId, rev, archived), OVERVIEW_RETRY_MS);
+    } else store.set({ overview: { runId, status: "failed", data: null, rev } });
   }
 }
 
