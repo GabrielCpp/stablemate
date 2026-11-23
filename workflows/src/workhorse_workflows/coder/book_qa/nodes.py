@@ -75,6 +75,7 @@ WHOLE_PLAYS_NEVER_RUN = "whole plays are never run for a story; what the selecti
 OWED_CAP = 10
 REACHED_CAUSE_CAP = 5
 PLAN_STRENGTH = ("none", "empty", "partial", "whole")
+OUTSIDE_SYSTEM = "describes an outside system"
 
 
 def book_dir(package: str, service: str) -> str:
@@ -272,7 +273,7 @@ def stamp_books_verified(
         for module in book_modules(root, package, name):
             pending = run_tool(_stale_argv(module, app), cwd=root, env=BOOK_ENV)
             if pending.returncode == 0:
-                if "describes an outside system" in pending.stdout:
+                if OUTSIDE_SYSTEM in pending.stdout:
                     logger.info("the book of %s describes an outside system, nothing to stamp", module)
                 else:
                     logger.info("the book of %s is current, nothing to stamp", module)
@@ -514,6 +515,12 @@ def book_plan(
             exit_code = 2
             continue
         report = _affected_report(folder, service, multi)
+        if report is None and play.exit_code == 0 and OUTSIDE_SYSTEM in play.output:
+            reason = f"{module} describes an outside system: the story's QA turn plays it against the stack, and a play against the live system after shipping shows whether the stack still holds"
+            if reason not in reasons:
+                reasons.append(reason)
+            logger.info("the book of %s describes an outside system, nothing to select", module)
+            continue
         if report is None:
             exit_code = 2
             continue

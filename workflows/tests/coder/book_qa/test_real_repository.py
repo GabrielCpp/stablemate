@@ -219,3 +219,19 @@ def test_a_book_of_an_outside_system_is_never_touched_stamped_or_refused(
     assert not (books / "services" / "vendor" / "VERIFIED").exists()
     assert checked.exit_code == 0, checked
     assert "the book of services.vendor describes an outside system, nothing to stamp" in caplog.text, caplog.text
+
+
+def test_a_book_of_an_outside_system_selects_no_play_and_is_not_a_usage_error(
+    books: Path, git: Git, logger: logging.Logger, tmp_path: Path
+) -> None:
+    _write(books, "services/vendor/__init__.py", "")
+    _write(books, "services/vendor/service.py", OUTSIDE)
+    subprocess.run([sys.executable, "-m", "ostler.book", "index", "services.vendor"], cwd=books, check=True, capture_output=True)
+    _commit(git, books, "docs: add the book of the vendor\n\nStory: S-1", "services/vendor")
+
+    plan = book_nodes.book_plan(logger, "vendor", str(tmp_path / "spec"), story_slug="s-1", story_id="S-1", repo_dir=str(books))
+
+    assert plan.exit_code == 0, plan
+    assert plan.plan == "none", plan
+    assert not plan.only and not plan.by_journey and not plan.uncovered, plan
+    assert "services.vendor describes an outside system" in plan.reason, plan
