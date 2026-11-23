@@ -129,7 +129,7 @@ A command-line tool is written with [references/commands.md](references/commands
 A service reached by more than one surface, say an API and the web app over it, keeps one book.
 The model lives once, in `services/<name>/model/`, because a record does not change with the
 surface that reaches it. Each surface gets its own `services/<name>/<surface>/service.py`, with
-its own surface, endpoints or screens, journeys and `index.tsv`, and ostler loads it as
+its own surface, endpoints or screens, journeys, and ostler loads it as
 `services.<name>.<surface>`. In the artifacts folder these paths and modules sit under `<repo>`. A rule two surfaces enforce is one `Rule`, and each surface shows
 its refusal in its own words. A service deployed as two pods, such as an API and a queue
 handler built from the same code, is one service and keeps one book. The events the handler
@@ -178,7 +178,7 @@ Do these in order. Each ends on a check you can run.
    record what the book cannot see.
 
 The route is done when `check` is at its baseline, the walk has no contradiction, the
-targeted replay and the targeted run are at 0 fail, and `index` has refreshed `index.tsv`.
+targeted replay and the targeted run are at 0 fail.
 
 The full `run` plays the whole book, and its time grows with every route. It is the book's
 gate, not the batch's: it runs once when a backfill ends and once a night after that. A `FAIL`
@@ -320,7 +320,7 @@ one is live.
 
 | Command | Takes | Tells you |
 | --- | --- | --- |
-| `ostler book check services.<name>` | seconds, no app | the format: unregistered endpoints, journeys or rules, unplaced endpoints, modules nothing imports, missing source pointers, a journey with no docstring, an `index.tsv` older than the book (run `index`, then `check`) |
+| `ostler book check services.<name>` | seconds, no app | the format: unregistered endpoints, journeys or rules, unplaced endpoints, modules nothing imports, missing source pointers, a journey with no docstring |
 | `ostler book explore services.<name> --seed-only` | seconds to minutes as matrices grow, no app | the model's walk to depth 4; run it after every change to a fixture, a scene or an endpoint; "the book contradicts itself" means a fixture arranges a record that cannot exist |
 | `ostler book explore services.<name> --no-stack --only <A>,<B>` | about 2 s a cell | every cell of the named endpoints, or interactions in a screen book, on every state the walk reaches, against the app |
 | `ostler book run services.<name> --no-stack --only <A>,<B>` | a few minutes | the journeys that call the named endpoints or interactions, their declared cells and their input classes, including divergences declared for them and never met |
@@ -332,7 +332,7 @@ scene, a step or input class that draws the refusal). It is a list and never tur
 an unplayed outside happening is named on the happening's line. The run also writes `<service>-played.json` to the report
 folder: each element with the journeys, cells and input classes that exercised it.
 | `ostler book move [NAME ...] [--repo REPO] [--from FOLDER] [--to FOLDER] [--dry-run]` | seconds, no app | moves flat books into `services/<repo>/` of the artifacts checkout `--to` names, and rewrites every dotted module name; `--from` moves a whole `services/` folder out of a code repository; lists each `services/<name>/` path to check by hand; `--dry-run` changes nothing |
-| `ostler book index services.<name>` | seconds | rewrites `index.tsv`, which `search` reads |
+| `ostler book index services.<name>` | seconds | rebuilds the search index in the user cache. `search` keeps that index itself, so nothing is committed and nothing needs to run |
 | `ostler book stale services.<name> --app <root>` | seconds, no app | the elements whose source changed since the verified commit, changed files no element names, decisions they touch |
 | `ostler book missing services.<name> --app <root> [--under <folder>] [--files]` | seconds, no app | every tracked file under the app's roots that no element names, and every call a contract file lists that no element declares; prints the map of each named file to its elements, the unnamed files, a count per ignore pattern (`--files` lists them) and the undeclared calls; exits 1 for either; the batch a backfill works through |
 | `ostler book decisions services.<name> --unexplained [--kind KIND]` | seconds, no app | the class name of each endpoint, record, screen and interaction no decision names, one per line; `--kind` keeps `endpoint`, `record`, `screen` or `interaction` |
