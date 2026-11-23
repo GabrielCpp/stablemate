@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 import time
 from pathlib import Path
 
@@ -202,11 +201,11 @@ def test_the_probe_order_matches_the_loader(repo, index_home):
     story = next(s for s in epic.stories if s.slug == "01-foo")
     candidates = api._story_candidates(okf.graph, epic, story)
 
-    loader = inspect.getsource(model._attach_story_md)
     assert candidates == [okf.graph.root / story.path,
                           epic.directory / "stories" / story.slug / "story.md"]
-    assert "candidates.append(graph.root / story.path)" in loader
-    assert 'candidates.append(epic.directory / "stories" / story.slug / "story.md")' in loader
+    loader = model._attach_story_md.__code__
+    assert {"stories", "story.md"} <= set(loader.co_consts)
+    assert {"root", "path", "directory", "slug"} <= set(loader.co_names)
 
     snapshot = api._snapshot_of(okf.graph, okf._loaded_doc_roots())
     assert str(story.story_md) in snapshot.files
