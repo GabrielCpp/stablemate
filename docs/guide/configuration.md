@@ -34,6 +34,7 @@ Start with the index. It lists every key of `config.toml` and `agents.yml` on on
 farrier config get profiles.claude.powers.high.model
 farrier config set profiles.claude.powers.high.model=opus
 farrier config set profiles.claude.powers.high.timeout_scale=1.5
+farrier config set profiles.claude.powers.high.compact_window=400000
 ```
 
 `get` prints the value the tools will use, which is the default when the file does not set the key. `set` writes one key of `config.toml` and keeps the file's comments. A string key takes the text after `=` as it is. Any other key takes a TOML value, such as `true`, `1.5`, `["a", "b"]` or `{ cli = "codex" }`. `set` checks the whole file against the schema before it saves, so a misspelt key or a value of the wrong type leaves the file unchanged and names the problem. `agents.yml` has no setter. Edit it in the repository.

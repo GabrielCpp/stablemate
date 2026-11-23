@@ -737,3 +737,56 @@ def test_attend_deny_entries_are_read_as_text(cfg_file):
     assert groom is not None and groom.attend is not None
 
     assert groom.attend.deny == ["merge", "7"]
+
+
+_WINDOWED = """\
+config_version = 2
+
+[profiles.claude]
+cli = "claude"
+
+[profiles.claude.powers.high]
+compact_window = 400000
+
+[profiles.claude.powers.low]
+compact_window = "auto"
+
+[profiles.claude.default]
+compact_window = 200000
+"""
+
+
+def test_compact_window_parses_from_a_tier_table(cfg_file):
+    cfg_file.write_text(_WINDOWED)
+    profile = profiles.select_profile(cfgmod.load_home_config(), "claude")
+
+    assert profiles.resolve_power("high", "claude", profile).compact_window == 400000
+    assert profiles.resolve_power("low", "claude", profile).compact_window == "auto"
+
+
+def test_compact_window_falls_through_to_the_profile_default(cfg_file):
+    cfg_file.write_text(_WINDOWED)
+    profile = profiles.select_profile(cfgmod.load_home_config(), "claude")
+
+    assert profiles.resolve_backend_default("claude", profile).compact_window == 200000
+
+
+def test_compact_window_survives_a_write(cfg_file):
+    cfg_file.write_text(_WINDOWED)
+
+    cfgmod.write_config_key("base_dir", "/some/path")
+
+    profile = profiles.select_profile(cfgmod.load_home_config(), "claude")
+    assert profiles.resolve_power("high", "claude", profile).compact_window == 400000
+
+
+@pytest.mark.parametrize("raw", ["80000", '"big"', "true", "4.0e5"])
+def test_a_malformed_compact_window_reads_as_unset(cfg_file, raw):
+    cfg_file.write_text(
+        f'config_version = 2\n'
+        f'[profiles.claude]\ncli = "claude"\n'
+        f'[profiles.claude.powers.high]\ncompact_window = {raw}\n'
+    )
+    profile = profiles.select_profile(cfgmod.load_home_config(), "claude")
+
+    assert profiles.resolve_power("high", "claude", profile).compact_window is None

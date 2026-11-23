@@ -37,6 +37,20 @@ def positive_finite(raw: Any) -> float | None:
     return value
 
 
+MIN_COMPACT_WINDOW = 100000
+
+
+def compact_window_or_none(raw: Any) -> int | Literal["auto"] | None:
+    """A token count of at least 100000, or ``"auto"``; anything else reads as unset."""
+    if isinstance(raw, bool):
+        return None
+    if isinstance(raw, int):
+        return raw if raw >= MIN_COMPACT_WINDOW else None
+    if isinstance(raw, str) and raw.strip().lower() == "auto":
+        return "auto"
+    return None
+
+
 OptionalPath = Annotated[str | None, BeforeValidator(text_or_none)]
 
 
@@ -60,6 +74,12 @@ class PowerTier(Section):
         description="A multiplier applied to every node timeout under this tier. A value that is not a positive finite number reads as unset.",
         examples=[2.5, 1.5],
         default_text="unset",
+    )
+    compact_window: Annotated[int | Literal["auto"] | None, BeforeValidator(compact_window_or_none)] = setting(
+        None,
+        description="The token count at which a claude turn compacts its context, or auto for the window the CLI tunes per model. Other CLIs ignore it. A value that is neither auto nor at least 100000 reads as unset.",
+        examples=["auto", 400000],
+        default_text="400000, from the claude backend",
     )
 
 

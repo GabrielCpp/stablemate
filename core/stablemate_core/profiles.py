@@ -15,6 +15,7 @@ class PowerMapping:
     model: str | None = None
     effort: str | None = None
     timeout_scale: float | None = None
+    compact_window: int | str | None = None
 
 
 class UnknownProfileError(LookupError):
@@ -92,6 +93,7 @@ def _mapping(tier: PowerTier | None) -> PowerMapping:
         model=tier.model or None,
         effort=tier.effort or None,
         timeout_scale=tier.timeout_scale,
+        compact_window=tier.compact_window,
     )
 
 
