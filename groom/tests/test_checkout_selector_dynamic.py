@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import json
 import re
+import tempfile
 import threading
 from dataclasses import dataclass
+from pathlib import Path
 
 from test_a11y_dynamic import (
     _UNAVAILABLE,
@@ -15,8 +17,10 @@ from test_a11y_dynamic import (
 )
 from test_diff_tab_dynamic import (
     _container_run,
+    _git,
     _patch,
     _pick,
+    _RealSidecar,
     _settle,
     _tab,
     _wait_for,
@@ -715,6 +719,79 @@ def test_the_diff_sits_on_the_pane_background_without_a_card_border_and_tints_ch
             assert looks["card"] == "0px"
             assert looks["wrapper"] == "rgba(0, 0, 0, 0)"
             assert looks["added"] == "rgb(175, 245, 180)"
+        finally:
+            page.close()
+            sidecar.drop()
+
+
+def _dirty_checkout(root: Path, name: str, before: dict[str, str], after: dict[str, str | None]) -> Path:
+    repo = root / name
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    for path, text in before.items():
+        (repo / path).parent.mkdir(parents=True, exist_ok=True)
+        (repo / path).write_text(text)
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "init")
+    for path, text in after.items():
+        if text is None:
+            (repo / path).unlink()
+        else:
+            (repo / path).write_text(text)
+    return repo
+
+
+def _size_on_disk(repo: Path) -> str:
+    added = deleted = 0
+    for line in _git(repo, "diff", "HEAD", "--numstat").splitlines():
+        plus, minus, _ = line.split("\t", 2)
+        added += int(plus)
+        deleted += int(minus)
+    return f"+{added} \u2212{deleted}"
+
+
+def _tracked_basenames(repo: Path) -> list[str]:
+    return sorted(Path(path).name for path in _git(repo, "ls-files").splitlines())
+
+
+def test_the_real_sidecar_names_each_checkout_of_the_workspace_and_the_selector_reads_each_one():
+    from groom import sidecar_hub
+    from playwright.sync_api import expect
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    with tempfile.TemporaryDirectory() as tmp, _run():
+        root = Path(tmp)
+        api = _dirty_checkout(
+            root,
+            "api-service",
+            {"services/api/sign_in.py": "old a\n", "README.md": "# api-service\n"},
+            {"services/api/sign_in.py": "new a\nnew b\nnew c\n"},
+        )
+        web = _dirty_checkout(
+            root,
+            "web-app",
+            {"src/app.tsx": "gone x\ngone y\n", "package.json": "{}\n"},
+            {"src/app.tsx": "new z\n"},
+        )
+        assert _size_on_disk(api) != _size_on_disk(web)
+        sidecar = _RealSidecar(live, CONTAINER, root)
+        _wait_for(lambda: sidecar_hub.get(CONTAINER) is not None, "the sidecar to register")
+        page = _open(live)
+        try:
+            _pick(page, CONTAINER)
+            _show(page, "Diff")
+            expect(_select(page)).to_be_visible()
+            expect(_select(page).locator("option")).to_have_text(["api-service", "web-app"])
+            expect(_select(page)).to_have_value("api-service")
+            expect(_tab(page, "Diff")).to_contain_text(_size_on_disk(api))
+            _select(page).select_option("web-app")
+            expect(_tab(page, "Diff")).to_contain_text(_size_on_disk(web))
+            expect(page.locator("#detail-panel .fd-tree .tree-file")).to_have_text(re.compile("app.tsx"))
+            expect(page.locator("#detail-panel .fd-tree")).not_to_contain_text("sign_in.py")
+            _show(page, "Files")
+            expect(_select(page)).to_have_value("web-app")
+            assert sorted(_files(page)) == _tracked_basenames(web)
         finally:
             page.close()
             sidecar.drop()
