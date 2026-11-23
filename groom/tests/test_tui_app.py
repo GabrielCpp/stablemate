@@ -28,6 +28,7 @@ async def _booted(link: support.FakeLink) -> AsyncIterator[tuple[GroomTui, Pilot
     app = GroomTui(link)
     async with app.run_test(size=(140, 40)) as pilot:
         yield app, pilot
+        await pilot.pause()
 
 
 def _status(app: GroomTui) -> str:
@@ -45,6 +46,7 @@ async def _open_blocked(app: GroomTui, pilot: Pilot, link: support.FakeLink) -> 
     await support.until(lambda: link.sent)
     link.push(support.detail_frame(support.ACME))
     await support.until(lambda: _blocks(app))
+    await pilot.pause()
     return _blocks(app)[0]
 
 

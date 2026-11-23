@@ -28,6 +28,7 @@ async def booted(link: support.FakeLink) -> AsyncIterator[tuple[GroomTui, Pilot]
     app = GroomTui(link)
     async with app.run_test(size=(140, 50)) as pilot:
         yield app, pilot
+        await pilot.pause()
 
 
 def run(scenario: Callable[[], Coroutine[None, None, None]]) -> None:

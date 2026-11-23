@@ -4,6 +4,7 @@ import time
 
 import _attend_support as at
 import _dispatch_support as dp
+import _settle as settle
 import _tui_support as support
 import pytest
 from textual.widgets import Input, OptionList, Select, Static
@@ -40,6 +41,7 @@ async def open_form(app, pilot, link) -> EnqueueForm:
     await support.until(lambda: dp.item_list(screen).option_count == 5)
     await pilot.press("n")
     await support.until(lambda: isinstance(app.screen, EnqueueForm))
+    await settle.until(lambda: app.focused is not None and app.focused.id == "enqueue-0", "the form focusing its first field")
     return app.screen
 
 

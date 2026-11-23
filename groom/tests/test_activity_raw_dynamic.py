@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import re
 import time
+import urllib.request
 from pathlib import Path
 
-from test_activity_step_gate_dynamic import _CURRENT, _insert_logs, _stepped, _telemetry
+from test_activity_step_gate_dynamic import _CURRENT, _stepped, _telemetry
 from test_activity_tab_dynamic import _open_activity, _pick
 from test_a11y_dynamic import (
     _UNAVAILABLE,
@@ -14,6 +15,7 @@ from test_a11y_dynamic import (
     _scan,
     teardown_module,  # noqa: F401
 )
+from test_telemetry import _logs_request
 
 from groom import state, store
 
@@ -52,6 +54,13 @@ def _open_items(page) -> None:
 def _raw(page) -> None:
     _chip(page, "raw").click()
     page.wait_for_selector(LINES, timeout=10000)
+
+
+def _arrive(live, node: str, body: str) -> None:
+    payload = _logs_request([{"body": body, "ts": time.time(), "attrs": {"node": node}}], {"run_id": _CURRENT[0], "workflow": "coder"})
+    http = urllib.request.Request(live.url() + "v1/logs", data=payload, headers={"Content-Type": "application/x-protobuf"})
+    with urllib.request.urlopen(http, timeout=10) as reply:
+        assert reply.status == 200
 
 
 def _flood(count: int) -> None:
@@ -269,12 +278,12 @@ def test_while_following_new_records_appear_at_the_top_and_paused_holds_them(tmp
             _raw(page)
             follow = page.locator("#detail-panel .feedbar .follow")
             expect(follow).to_have_attribute("aria-pressed", "true")
-            _insert_logs("prepare_fixtures", time.time(), [("INFO", "fresh while following")])
+            _arrive(live, "prepare_fixtures", "fresh while following")
             expect(page.locator(LINES).first).to_contain_text("fresh while following", timeout=12000)
             follow.click()
             expect(follow).to_have_attribute("aria-pressed", "false")
             held = page.locator(LINES).count()
-            _insert_logs("prepare_fixtures", time.time() + 1, [("INFO", "arrived while paused")])
+            _arrive(live, "prepare_fixtures", "arrived while paused")
             page.wait_for_timeout(4500)
             assert page.locator(LINES).count() == held
             assert "arrived while paused" not in " ".join(page.locator(LINES).all_inner_texts())
