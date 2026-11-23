@@ -12,6 +12,7 @@ import threading
 import time
 import urllib.request
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import _quiet_chromium
@@ -171,6 +172,24 @@ def _seed_costed_run(now: float) -> None:
     )
 
 
+PAGE_TIMEOUT_MS = 90_000
+
+
+class _Browser:
+    """A launched Chromium whose pages wait as long as a loaded machine needs for each click and each selector."""
+
+    def __init__(self, browser: Any) -> None:
+        self._browser = browser
+
+    def new_page(self, **options: Any) -> Any:
+        page = self._browser.new_page(**options)
+        page.set_default_timeout(PAGE_TIMEOUT_MS)
+        return page
+
+    def close(self) -> None:
+        self._browser.close()
+
+
 class _Live:
     """The booted dashboard: server thread, browser, and the temp dirs both own."""
 
@@ -215,7 +234,7 @@ class _Live:
         from playwright.sync_api import sync_playwright
 
         self.pw = sync_playwright().start()
-        self.browser = _quiet_chromium.launch(self.pw)
+        self.browser = _Browser(_quiet_chromium.launch(self.pw))
 
     def _await_port(self, timeout: float = 30.0) -> None:
         deadline = time.time() + timeout
