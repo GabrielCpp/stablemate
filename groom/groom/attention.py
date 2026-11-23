@@ -5,13 +5,13 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-EventName = Literal["blocked", "ended", "stuck", "stalled", "gave-up", "churn", "watchdog", "died", "waiting"]
+EventName = Literal["blocked", "ended", "stuck", "stalled", "gave-up", "churn", "watchdog", "died", "waiting", "compact-loop"]
 RULE_EVENTS: dict[str, EventName] = {
     "BLOCKED": "blocked", "ENDED": "ended", "STUCK": "stuck", "STALL": "stalled",
     "GAVE-UP": "gave-up", "CHURN": "churn", "WATCHDOG": "watchdog", "DIED": "died",
-    "WAITING": "waiting",
+    "WAITING": "waiting", "COMPACT-LOOP": "compact-loop",
 }
-DEFAULT_EVENTS = "blocked,ended,stuck,stalled,gave-up"
+DEFAULT_EVENTS = "blocked,ended,stuck,stalled,gave-up,compact-loop"
 
 
 class AttentionEvent(BaseModel):

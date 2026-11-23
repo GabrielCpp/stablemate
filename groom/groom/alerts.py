@@ -26,6 +26,10 @@ def _stuck_after_s() -> float:
     return float(os.environ.get("GROOM_STUCK_MIN", "75")) * 60
 
 
+def _compact_loop_at() -> int:
+    return int(os.environ.get("GROOM_COMPACT_LOOP_AT", "4"))
+
+
 def _wait_after_s() -> float:
     return float(os.environ.get("GROOM_WAIT_MIN", "30")) * 60
 
@@ -415,6 +419,16 @@ def ingest_metrics(points: list[dict[str, Any]], now: float | None = None) -> li
                 run.turn_idle_s = 0.0
                 run.turn_elapsed_s = 0.0
                 run.fired.discard("STUCK")
+                run.fired.discard("COMPACT-LOOP")
+        elif name == "workhorse.turn.compactions":
+            if value >= _compact_loop_at():
+                _fire(
+                    run,
+                    "COMPACT-LOOP",
+                    f"{run.workflow or 'run'} {run_id}: node '{node}' compacted {int(value)} times in one turn; "
+                    f"it is likely rereading instead of working",
+                    alerts,
+                )
         elif name == "workhorse.turn.elapsed_s":
             if run.turn_active is not False:
                 run.turn_elapsed_s = value

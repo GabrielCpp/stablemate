@@ -28,7 +28,7 @@ INSTRUCTIONS = (
     "Call the watch tool with a run_id to follow a run. "
     'Updates arrive as <channel source="groom" run_id="..." kind="...">. '
     "kind=event is an attention event the moment it fires: blocked, ended, stuck, stalled, gave-up, churn, "
-    "watchdog, died or waiting. The event attribute names it. A blocked event is a question from the run's outbox: "
+    "watchdog, died, waiting or compact-loop. The event attribute names it. A blocked event is a question from the run's outbox: "
     "its gate_path attribute names the gate, and the reply tool with that gate_path answers it. "
     "kind=inbox is a message the run left for its operator, such as a failure handoff (inbox_kind=failure), or the "
     "run's reply to a message this session sent (in_reply_to names it). "

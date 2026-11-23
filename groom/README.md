@@ -260,6 +260,7 @@ with `GROOM_NTFY_URL`) and/or `GROOM_WEBHOOK_URL` (JSON `{"title","message"}`):
 | STALL | a live run emits **nothing** — no span, no heartbeat | `GROOM_STALL_MIN` (90) |
 | STUCK | a live agent turn is silent too long, or deterministic work has sat in one node too long; explicit waits are excluded | `GROOM_STUCK_MIN` (75) |
 | CHURN | the same node span completes again and again under an unchanged `labels()` signature — i.e. on the same unit of work. A visit a live reload cut short (`workhorse.cut`) is an interruption, not a repeat, and does not count | `GROOM_CHURN_REPEATS` (5) |
+| COMPACT-LOOP | one agent turn reports `GROOM_COMPACT_LOOP_AT` or more auto-compactions (`workhorse.turn.compactions`); it re-arms when the turn ends | `GROOM_COMPACT_LOOP_AT` (4) |
 | WATCHDOG | a `watchdog_kill` span event arrives | — |
 | GAVE-UP | a give-up node's span arrives | `GROOM_GIVEUP_NODES` (qa_give_up,fix_give_up) |
 | ENDED | the run's root span arrives — the run is over, whatever the verdict, and nothing is executing for it now | — |
@@ -341,7 +342,7 @@ connection. `ts` is the wall clock when the server sent the frame.
 
 An `event` frame arrives the moment an alert fires. Its `event` field holds
 `run_id`, `event`, `node`, `question`, `gate_path`, `terminal` and `message`.
-`event` is one of `blocked,ended,stuck,stalled,gave-up,churn,watchdog,died,waiting`.
+`event` is one of `blocked,ended,stuck,stalled,gave-up,churn,watchdog,died,waiting,compact-loop`.
 Machine, capacity and retry waits do not count as operator gates.
 
 A `digest` frame arrives every `every` seconds, even when nothing happened.
@@ -374,8 +375,8 @@ bare number of seconds. `--since` takes a timestamp.
 
 `groom wait` is a second client of the same feed. It stays silent during normal
 progress and ignores `digest` frames. It returns one event and exits when the
-named run is blocked, ended, stuck, stalled, or gave up. `--until` selects a
-comma-separated set from `blocked,ended,stuck,stalled,gave-up,churn,watchdog,died,waiting`.
+named run is blocked, ended, stuck, stalled, gave up, or is stuck compacting. `--until` selects a
+comma-separated set from `blocked,ended,stuck,stalled,gave-up,churn,watchdog,died,waiting,compact-loop`.
 There is no timeout. Ctrl+C cancels the monitor without stopping the workflow.
 A run not yet known to the server is watched until it reports a matching
 condition. This uses the server's current cache, not an archive search: an

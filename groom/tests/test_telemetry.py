@@ -1452,6 +1452,48 @@ def test_streaming_turn_uses_idleness_not_total_node_age_for_stuck() -> None:
         assert [alert.rule for alert in alerts.check_time_rules(now=now)] == ["STUCK"]
 
 
+def _compactions(value: float, node: str = "plan") -> list[dict]:
+    return otlp.parse_metrics(
+        _metrics_request("workhorse.turn.compactions", value=value, node=node, gauge=True)
+    )
+
+
+def test_the_compaction_metric_passes_through_the_otlp_decode() -> None:
+    points = _compactions(4)
+    assert [(p["name"], p["value"], p["attrs"]["node"]) for p in points] == [
+        ("workhorse.turn.compactions", 4.0, "plan")
+    ]
+
+
+def test_a_turn_that_compacts_four_times_pages_once_and_again_after_the_turn_ends() -> None:
+    with _TelemetryEnv():
+        for count in (1, 2, 3):
+            assert alerts.ingest_metrics(_compactions(count), now=1000.0) == []
+        fired = alerts.ingest_metrics(_compactions(4), now=1000.0)
+        assert [a.rule for a in fired] == ["COMPACT-LOOP"]
+        assert "'plan' compacted 4 times in one turn" in fired[0].message
+        assert alerts.ingest_metrics(_compactions(5), now=1001.0) == []
+        ended = otlp.parse_metrics(
+            _metrics_request("workhorse.turn.active", value=0, node="plan", gauge=True)
+        )
+        assert alerts.ingest_metrics(ended, now=1002.0) == []
+        assert [a.rule for a in alerts.ingest_metrics(_compactions(4), now=1003.0)] == ["COMPACT-LOOP"]
+
+
+def test_the_compact_loop_threshold_reads_its_environment_knob(monkeypatch) -> None:
+    monkeypatch.setenv("GROOM_COMPACT_LOOP_AT", "2")
+    with _TelemetryEnv():
+        assert alerts.ingest_metrics(_compactions(1), now=1000.0) == []
+        assert [a.rule for a in alerts.ingest_metrics(_compactions(2), now=1000.0)] == ["COMPACT-LOOP"]
+
+
+def test_compact_loop_is_an_attention_event() -> None:
+    from groom.attention import DEFAULT_EVENTS, RULE_EVENTS
+
+    assert RULE_EVENTS["COMPACT-LOOP"] == "compact-loop"
+    assert "compact-loop" in DEFAULT_EVENTS.split(",")
+
+
 def test_pyflow_activity_label_is_consumed_without_legacy_prefix() -> None:
     with _TelemetryEnv():
         points = otlp.parse_metrics(
