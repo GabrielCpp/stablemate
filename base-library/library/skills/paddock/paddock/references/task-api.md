@@ -54,7 +54,7 @@ nothing leaks into the next benchmark.
 | `paddock.tasks.replay` | replay one lane of the coder workflow cold, on a tree that already ran it |
 | `paddock.tasks.greenfield` | build a repo from an approved milestone, then judge each journey |
 | `paddock.tasks.tree` | the shared shape of a trial tree that is one repo or a folder of repos: its members, workspace, config and docs home |
-| `paddock.tasks.forensics` | read nodes entered, repair loops, churn, hangs, cap waits and cost back off a run dir. `flow_costs` reads one round's dollars per flow, its compactions and each turn's dollars from groom |
+| `paddock.tasks.forensics` | read nodes entered, repair loops, churn, hangs, cap waits and cost back off a run dir. `flow_costs` reads one round's dollars per flow, its compactions and each turn's dollars from groom, pricing a turn groom never billed at its token estimate. `quota_share` reads the plan percent a codex round spent off the rate-limit snapshots in its transcripts, and `quota_line` prints it |
 | `paddock.tasks.judge` | run one agent turn that waits out usage caps, and fill a rubric |
 | `paddock.tasks.operator_gates` | watch for a gate nothing answered and park the round on it |
 | `paddock.tasks.inputs` | typed reads of the task's inputs |

@@ -244,6 +244,74 @@ def compactions_by_node(run_dir: Path) -> dict[str, int]:
     return dict(found)
 
 
+def _quota_records(run_dir: Path) -> list[tuple[str, dict[str, Any]]]:
+    found: list[tuple[str, dict[str, Any]]] = []
+    for path in sorted((run_dir / "transcripts").glob("*__*.jsonl")):
+        if path.name.removesuffix(".jsonl").partition("__")[2].endswith(".acp"):
+            continue
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if '"token_count"' not in line:
+                continue
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            payload = record.get("payload") if isinstance(record, dict) else None
+            if (
+                record.get("type") == "event_msg"
+                and isinstance(payload, dict)
+                and payload.get("type") == "token_count"
+                and isinstance(payload.get("rate_limits"), dict)
+            ):
+                found.append((str(record.get("timestamp") or ""), payload["rate_limits"]))
+    return sorted(found, key=lambda item: item[0])
+
+
+def quota_share(run_dir: Path) -> dict[str, Any] | None:
+    """The plan quota a round spent, read off the codex rate-limit snapshots in its transcripts."""
+    records = _quota_records(run_dir)
+    if not records:
+        return None
+    windows: dict[str, dict[str, Any]] = {}
+    for name in ("primary", "secondary"):
+        segments: list[list[Any]] = []
+        minutes_of: Any = None
+        for _stamp, limits in records:
+            window = limits.get(name)
+            if not isinstance(window, dict) or not isinstance(window.get("used_percent"), (int, float)):
+                continue
+            minutes_of = window.get("window_minutes", minutes_of)
+            used = float(window["used_percent"])
+            if segments and segments[-1][0] == window.get("resets_at"):
+                segments[-1][2] = used
+            else:
+                segments.append([window.get("resets_at"), used, used])
+        if segments:
+            windows[name] = {
+                "window_minutes": minutes_of,
+                "start_pct": segments[0][1],
+                "end_pct": segments[-1][2],
+                "used_pct": sum(max(0.0, last - first) for _reset, first, last in segments),
+                "resets_crossed": len(segments) - 1,
+            }
+    plan = next((limits.get("plan_type") for _stamp, limits in reversed(records) if limits.get("plan_type")), None)
+    return {"plan_type": plan, "windows": windows}
+
+
+def quota_line(share: dict[str, Any] | None) -> str:
+    """`quota: plus week +6.0%  5h +31.0% (1 reset)`, or a line saying the transcripts hold no plan usage."""
+    if share is None:
+        return "quota: no plan usage in the transcripts"
+    names = {10080: "week", 300: "5h"}
+    parts = []
+    for window in sorted(share["windows"].values(), key=lambda w: -(w["window_minutes"] or 0)):
+        label = names.get(window["window_minutes"], f"{window['window_minutes']}m")
+        crossed = window["resets_crossed"]
+        reset = f" ({crossed} reset{'s' if crossed != 1 else ''})" if crossed else ""
+        parts.append(f"{label} +{window['used_pct']:.1f}%{reset}")
+    return f"quota: {share['plan_type']} " + "  ".join(parts)
+
+
 def flow_rows(turns: list[dict[str, Any]], run_dir: Path) -> list[dict[str, Any]]:
     """One row per flow of the run dir: dollars, minutes, compactions and each turn's dollars."""
     flow_of = {path.name: path.parent.parent.name for path in run_dir.glob("*/_flow/*")}
@@ -252,7 +320,7 @@ def flow_rows(turns: list[dict[str, Any]], run_dir: Path) -> list[dict[str, Any]
     def row_of(node: str) -> dict[str, Any]:
         flow = flow_of.get(node, MAIN_FLOW)
         return rows.setdefault(
-            flow, {"flow": flow, "usd": 0.0, "seconds": 0.0, "compactions": 0, "unpriced": 0, "turns": []}
+            flow, {"flow": flow, "usd": 0.0, "seconds": 0.0, "compactions": 0, "unpriced": 0, "estimated": 0, "turns": []}
         )
 
     for turn in turns:
@@ -261,6 +329,9 @@ def flow_rows(turns: list[dict[str, Any]], run_dir: Path) -> list[dict[str, Any]
         node = str(turn.get("node") or "")
         row = row_of(node)
         usd = turn.get("profile_cost_usd")
+        if usd is None:
+            usd = turn.get("est_cost_usd")
+            row["estimated"] += usd is not None
         row["usd"] = round(row["usd"] + (usd or 0.0), 2)
         row["unpriced"] += usd is None
         row["seconds"] += float(turn.get("profile_duration_ms") or 0.0) / 1000.0
@@ -286,6 +357,7 @@ def flow_cost_lines(rows: list[dict[str, Any]]) -> list[str]:
     for row in rows:
         turns = " ".join(f"{turn['node']} ${turn['usd']:.2f}" for turn in row["turns"])
         unpriced = f"  unpriced {row['unpriced']}" if row["unpriced"] else ""
+        unpriced += f"  est {row['estimated']}" if row["estimated"] else ""
         lines.append(
             f"{row['flow']}: ${row['usd']:.2f}  {minutes(row['seconds'])}  "
             f"compactions {row['compactions']}{unpriced}  {turns}"

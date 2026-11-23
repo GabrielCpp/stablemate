@@ -199,3 +199,80 @@ def test_a_round_groom_never_saw_says_so_and_prints_no_zero(tmp_path: Path) -> N
     lines = fx.flow_cost_lines(fx.flow_rows([], tmp_path))
 
     assert lines == ["cost: groom holds no turn for this run, so start groom before the round"]
+
+
+def test_an_unpriced_turn_falls_back_to_its_estimate(tmp_path: Path) -> None:
+    turn = {"name": "agent_turn", "node": "dev-build", "profile_duration_ms": 1000.0}
+
+    rows = fx.flow_rows(
+        [
+            {**turn, "profile_cost_usd": 2.0, "est_cost_usd": 9.0},
+            {**turn, "profile_cost_usd": None, "est_cost_usd": 1.5},
+            {**turn, "profile_cost_usd": None, "est_cost_usd": None},
+        ],
+        tmp_path,
+    )
+
+    row = rows[0]
+    assert (row["usd"], row["estimated"], row["unpriced"]) == (3.5, 1, 1)
+    assert [turn["usd"] for turn in row["turns"]] == [2.0, 1.5, 0.0]
+    assert "est 1" in fx.flow_cost_lines(rows)[0]
+
+
+def write_token_counts(run_dir: Path, name: str, *events: tuple[str, float, float, int, int]) -> None:
+    folder = run_dir / "transcripts"
+    folder.mkdir(parents=True, exist_ok=True)
+    lines = ["not json"]
+    for stamp, primary, secondary, primary_reset, secondary_reset in events:
+        limits = {
+            "limit_id": "codex",
+            "primary": {"used_percent": primary, "window_minutes": 300, "resets_at": primary_reset},
+            "secondary": {"used_percent": secondary, "window_minutes": 10080, "resets_at": secondary_reset},
+            "plan_type": "plus",
+        }
+        payload = {"type": "token_count", "info": {}, "rate_limits": limits}
+        lines.append(json.dumps({"timestamp": stamp, "type": "event_msg", "payload": payload}))
+    (folder / name).write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def test_two_events_on_one_window_give_the_difference(tmp_path: Path) -> None:
+    write_token_counts(
+        tmp_path,
+        "001-00001-dev-build__aaa.jsonl",
+        ("2026-11-22T21:00:00.000Z", 50.0, 25.0, 200, 900),
+        ("2026-11-22T20:00:00.000Z", 45.0, 23.0, 200, 900),
+    )
+
+    share = fx.quota_share(tmp_path)
+
+    assert share is not None and share["plan_type"] == "plus"
+    assert share["windows"]["primary"] == {
+        "window_minutes": 300, "start_pct": 45.0, "end_pct": 50.0, "used_pct": 5.0, "resets_crossed": 0,
+    }
+    assert share["windows"]["secondary"]["used_pct"] == 2.0
+
+
+def test_a_reset_mid_round_sums_both_segments(tmp_path: Path) -> None:
+    write_token_counts(
+        tmp_path,
+        "001-00001-dev-build__aaa.jsonl",
+        ("2026-11-22T20:00:00.000Z", 70.0, 23.0, 200, 900),
+        ("2026-11-22T21:00:00.000Z", 90.0, 24.0, 200, 900),
+        ("2026-11-22T22:00:00.000Z", 5.0, 25.0, 500, 900),
+        ("2026-11-22T23:00:00.000Z", 15.0, 26.0, 500, 900),
+    )
+
+    share = fx.quota_share(tmp_path)
+    assert share is not None
+    window = share["windows"]["primary"]
+
+    assert (window["used_pct"], window["resets_crossed"]) == (30.0, 1)
+    assert (window["start_pct"], window["end_pct"]) == (70.0, 15.0)
+    assert fx.quota_line(share) == "quota: plus week +3.0%  5h +30.0% (1 reset)"
+
+
+def test_no_rate_limits_gives_none(tmp_path: Path) -> None:
+    write_transcript(tmp_path, "001-00001-dev-build__aaa.jsonl", 1)
+
+    assert fx.quota_share(tmp_path) is None
+    assert fx.quota_line(None) == "quota: no plan usage in the transcripts"
