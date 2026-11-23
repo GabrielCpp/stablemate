@@ -41,7 +41,7 @@ class ReadRepos(Endpoint):
     path = "/repos"
     answers = (Answer(200, List(REPO, unordered="the groups follow the order groom discovered its containers"), "one group per container with a workspace volume"),)
     source = (APP + "repos", "groom/groom/projection.py::repo_entries", "groom/groom/localfs.py", "groom/groom/docker_io.py")
-    does = "Lists the container and repo picker's contents: one group per container with a workspace volume, each with the checkouts found there."
+    does = "Lists every container's checkouts for the terminal client's repo view: one group per container with a workspace volume, each with the checkouts found there. The page does not read it."
     carries = actions.ReadRepos
 
 

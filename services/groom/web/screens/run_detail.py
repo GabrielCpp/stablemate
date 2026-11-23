@@ -1,5 +1,5 @@
 from ostler.book import Field as Wire, Str, request
-from ostler.book.screen import Button, Field, Screen, Text
+from ostler.book.screen import Button, Field, Screen, Select, Text
 
 
 class RunDetail(Screen):
@@ -154,7 +154,7 @@ class RunDetail(Screen):
     files_tab = Text(
         "#tab-files",
         "Files",
-        does="the tab of a live container run whose row says a sidecar is connected, directly before Diff, so the tabs read Overview, Activity, Files and Diff. A native run and an ended run have no Files tab. A container run whose sidecar dropped keeps it, stale, while the page holds a diff for the run, and loses it with no diff held. Selecting a run reads no tree. The first open of Files for a selection reads the tree once. Another tab of the same run and back keeps the tree, the selected file and the collapsed folders, with no new read. Selecting another run resets them. When the run ends while Files is open the tab goes and Overview shows. A gate leaves the tab alone",
+        does="the tab of a live container run whose row says a sidecar is connected, directly before Diff, so the tabs read Overview, Activity, Files and Diff. A native run and an ended run have no Files tab. A container run whose sidecar dropped keeps it, stale, while the page holds a diff for the run, and loses it with no diff held. Selecting a run reads no tree. The first open of Files for a selection reads the tree once. Another tab of the same run and back keeps the tree, the selected file and the collapsed folders, with no new read. Selecting another run resets them. When the run ends while Files is open the tab goes and Overview shows. A gate leaves the tab alone. With more than one checkout, the tab reads the checkout the selector shows.",
     )
     files_tree = Text(
         '#detail-panel[aria-labelledby="tab-files"] .fd-tree',
@@ -211,6 +211,12 @@ class RunDetail(Screen):
         "The sidecar stopped answering",
         does="shown on Files when the sidecar drops while the page holds a diff for the run, with 'The run may still be working.' The tab stays and shows no tree or file: it drops its tree, its selected file and its collapsed folders, and reads the tree again when the sidecar returns, with no file selected. With no diff held the tab goes",
     )
+    checkout = Select(
+        "#detail-checkout",
+        "Checkout",
+        does="the selector of a run whose sidecar names more than one checkout, at the right of the tab bar on Files and on Diff and on no other tab. Each option is a checkout's name alone, and the workspace root reads '(workspace root)'. A run with one checkout, or a sidecar that names none, shows no selector and reads its one checkout. A run selected for the first time on the page shows its first checkout. Choosing one reads that checkout's diff, so the size on the Diff tab follows it, and Files reads that checkout's tree and drops the open file and the collapsed folders. The choice holds across Files and Diff, a refresh of the diff and a trip to another run and back. A reload starts again at the first checkout, and a remembered checkout the sidecar no longer names falls back to the first. An unreadable checkout keeps the selector. J and k typed while it has the focus do not move the run selection. Checkout names are text and never markup",
+        options=("(workspace root)",),
+    )
     sidecar_chip = Text(
         "#run-sidecar-chip",
         "docker · sidecar",
@@ -219,7 +225,7 @@ class RunDetail(Screen):
     diff_tab = Text(
         "#tab-diff",
         "Diff",
-        does="the tab of a live container run whose row says a sidecar is connected, after Overview, Activity and Files. A native run, an ended run and a container run with no connected sidecar have no Diff tab. It appears within five seconds of the sidecar connecting, with no reload. Selecting the run reads the diff once and a sidecar that connects while its run is selected reads it once more. A run that is not selected costs no read. When the run ends while Diff is open the tab goes and Overview shows. When the sidecar drops the tab stays and reads 'stale', with the last diff kept",
+        does="the tab of a live container run whose row says a sidecar is connected, after Overview, Activity and Files. A native run, an ended run and a container run with no connected sidecar have no Diff tab. It appears within five seconds of the sidecar connecting, with no reload. Selecting the run reads the diff once and a sidecar that connects while its run is selected reads it once more. A run that is not selected costs no read. When the run ends while Diff is open the tab goes and Overview shows. When the sidecar drops the tab stays and reads 'stale', with the last diff kept. With more than one checkout, the tab reads the checkout the selector shows.",
     )
     diff_size = Text(
         "#detail-diff-count",

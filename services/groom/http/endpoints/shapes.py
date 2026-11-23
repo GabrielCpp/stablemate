@@ -324,7 +324,7 @@ DIFF = Object(
     failed=Field(Bool(), does="true when either git command failed or timed out, or no checkout could be read, so a failed read is never an empty diff"),
     reported=Field(Bool(), does="false when the sidecar sent no `failed`, so an empty diff from a sidecar too old to report failure cannot be confirmed"),
     served=Field(Enum(("sidecar", "volume"))),
-    repos=Field(List(Str()), required=False),
+    repos=Field(List(Str()), required=False, does="the checkouts a sidecar names, when it names them"),
     based=Field(Bool(), required=False, does="whether a sidecar reported where the branch started, on a branch view"),
     base=Field(Str(), required=False),
     base_ref=Field(Str(), required=False),
