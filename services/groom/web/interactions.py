@@ -58,14 +58,14 @@ class OpenRun(Interaction[Push]):
     source = ("groom/groom/assets/dashboard.js",)
     screen = Runs
     leads_to = RunDetail
-    does = "presses a run in the list; its detail pane opens beside the list with the gate it waits on"
+    does = "presses a run in the list; its detail pane opens beside the list with the gates it waits on in a strip above the tabs"
     carries = SelectRun
 
 
 class AnswerTheGate(Interaction[Reply]):
     source = ("groom/groom/assets/dashboard.js", "groom/groom/app.py")
     screen = RunDetail
-    does = "types an answer under the question of a blocked run and presses Send answer"
+    does = "types an answer in the strip above the tabs, under the question of a blocked run, and presses Send answer"
     carries = AnswerFromPage
 
 

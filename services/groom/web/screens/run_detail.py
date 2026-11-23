@@ -11,12 +11,53 @@ class RunDetail(Screen):
     root = Text("#detail .detail-head", does="the selected run's header: its state dot, repo and branch, id and state")
     repo = Text("#detail .repo-branch", "repo", does="the repo and branch of the run")
     run_id = Text("#detail .run-id", "run id", does="the whole id of the run")
-    waiting = Text("#detail .gate-line b", "Waiting on you", does="the line over a gate the run waits on")
-    gate_path = Text("#detail .gate-meta", "gate path", does="the gate file the run waits on")
-    question = Text("#detail .question", "question", does="the question of the gate, rendered as markdown")
-    answer = Field("#detail form.answer textarea", "Your answer", does="the text sent back to the run",
-                   takes="answer", holds=Wire(Str(), required=False, nullable=True))
-    send = Button("#detail form.answer button[type=submit]", "Send answer", does="sends the answer to the run's gate")
+    gate_strip = Text(
+        '#detail [role=region][aria-label="Open gates"]',
+        "Open gates",
+        does="the strip of the gates a run waits on, between the run's header and its tabs and outside the tab's own scrolling region, so no tab's scroll moves it. It lists every open gate of the run, each with its question and its answer box. It appears when a gate opens, and it leaves with the last gate answered, with the tab and its scroll place unchanged. On the Overview the text the operator reads keeps its place on screen while the strip opens, folds or clears. It takes at most half of the pane's height and scrolls inside that",
+    )
+    waiting = Text(
+        "#detail .gate-line b",
+        "Waiting on you",
+        does="the first words of each gate's block: 'Waiting on you', or 'Waiting on a machine result' for a gate that a machine answers",
+    )
+    gate_path = Text(
+        "#detail .gate-meta",
+        "gate path",
+        does="the node, the wait so far and the gate file of each gate the run waits on. The folded line keeps the wait so far",
+    )
+    question = Text(
+        "#detail .question",
+        "question",
+        does="the question of each gate, rendered as sanitized markdown: no script, frame, event handler or javascript: link reaches the page",
+    )
+    answer = Field(
+        "#detail form.answer textarea",
+        "Your answer",
+        does="the text sent back to that gate. Letters typed in it never trigger a page shortcut, and what was typed survives a live push, a fold of the strip and a send of another gate until it is sent",
+        takes="answer",
+        holds=Wire(Str(), required=False, nullable=True),
+    )
+    send = Button(
+        "#detail form.answer button[type=submit]",
+        "Send answer",
+        does="sends that gate's answer. When groom takes it, the gate leaves the strip and the tab and its scroll place stay. When groom refuses it, the typed answer stays in the box and the notice says why",
+    )
+    collapse = Button(
+        "#detail .gate-strip .gate-fold",
+        "Collapse",
+        does="folds the strip to one line. It sits on the first gate only and keeps every typed answer. The strip stays folded while the same run stays selected, across tabs and live pushes, and opens again on another run or after the run's detail is closed",
+    )
+    unfold = Button(
+        "#detail .gate-strip .gate-unfold",
+        "Answer",
+        does="the button of the folded line, which shows the start of the first question and the wait so far. It reads 'Show' when no open gate takes an answer. It opens the strip again and puts the focus in the first answer box",
+    )
+    gates_open = Text(
+        "#detail .gate-folded .chip",
+        "gates open",
+        does="'N gates open' on the folded line when more than one gate waits, so a gate that opens while the strip is folded is counted",
+    )
     close = Button("#detail .close-detail", "Close run detail", does="closes the run's detail pane")
     now = Text(
         "#detail .now",
