@@ -321,8 +321,8 @@ def test_a_reset_mid_round_sums_both_segments(tmp_path: Path) -> None:
         "001-00001-dev-build__aaa.jsonl",
         ("2026-11-22T20:00:00.000Z", 70.0, 23.0, 200, 900),
         ("2026-11-22T21:00:00.000Z", 90.0, 24.0, 200, 900),
-        ("2026-11-22T22:00:00.000Z", 5.0, 25.0, 500, 900),
-        ("2026-11-22T23:00:00.000Z", 15.0, 26.0, 500, 900),
+        ("2026-11-22T22:00:00.000Z", 5.0, 25.0, 18300, 900),
+        ("2026-11-22T23:00:00.000Z", 15.0, 26.0, 18300, 900),
     )
 
     share = fx.quota_share(tmp_path)
@@ -332,6 +332,22 @@ def test_a_reset_mid_round_sums_both_segments(tmp_path: Path) -> None:
     assert (window["used_pct"], window["resets_crossed"]) == (30.0, 1)
     assert (window["start_pct"], window["end_pct"]) == (70.0, 15.0)
     assert fx.quota_line(share) == "quota: plus week +3.0%  5h +30.0% (1 reset)"
+
+
+def test_a_reset_time_that_wobbles_by_seconds_stays_one_window(tmp_path: Path) -> None:
+    write_token_counts(
+        tmp_path,
+        "001-00001-dev-build__aaa.jsonl",
+        ("2026-11-22T20:00:00.000Z", 0.0, 23.0, 609, 900),
+        ("2026-11-22T20:10:00.000Z", 10.0, 25.0, 617, 901),
+        ("2026-11-22T20:20:00.000Z", 14.0, 25.0, 617, 900),
+        ("2026-11-22T20:30:00.000Z", 31.0, 28.0, 617, 901),
+    )
+
+    share = fx.quota_share(tmp_path)
+    assert share is not None
+
+    assert fx.quota_line(share) == "quota: plus week +5.0%  5h +31.0%"
 
 
 def test_no_rate_limits_gives_none(tmp_path: Path) -> None:

@@ -282,10 +282,11 @@ def quota_share(run_dir: Path) -> dict[str, Any] | None:
                 continue
             minutes_of = window.get("window_minutes", minutes_of)
             used = float(window["used_percent"])
-            if segments and segments[-1][0] == window.get("resets_at"):
+            reset = window.get("resets_at")
+            if segments and _same_window(segments[-1][0], reset, minutes_of):
                 segments[-1][2] = used
             else:
-                segments.append([window.get("resets_at"), used, used])
+                segments.append([reset, used, used])
         if segments:
             windows[name] = {
                 "window_minutes": minutes_of,
@@ -296,6 +297,14 @@ def quota_share(run_dir: Path) -> dict[str, Any] | None:
             }
     plan = next((limits.get("plan_type") for _stamp, limits in reversed(records) if limits.get("plan_type")), None)
     return {"plan_type": plan, "windows": windows}
+
+
+def _same_window(known: Any, reset: Any, minutes: Any) -> bool:
+    """True unless the reset time jumped by half a window or more, since codex reports it to the second with jitter."""
+    if not isinstance(known, (int, float)) or not isinstance(reset, (int, float)):
+        return known == reset
+    span = float(minutes) * 60.0 if isinstance(minutes, (int, float)) and minutes > 0 else 0.0
+    return abs(float(reset) - float(known)) < span / 2 if span else known == reset
 
 
 def quota_line(share: dict[str, Any] | None) -> str:
