@@ -30,7 +30,7 @@ class _FakeProc:
         self.done = threading.Event()
 
     def wait(self) -> int:
-        self.done.wait(WAIT_S)
+        self.done.wait(FAKE_PROC_LIFETIME_S)
         return self.code
 
 
