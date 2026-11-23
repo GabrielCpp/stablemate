@@ -13,13 +13,13 @@ from unittest.mock import patch
 from litestar.testing import TestClient
 from opentelemetry.proto.trace.v1.trace_pb2 import Status
 
+from _otlp_support import metrics_request
 from groom import alerts, cli, discovery, notify, otlp, projection, state, store
 from groom import app as groom_app
 from groom.cli import _format_status
 from groom.models import WorkflowContainer
 from groom.otlp import (
     ExportLogsServiceRequest,
-    ExportMetricsServiceRequest,
     ExportTraceServiceRequest,
 )
 
@@ -66,43 +66,6 @@ def _trace_request(specs: list[dict], resource: dict | None = None) -> bytes:
         if spec.get("terminal"):
             kv = span.attributes.add()
             kv.key, kv.value.string_value = "workhorse.terminal", spec["terminal"]
-    return request.SerializeToString()
-
-
-def _metrics_request(
-    name: str,
-    run_id: str = "run-1",
-    value: float = 1,
-    *,
-    node: str | None = None,
-    gauge: bool = False,
-    ts: float = 2000.0,
-    run_dir: str = "",
-    attrs: dict[str, str] | None = None,
-) -> bytes:
-    """One metric point."""
-    request = ExportMetricsServiceRequest()
-    resource_metrics = request.resource_metrics.add()
-    kv = resource_metrics.resource.attributes.add()
-    kv.key, kv.value.string_value = "run_id", run_id
-    if run_dir:
-        kv = resource_metrics.resource.attributes.add()
-        kv.key, kv.value.string_value = "run_dir", run_dir
-    metric = resource_metrics.scope_metrics.add().metrics.add()
-    metric.name = name
-    if gauge:
-        point = metric.gauge.data_points.add()
-        point.as_double = float(value)
-    else:
-        point = metric.sum.data_points.add()
-        point.as_int = int(value)
-    if node is not None:
-        kv = point.attributes.add()
-        kv.key, kv.value.string_value = "node", node
-    for key, attr_value in (attrs or {}).items():
-        kv = point.attributes.add()
-        kv.key, kv.value.string_value = key, attr_value
-    point.time_unix_nano = int(ts * 1e9)
     return request.SerializeToString()
 
 
@@ -834,7 +797,7 @@ def test_receivers_drop_test_run_telemetry_but_keep_real_runs():
                 ).status_code == 200
                 assert client.post(
                     "/v1/metrics",
-                    content=_metrics_request(
+                    content=metrics_request(
                         "workhorse.run.heartbeat", run_id=run_id, run_dir=run_dir
                     ),
                     headers={"content-type": "application/x-protobuf"},
@@ -858,7 +821,7 @@ def test_purge_test_runs_evicts_by_run_dir_across_every_table():
             store.insert_logs(otlp.parse_logs(_logs_request([{"body": "hi"}], resource)))
             store.insert_metrics(
                 otlp.parse_metrics(
-                    _metrics_request(
+                    metrics_request(
                         "workhorse.node.elapsed_s", run_id=resource["run_id"], gauge=True
                     )
                 )
@@ -935,7 +898,7 @@ def test_a_resumed_run_pages_again_when_the_new_session_ends():
         )
         assert [a.rule for a in alerts.ingest_spans(ended, now=100.0)] == ["ENDED"]
         alerts.ingest_metrics(
-            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", ts=200.0)), now=200.0
+            otlp.parse_metrics(metrics_request("workhorse.run.heartbeat", ts=200.0)), now=200.0
         )
         again = otlp.parse_traces(
             _trace_request([{"name": "run:coder", "start": 150, "end": 300, "terminal": "fail"}])
@@ -951,7 +914,7 @@ def test_churn_fires_on_node_repeats_and_resets_on_refuel():
         assert alerts.ingest_spans(one_visit, now=10.0) == []
         assert alerts.ingest_spans(one_visit, now=11.0) == []
         alerts.ingest_metrics(
-            otlp.parse_metrics(_metrics_request("workhorse.gas.refuels")), now=12.0
+            otlp.parse_metrics(metrics_request("workhorse.gas.refuels")), now=12.0
         )
         assert alerts.ingest_spans(one_visit, now=13.0) == []
         assert alerts.ingest_spans(one_visit, now=14.0) == []
@@ -1123,7 +1086,7 @@ def test_stall_fires_on_silence_but_heartbeat_suppresses_it():
         alerts.ingest_spans(spans, now=1000.0)
         assert alerts.check_time_rules(now=1000.0 + 89 * 60) == []
         alerts.ingest_metrics(
-            otlp.parse_metrics(_metrics_request("workhorse.cap_wait.heartbeat")),
+            otlp.parse_metrics(metrics_request("workhorse.cap_wait.heartbeat")),
             now=1000.0 + 89 * 60,
         )
         assert alerts.check_time_rules(now=1000.0 + 91 * 60) == []
@@ -1140,7 +1103,7 @@ def test_stall_retires_when_the_run_emits_again_and_can_refire():
         assert [a.rule for a in alerts.check_time_rules(now=woke)] == ["STALL"]
 
         alerts.ingest_metrics(
-            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat")), now=woke
+            otlp.parse_metrics(metrics_request("workhorse.run.heartbeat")), now=woke
         )
         assert "STALL" not in state.RUNS["run-1"].fired
         assert alerts.check_time_rules(now=woke + 60) == []
@@ -1157,7 +1120,7 @@ def test_stuck_retires_when_the_node_finally_closes():
         for name, value in (("workhorse.node.active", 1), ("workhorse.node.elapsed_s", 76 * 60)):
             alerts.ingest_metrics(
                 otlp.parse_metrics(
-                    _metrics_request(name, value=value, node="investigate", gauge=True)
+                    metrics_request(name, value=value, node="investigate", gauge=True)
                 ),
                 now=now,
             )
@@ -1165,7 +1128,7 @@ def test_stuck_retires_when_the_node_finally_closes():
 
         alerts.ingest_metrics(
             otlp.parse_metrics(
-                _metrics_request("workhorse.node.active", value=0, node="investigate", gauge=True)
+                metrics_request("workhorse.node.active", value=0, node="investigate", gauge=True)
             ),
             now=now + 60,
         )
@@ -1188,7 +1151,7 @@ def test_explicit_wait_suppresses_stuck_and_clears_stale_turn_idle() -> None:
         ):
             points.extend(
                 otlp.parse_metrics(
-                    _metrics_request(
+                    metrics_request(
                         name,
                         value=value,
                         node="write_story",
@@ -1211,12 +1174,12 @@ def test_an_operator_gate_pages_the_moment_it_opens() -> None:
     with _TelemetryEnv():
         fired = alerts.ingest_metrics(
             otlp.parse_metrics(
-                _metrics_request(
+                metrics_request(
                     "workhorse.node.active", value=1, node="review_plan", gauge=True
                 )
             )
             + otlp.parse_metrics(
-                _metrics_request(
+                metrics_request(
                     "workhorse.wait.active",
                     value=1,
                     node="review_plan",
@@ -1235,7 +1198,7 @@ def test_a_restart_rehydrates_an_already_open_wait_from_the_elapsed_tick() -> No
     with _TelemetryEnv():
         fired = alerts.ingest_metrics(
             otlp.parse_metrics(
-                _metrics_request(
+                metrics_request(
                     "workhorse.wait.elapsed_s",
                     value=180 * 60,
                     node="review_plan",
@@ -1259,12 +1222,12 @@ def test_a_replayed_elapsed_tick_does_not_reopen_a_closed_wait() -> None:
     with _TelemetryEnv():
         alerts.ingest_metrics(
             otlp.parse_metrics(
-                _metrics_request(
+                metrics_request(
                     "workhorse.wait.active", value=1, node="review_plan", gauge=True, attrs=attrs
                 )
             )
             + otlp.parse_metrics(
-                _metrics_request(
+                metrics_request(
                     "workhorse.wait.elapsed_s",
                     value=180 * 60,
                     node="review_plan",
@@ -1276,7 +1239,7 @@ def test_a_replayed_elapsed_tick_does_not_reopen_a_closed_wait() -> None:
         )
         alerts.ingest_metrics(
             otlp.parse_metrics(
-                _metrics_request(
+                metrics_request(
                     "workhorse.wait.active", value=0, node="review_plan", gauge=True, attrs=attrs
                 )
             ),
@@ -1284,7 +1247,7 @@ def test_a_replayed_elapsed_tick_does_not_reopen_a_closed_wait() -> None:
         )
         fired = alerts.ingest_metrics(
             otlp.parse_metrics(
-                _metrics_request(
+                metrics_request(
                     "workhorse.wait.elapsed_s",
                     value=180 * 60,
                     node="review_plan",
@@ -1306,7 +1269,7 @@ def test_a_cap_wait_pages_nobody() -> None:
     with _TelemetryEnv(), patch.dict(os.environ, {"GROOM_WAIT_MIN": "30"}):
         fired = alerts.ingest_metrics(
             otlp.parse_metrics(
-                _metrics_request(
+                metrics_request(
                     "workhorse.wait.active",
                     value=1,
                     node="run_qa",
@@ -1315,7 +1278,7 @@ def test_a_cap_wait_pages_nobody() -> None:
                 )
             )
             + otlp.parse_metrics(
-                _metrics_request(
+                metrics_request(
                     "workhorse.wait.elapsed_s",
                     value=600 * 60,
                     node="run_qa",
@@ -1334,7 +1297,7 @@ def test_an_unanswered_gate_pages_again_once_it_has_waited_too_long() -> None:
         now = 1000.0
         alerts.ingest_metrics(
             otlp.parse_metrics(
-                _metrics_request(
+                metrics_request(
                     "workhorse.wait.active",
                     value=1,
                     node="review_plan",
@@ -1348,7 +1311,7 @@ def test_an_unanswered_gate_pages_again_once_it_has_waited_too_long() -> None:
 
         alerts.ingest_metrics(
             otlp.parse_metrics(
-                _metrics_request(
+                metrics_request(
                     "workhorse.wait.elapsed_s",
                     value=31 * 60,
                     node="review_plan",
@@ -1368,7 +1331,7 @@ def test_answering_the_gate_retires_both_pages() -> None:
         for name, value in (("workhorse.wait.active", 1), ("workhorse.wait.elapsed_s", 31 * 60)):
             alerts.ingest_metrics(
                 otlp.parse_metrics(
-                    _metrics_request(
+                    metrics_request(
                         name,
                         value=value,
                         node="review_plan",
@@ -1383,7 +1346,7 @@ def test_answering_the_gate_retires_both_pages() -> None:
 
         alerts.ingest_metrics(
             otlp.parse_metrics(
-                _metrics_request(
+                metrics_request(
                     "workhorse.wait.active",
                     value=0,
                     node="review_plan",
@@ -1402,7 +1365,7 @@ def test_a_stale_replay_of_an_already_answered_gate_does_not_reopen_it() -> None
         now = 1000.0
 
         def wait_point(value: float, question: str) -> bytes:
-            return _metrics_request(
+            return metrics_request(
                 "workhorse.wait.active",
                 value=value,
                 node="program_review",
@@ -1430,7 +1393,7 @@ def test_a_wait_never_explicitly_closed_clears_once_the_run_moves_to_another_nod
         now = 1000.0
         alerts.ingest_metrics(
             otlp.parse_metrics(
-                _metrics_request(
+                metrics_request(
                     "workhorse.wait.active",
                     value=1,
                     node="program_review",
@@ -1445,7 +1408,7 @@ def test_a_wait_never_explicitly_closed_clears_once_the_run_moves_to_another_nod
 
         alerts.ingest_metrics(
             otlp.parse_metrics(
-                _metrics_request(
+                metrics_request(
                     "workhorse.node.active", value=1, node="define-new-direction", gauge=True
                 )
             ),
@@ -1473,14 +1436,14 @@ def test_streaming_turn_uses_idleness_not_total_node_age_for_stuck() -> None:
         ):
             points.extend(
                 otlp.parse_metrics(
-                    _metrics_request(name, value=value, node="plan", gauge=True)
+                    metrics_request(name, value=value, node="plan", gauge=True)
                 )
             )
         alerts.ingest_metrics(points, now=now)
         assert alerts.check_time_rules(now=now) == []
 
         idle = otlp.parse_metrics(
-            _metrics_request(
+            metrics_request(
                 "workhorse.turn.idle_s",
                 value=76 * 60,
                 node="plan",
@@ -1536,7 +1499,7 @@ def test_compact_loop_is_an_attention_event() -> None:
 def test_pyflow_activity_label_is_consumed_without_legacy_prefix() -> None:
     with _TelemetryEnv():
         points = otlp.parse_metrics(
-            _metrics_request(
+            metrics_request(
                 "workhorse.run.heartbeat",
                 node="plan",
                 attrs={"activity": "planning story A"},
@@ -1586,7 +1549,7 @@ def test_turn_heartbeat_suppresses_stall_during_a_long_agent_turn():
         alerts.ingest_spans(spans, now=1000.0)
         for minute in range(0, 200, 5):
             alerts.ingest_metrics(
-                otlp.parse_metrics(_metrics_request("workhorse.turn.heartbeat")),
+                otlp.parse_metrics(metrics_request("workhorse.turn.heartbeat")),
                 now=1000.0 + minute * 60,
             )
         assert alerts.check_time_rules(now=1000.0 + 195 * 60) == []
@@ -1600,7 +1563,7 @@ def test_run_heartbeat_suppresses_stall_for_a_buffered_script_node():
             now=1000.0,
         )
         alerts.ingest_metrics(
-            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat")),
+            otlp.parse_metrics(metrics_request("workhorse.run.heartbeat")),
             now=1000.0 + 100 * 60,
         )
         assert alerts.check_time_rules(now=1000.0 + 150 * 60) == []
@@ -1614,16 +1577,16 @@ def test_stuck_fires_when_alive_but_parked_in_one_node():
         now = 1000.0
         alerts.ingest_metrics(
             otlp.parse_metrics(
-                _metrics_request("workhorse.node.active", value=1, node="select_item", gauge=True)
+                metrics_request("workhorse.node.active", value=1, node="select_item", gauge=True)
             ),
             now=now,
         )
         alerts.ingest_metrics(
-            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat")), now=now
+            otlp.parse_metrics(metrics_request("workhorse.run.heartbeat")), now=now
         )
         alerts.ingest_metrics(
             otlp.parse_metrics(
-                _metrics_request(
+                metrics_request(
                     "workhorse.node.elapsed_s", value=74 * 60, node="select_item", gauge=True
                 )
             ),
@@ -1632,7 +1595,7 @@ def test_stuck_fires_when_alive_but_parked_in_one_node():
         assert alerts.check_time_rules(now=now) == []
         alerts.ingest_metrics(
             otlp.parse_metrics(
-                _metrics_request(
+                metrics_request(
                     "workhorse.node.elapsed_s", value=76 * 60, node="select_item", gauge=True
                 )
             ),
@@ -1648,14 +1611,14 @@ def test_node_active_gauge_tracks_where_the_run_is_and_clears_on_completion():
     with _TelemetryEnv():
         alerts.ingest_metrics(
             otlp.parse_metrics(
-                _metrics_request("workhorse.node.active", value=1, node="prepare", gauge=True)
+                metrics_request("workhorse.node.active", value=1, node="prepare", gauge=True)
             ),
             now=1000.0,
         )
         assert state.RUNS["run-1"].current_node == "prepare"
         alerts.ingest_metrics(
             otlp.parse_metrics(
-                _metrics_request("workhorse.node.active", value=0, node="prepare", gauge=True)
+                metrics_request("workhorse.node.active", value=0, node="prepare", gauge=True)
             ),
             now=1001.0,
         )
@@ -1671,7 +1634,7 @@ def test_a_stale_zero_does_not_blank_the_node_now_running():
             ("workhorse.node.active", 0, "prepare"),
         ):
             alerts.ingest_metrics(
-                otlp.parse_metrics(_metrics_request(name, value=value, node=node, gauge=True)),
+                otlp.parse_metrics(metrics_request(name, value=value, node=node, gauge=True)),
                 now=1000.0,
             )
         assert state.RUNS["run-1"].current_node == "select_item"
@@ -1681,12 +1644,12 @@ def test_live_status_reports_the_open_node_that_has_no_span():
     """The whole point: a run parked in a node has NO row in `spans` for it (the span writes on completion), yet live_status still says where it is — from the ingest cache, since the heartbeat that named the node is never stored."""
     with _TelemetryEnv():
         alerts.ingest_metrics(
-            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", node="select_item")),
+            otlp.parse_metrics(metrics_request("workhorse.run.heartbeat", node="select_item")),
             now=2000.0,
         )
         alerts.ingest_metrics(
             otlp.parse_metrics(
-                _metrics_request(
+                metrics_request(
                     "workhorse.node.elapsed_s", value=1800.0, node="select_item", gauge=True
                 )
             ),
@@ -1704,11 +1667,11 @@ def test_live_status_row_shape_is_the_cli_json_contract():
     """``groom status --json`` prints these rows verbatim, so the keys are a public contract — the exact shape the old store-backed query returned."""
     with _TelemetryEnv():
         alerts.ingest_metrics(
-            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", node="impl")),
+            otlp.parse_metrics(metrics_request("workhorse.run.heartbeat", node="impl")),
             now=2000.0,
         )
         alerts.ingest_metrics(
-            otlp.parse_metrics(_metrics_request("workhorse.gas", value=37.0, gauge=True)),
+            otlp.parse_metrics(metrics_request("workhorse.gas", value=37.0, gauge=True)),
             now=2000.0,
         )
         (row,) = alerts.live_status(now=2000.0)
@@ -1724,7 +1687,7 @@ def test_live_status_row_shape_is_the_cli_json_contract():
 def test_live_status_marks_a_run_dead_once_the_heartbeat_stops():
     with _TelemetryEnv():
         alerts.ingest_metrics(
-            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", node="investigate")),
+            otlp.parse_metrics(metrics_request("workhorse.run.heartbeat", node="investigate")),
             now=2000.0,
         )
         rows = alerts.live_status(now=2000.0 + projection.LIVE_AFTER_S + 60)
@@ -1740,7 +1703,7 @@ def test_live_status_marks_an_ended_run_dead_while_its_heartbeat_is_fresh():
             now=2000.0,
         )
         alerts.ingest_metrics(
-            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", node="impl", ts=1990.0)),
+            otlp.parse_metrics(metrics_request("workhorse.run.heartbeat", node="impl", ts=1990.0)),
             now=2000.0,
         )
         (row,) = alerts.live_status(now=2000.0)
@@ -1752,7 +1715,7 @@ def test_live_run_ids_are_the_ones_beating_now():
     """The only liveness question groom asks, answered from the ingest cache — memory-only now, so a groom that just restarted reports nothing until each run's next export lands (the accepted cost of not persisting ticks)."""
     with _TelemetryEnv():
         alerts.ingest_metrics(
-            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", node="impl")),
+            otlp.parse_metrics(metrics_request("workhorse.run.heartbeat", node="impl")),
             now=2000.0,
         )
         assert alerts.live_run_ids(now=2000.0) == {"run-1"}
@@ -1764,7 +1727,7 @@ def test_live_status_keeps_the_newest_beat():
     with _TelemetryEnv():
         for ts in (3000.0, 2000.0):
             alerts.ingest_metrics(
-                otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", ts=ts)),
+                otlp.parse_metrics(metrics_request("workhorse.run.heartbeat", ts=ts)),
                 now=3000.0,
             )
         (row,) = alerts.live_status(now=3000.0)
@@ -1816,7 +1779,7 @@ def test_a_resumed_run_clears_the_previous_sessions_terminal():
         run.fired.add("STALL")
 
         alerts.ingest_metrics(
-            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", ts=200.0)),
+            otlp.parse_metrics(metrics_request("workhorse.run.heartbeat", ts=200.0)),
             now=200.0,
         )
         assert (run.terminal, run.terminal_ts) == ("", 0.0)
@@ -1831,7 +1794,7 @@ def test_a_signal_older_than_the_terminal_does_not_revive_the_run():
         )
         alerts.ingest_spans(root, now=100.0)
         alerts.ingest_metrics(
-            otlp.parse_metrics(_metrics_request("workhorse.run.heartbeat", ts=50.0)),
+            otlp.parse_metrics(metrics_request("workhorse.run.heartbeat", ts=50.0)),
             now=100.0,
         )
         assert state.RUNS["run-1"].terminal == "terminal"
@@ -1897,7 +1860,7 @@ def test_v1_metrics_receiver_records_heartbeat():
         try:
             resp = client.post(
                 "/v1/metrics",
-                content=_metrics_request("workhorse.cap_wait.heartbeat"),
+                content=metrics_request("workhorse.cap_wait.heartbeat"),
                 headers={"Content-Type": "application/x-protobuf"},
             )
         finally:
@@ -1913,7 +1876,7 @@ def test_heartbeats_reach_api_live_without_ever_touching_the_metrics_table():
         try:
             resp = client.post(
                 "/v1/metrics",
-                content=_metrics_request(
+                content=metrics_request(
                     "workhorse.run.heartbeat",
                     node="select_item",
                     run_dir="/home/me/repo/.agents/runs/okf-1",
@@ -1968,7 +1931,7 @@ def test_the_receivers_write_off_the_event_loop():
             client.post("/v1/traces", content=_trace_request([{"name": "plan"}]), headers=headers)
             client.post(
                 "/v1/metrics",
-                content=_metrics_request("workhorse.run.heartbeat"),
+                content=metrics_request("workhorse.run.heartbeat"),
                 headers=headers,
             )
             client.post("/v1/logs", content=_logs_request([{"body": "hello"}]), headers=headers)
@@ -2120,7 +2083,7 @@ def test_detail_loads_metric_history_when_no_script_logs_exist():
             ).status_code == 200
             response = client.post(
                 "/v1/metrics",
-                content=_metrics_request("workhorse.wait.elapsed_s", gauge=True, value=600,
+                content=metrics_request("workhorse.wait.elapsed_s", gauge=True, value=600,
                                          node="review", attrs={"wait_kind": "operator"}),
                 headers={"content-type": "application/x-protobuf"},
             )
@@ -2167,7 +2130,7 @@ def test_committed_telemetry_pushes_watched_history_without_database_reads():
                     assert message["detail"]["logs"][0]["body"] == "arrived now"
                     response = client.post(
                         "/v1/metrics",
-                        content=_metrics_request("workhorse.node.elapsed_s", gauge=True,
+                        content=metrics_request("workhorse.node.elapsed_s", gauge=True,
                                                  value=120, node="plan"),
                         headers={"content-type": "application/x-protobuf"},
                     )
@@ -2248,7 +2211,7 @@ def test_a_pinned_read_snapshot_does_not_wedge_writes():
         finally:
             outside.close()
 
-        store.insert_metrics(otlp.parse_metrics(_metrics_request("heartbeat")))
+        store.insert_metrics(otlp.parse_metrics(metrics_request("heartbeat")))
         names = {
             row["name"]
             for row in store._connection().execute("SELECT name FROM metrics")  # noqa: SLF001
@@ -2269,7 +2232,7 @@ def test_a_failed_write_leaves_no_open_transaction():
         except RuntimeError:
             pass
         assert store._connection().in_transaction is False  # noqa: SLF001 - the invariant
-        store.insert_metrics(otlp.parse_metrics(_metrics_request("after")))
+        store.insert_metrics(otlp.parse_metrics(metrics_request("after")))
         outside = sqlite3.connect(store.db_path())
         try:
             names = {row[0] for row in outside.execute("SELECT name FROM metrics")}
@@ -2348,7 +2311,7 @@ def test_the_receivers_answer_503_when_the_store_is_unavailable():
     """A 500 says "your batch was malformed or I am broken"; a 503 with Retry-After says "come back in five seconds", which is the true statement and the one that stops the receiver from running alerts off rows it did not store."""
     payloads = {
         "/v1/traces": ("insert_spans", _trace_request([{"name": "node"}])),
-        "/v1/metrics": ("insert_metrics", _metrics_request("heartbeat")),
+        "/v1/metrics": ("insert_metrics", metrics_request("heartbeat")),
         "/v1/logs": ("insert_logs", _logs_request([{"body": "hello"}])),
     }
     with _TelemetryEnv():
@@ -2387,7 +2350,7 @@ def test_cli_status_asks_the_running_server_over_http(capsys):
         try:
             client.post(
                 "/v1/metrics",
-                content=_metrics_request(
+                content=metrics_request(
                     "workhorse.run.heartbeat",
                     node="impl",
                     run_dir="/home/me/repo/.agents/runs/okf-1",
@@ -2462,7 +2425,7 @@ def test_a_second_park_with_identical_gate_text_and_a_new_wait_id_fires_blocked(
         now = 1000.0
 
         def wait_point(value: float, wait_id: str) -> bytes:
-            return _metrics_request(
+            return metrics_request(
                 "workhorse.wait.active",
                 value=value,
                 node="resume",

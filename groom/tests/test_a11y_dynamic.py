@@ -635,6 +635,16 @@ def _post_turn(
         assert reply.status == 200
 
 
+def _post_metric(live: _Live, name: str, value: float, *, run: str, workflow: str, node: str) -> None:
+    http = urllib.request.Request(
+        live.url() + "v1/metrics",
+        data=metrics_request(name, run, value, node=node, gauge=True, ts=time.time(), workflow=workflow),
+        headers={"Content-Type": "application/x-protobuf"},
+    )
+    with urllib.request.urlopen(http, timeout=10) as reply:
+        assert reply.status == 200
+
+
 def _drop_turn(span_id: str) -> None:
     from groom import store
 
