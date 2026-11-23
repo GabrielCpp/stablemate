@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import shutil
 import subprocess
 import time
@@ -168,8 +167,8 @@ def budget_of(run: Run, fixture: Fixture, phase: str) -> float:
 
 
 def phase_env(run: Run, fixture: Fixture, phase: str) -> dict[str, str]:
-    """The environment one phase is launched with: which repo, and how long it may take."""
-    env = {**os.environ, "AGENT_REPO_DIR": str(home_of(run))}
+    """The environment one phase is launched with: the trial's artifacts, which repo, and how long it may take."""
+    env = {**tree.launch(run, run.stage).env, "AGENT_REPO_DIR": str(home_of(run))}
     budget = budget_of(run, fixture, phase)
     if budget > 0:
         env["WORKHORSE_MAX_RUNTIME_S"] = str(budget)

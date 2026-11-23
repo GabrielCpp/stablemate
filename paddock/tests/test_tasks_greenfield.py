@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 from fakes import DOCS, PRODUCTS, fake_run, folder_run
 
 from ostler.milestones import BOOKS_DIR
+from stablemate_core import config as core_config
 from paddock.runner import CommandResult, RoundInterrupted, Run
 from paddock.tasks import greenfield
 from paddock.tasks.stablemate import TrialError, uv_run
@@ -281,3 +283,10 @@ def test_genesis_accepts_every_param_the_round_passes(tmp_path: Path) -> None:
     params = json.loads(FIXTURE.params(tmp_path, FIXTURE.surfaces[0]))
     assert set(params) <= set(genesis.model_fields)
     assert params["assistants"] == "claude,codex"
+
+
+@pytest.mark.parametrize("make_run", [fake_run, folder_run])
+def test_a_phase_keeps_its_artifacts_inside_the_round(tmp_path: Path, make_run: Callable[[Path], Run]) -> None:
+    run = make_run(tmp_path)
+    env = greenfield.phase_env(run, FIXTURE, "author")
+    assert Path(env[core_config.ARTIFACTS_DIR_ENV]).is_relative_to(tmp_path)
