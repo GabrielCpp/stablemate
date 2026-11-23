@@ -1,6 +1,6 @@
 ---
 name: testing-design
-description: "The universal contract for a test that can actually fail, language-neutral — name the defect it catches, watch it go red before trusting it, derive fixtures from the producer instead of restating them, assert on evidence of work rather than status, cover the composition and not only the units, and give setup two test files share one home built from small builders. Load whenever writing or reviewing tests, or when the clone check refuses a copy between test files; a stack skill (go-testing, python-testing, flutter-testing, kmp-testing, react-router-testing, pulumi-qa) supplies the concrete mechanics, the testing-component skill layers the UI state and async-ordering contract on top, and the testing-e2e skill layers the end-to-end-specific contract (locators, waits, flake diagnosis) on top. Applies to test files in any language."
+description: "The universal contract for a test that can actually fail, language-neutral — name the defect it catches, watch it go red before trusting it, derive fixtures from the producer instead of restating them, assert on evidence of work rather than status, cover the composition and not only the units, give setup two test files share one home built from small builders, and keep the verdict free of what sits outside the test (checkout, clock, fixed port, user's machine, other tests). Load whenever writing or reviewing tests, when a test is flaky or passes alone and fails in the suite, or when the clone check refuses a copy between test files; a stack skill (go-testing, python-testing, flutter-testing, kmp-testing, react-router-testing, pulumi-qa) supplies the concrete mechanics, the testing-component skill layers the UI state and async-ordering contract on top, and the testing-e2e skill layers the end-to-end-specific contract (locators, waits, flake diagnosis) on top. Applies to test files in any language."
 applyTo: "**/*_test.go,**/test_*.py,**/*_test.py,**/*_test.dart,**/*Test.kt,**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx,tests/**,**/__tests__/**"
 tags: [standards, tests]
 ---
@@ -226,6 +226,29 @@ A builder for a generated value derives from the producer (§3).
 Repeats inside one file are a design question the clone check leaves to review. Cases that differ
 only in values become a table or a parametrized test. Other repeats become a local helper.
 
+## 15. The verdict depends on the code under test and nothing else
+
+A flaky test is a test whose verdict depends on something outside it. §11 covers what a test leaves
+behind. This section covers what a test leans on. Scan the table against the test or the diff. Each
+row is a shape found by reading, and the stack skill gives the spelling to search for. When a row
+fires, open [references/outside-dependence.md](references/outside-dependence.md) for its fix, its
+counter-case and its proof.
+
+| # | Trigger | The verdict depends on |
+| --- | --- | --- |
+| 15.1 | The test reads a product source file as text and asserts on it | Whoever edits the checkout |
+| 15.2 | The test runs version control or walks a tree in a folder it did not create | The checkout's state |
+| 15.3 | A fixed delay comes before an assertion | The machine's load |
+| 15.4 | An assertion puts an upper bound on elapsed time | The machine's load |
+| 15.5 | The test opens a port, path or socket named by a literal | Another worker or session |
+| 15.6 | The code reaches home, cache, config or environment and no fixture redirected it | The user's machine |
+| 15.7 | The test starts a process, thread or task and no teardown ends it | An earlier run's leftovers |
+| 15.8 | A value shared across tests is changed by one of them | Test order |
+
+Reading settles rows 15.1, 15.2, 15.5 and 15.6. The others need the hunt run the reference
+describes: a pinned copy, random order, a loaded machine. A gate that decides a release runs on a
+copy nobody edits.
+
 ## Review checklist
 
 Before approving a test — yours or someone else's:
@@ -241,6 +264,7 @@ Before approving a test — yours or someone else's:
 - [ ] It does not emit a warning the package's pytest config would convert to an error (§12)
 - [ ] It does not assert a contract a sibling package owns (§13)
 - [ ] Setup a second test file needs has one home, built from small builders (§14)
+- [ ] No row of the §15 table fires, or its counter-case is named (§15)
 
 ## Smells
 
@@ -252,7 +276,9 @@ Before approving a test — yours or someone else's:
 | A gate has only passing-input tests | It has never been shown to reject (§7) |
 | Tests skip on the CI box, pass locally | Skipped-to-green suite (§8) |
 | A refactor breaks 40 tests, no behaviour changed | Asserting incidentals (§10) |
-| A test passes alone, fails after another test | Leaked state across tests (§11) |
+| A test passes alone, fails after another test | Leaked state across tests (§11, §15.8) |
+| A test passes alone, fails in the full suite or under load | Its verdict depends on the clock or a shared address (§15.3 to §15.5) |
+| A gate goes red while someone edits the checkout | A test reads the live tree (§15.1, §15.2) |
 | The warning pile grows by 5 per commit | A real warning is being lost in the noise (§12) |
 | A test in package A fails because package B changed | Test reached outside its module (§13) |
 | A contract change is fixed in three test files, and a fourth stays green on the old shape | Setup copied between test files (§14) |

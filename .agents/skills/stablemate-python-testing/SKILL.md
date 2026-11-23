@@ -18,7 +18,7 @@ metadata:
 
 - **pytest ≥ 8.0** — plain `assert`, not `self.assertEqual`.
 - **pytest-xdist** for parallel execution (`pytest -n auto` or `pytest.ini` `addopts = -n auto`).
-- Tests must be parallel-safe: no shared state, no hardcoded ports, no inter-test file conflicts.
+- Tests must be parallel-safe. The section *Flaky shapes* below lists what to search for.
 
 ## Naming
 
@@ -152,6 +152,28 @@ class RegistryAt(Registry):                             # yes: a declared field 
 
 An instance attribute shadowing a method is invisible to both the reader and the checker, and on
 a module-level object it leaks into every test that runs after the one that set it.
+
+## Flaky shapes: what to search for
+
+testing-design §15 names eight shapes that tie a verdict to something outside the test. These are
+their pytest spellings. A hit is a place to read, and the counter-case column says when to leave it.
+
+| Row | Search the tests for | Harmless when | Write instead |
+| --- | --- | --- | --- |
+| 15.1 | `inspect.getsource(`, or `read_text()` on a path built from a product module's `__file__` | The file sits under `tests/` | Call the function and assert on its result |
+| 15.2 | `git` in a `subprocess` call whose `cwd` is not under `tmp_path`, or a `REPO_ROOT` the test walks | Never | `git init` inside `tmp_path` |
+| 15.3 | `time.sleep(` or `asyncio.sleep(` followed by an `assert` | The sleep is inside a fake the test releases | Poll the condition, or wait on a `threading.Event`, with a deadline of 30 s or more |
+| 15.4 | `time.monotonic()` or `time.time()` read twice and compared, or `timeout=` under 5 on a `join`, `wait` or `communicate` | The call is expected to time out | Inject the clock as a parameter |
+| 15.5 | A number passed to `bind(`, `listen(` or `port=`, or `"/tmp/` and `tempfile.gettempdir()` with a fixed name | The literal is only text in a URL nothing opens | Bind port `0` and read `getsockname()[1]`, and put paths under `tmp_path` |
+| 15.6 | `Path.home()`, `expanduser`, a cache-dir call, or `os.environ[...] =`, `.update(`, `.pop(` | The dict is a copy handed to a child process | An autouse fixture that sets `HOME` and `XDG_*` to `tmp_path`, and `monkeypatch.setenv` |
+| 15.7 | `Popen(`, `Thread(` or `create_task(` with no `kill` or `join` in a fixture teardown or a `finally` | A `with` block owns it | A fixture that yields the process and ends its group after the `yield` |
+| 15.8 | `scope="session"` or `scope="module"` on a fixture that returns a list, dict or object, or `lru_cache` in the product | The value is frozen | Function scope, or `cache_clear()` in an autouse fixture |
+
+`inspect.getsource` reads the file from disk by the line numbers of the loaded module. After an edit
+to that file it returns another function's text, with no error.
+
+The hunt run of §15 in pytest: `pytest -n auto` with the `pytest-randomly` plugin, on a `git worktree` at a pinned commit,
+repeated, while a second suite runs beside it. `pytest --lf` then reruns the changed verdicts alone.
 
 ## Markers
 
