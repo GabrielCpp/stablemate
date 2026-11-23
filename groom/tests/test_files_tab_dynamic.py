@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import tempfile
 import threading
 from dataclasses import dataclass, field
+from pathlib import Path
 from unittest.mock import patch
 
 from test_a11y_dynamic import (
@@ -16,8 +19,10 @@ from test_a11y_dynamic import (
 )
 from test_diff_tab_dynamic import (
     _container_run,
+    _git,
     _pick as _pick_run_row,
     _push_exited,
+    _RealSidecar,
     _settle,
     _tab,
     _wait_for,
@@ -736,6 +741,47 @@ def test_files_tab_controls_have_roles_names_and_keyboard_operation_and_pass_axe
             expect(page.locator("#detail-panel .file-pre")).to_contain_text("def sign_in")
             expect(leaf).to_have_attribute("aria-current", "true")
             assert not _scan(page)
+        finally:
+            page.close()
+            sidecar.drop()
+
+
+def test_a_real_checkout_lists_its_files_and_shows_each_as_it_is_on_disk():
+    from groom import sidecar_hub
+    from playwright.sync_api import expect
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    with tempfile.TemporaryDirectory() as tmp, _container_run(CONTAINER, run_id=f"run-{CONTAINER}"):
+        repo = _browsable_repo(Path(tmp))
+        sidecar = _RealSidecar(live, CONTAINER, Path(tmp))
+        _wait_for(lambda: sidecar_hub.get(CONTAINER) is not None, "the sidecar to register")
+        page = _open(live)
+        try:
+            _pick(page)
+            _open_files(page)
+            tree = page.locator("#detail-panel .fd-tree")
+            expect(tree.locator(".tree-file")).to_have_count(len(_files_on_disk(repo)))
+            assert sorted(tree.locator(".tree-file").all_inner_texts()) == _files_on_disk(repo)
+            for pruned in ("node_modules", "__pycache__", ".git", "left-pad", "index.js"):
+                expect(tree).not_to_contain_text(pruned)
+            expect(tree.locator(".tree-dir-head", has_text="src")).to_be_visible()
+            on_disk = (repo / "src/greet.py").read_text()
+            _open_file(page, "greet.py")
+            head = page.locator("#detail-files-file-head")
+            expect(head).to_contain_text("src/greet.py")
+            expect(head).to_contain_text(f"{len(on_disk.splitlines())} lines")
+            expect(head).to_contain_text("python")
+            code = page.locator("#detail-panel .file-pre")
+            expect(code).to_contain_text("def greet(name):")
+            assert code.inner_text().rstrip("\n") == on_disk.rstrip("\n")
+            assert page.locator("#detail-panel .file-pre .hljs-keyword").count() > 0
+            gutter = page.locator("#detail-panel .code-gutter")
+            assert gutter.inner_text().split() == [str(n) for n in range(1, len(on_disk.splitlines()) + 1)]
+            _open_file(page, "blank.txt")
+            expect(page.locator("#detail-panel .fd-view")).to_contain_text("This file is empty.")
+            expect(page.locator("#detail-file-unreadable")).to_have_count(0)
+            assert sidecar_hub.get(CONTAINER) is not None
         finally:
             page.close()
             sidecar.drop()
