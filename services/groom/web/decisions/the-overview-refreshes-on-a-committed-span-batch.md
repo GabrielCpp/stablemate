@@ -14,6 +14,8 @@ not refetch because another workflow's norm changed.
 The refresh happens in place. The page keeps the old figures on screen until the new ones arrive and sets no busy
 state, so the tiles and the tree neither blank nor flash. The scroll position, the chosen view and sort and every
 expanded or collapsed row survive it. A top-level flow that appears during a refresh arrives collapsed.
+A refresh that fails leaves the old figures in place and shows no error. The page asks again for the same revision
+after five seconds, until the figures arrive, a newer revision takes over or the operator leaves the run.
 
 The time since the last finished turn counts up in the browser from a timestamp, once a second. No timer asks the server
 for anything, and an open Overview with no new telemetry causes no read of the store. A run with no open pane causes no
