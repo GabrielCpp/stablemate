@@ -122,6 +122,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     ls.add_argument("--epic")
     ls.add_argument("--status")
+    ls.add_argument(
+        "--repo",
+        help="keep the epics, stories or seeds one repo minted: this repo's name, or an id prefix",
+    )
     ls.add_argument("--json", action="store_true")
 
     se = sub.add_parser("search", help="ranked full-text search over the current book and decisions")
@@ -1252,7 +1256,7 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
             return 2
     if c == "list":
         return _emit(
-            query_mod.list_entities(graph, str(args.etype), args.epic, args.status),
+            query_mod.list_entities(graph, str(args.etype), args.epic, args.status, args.repo),
             args.json,
         )
     if c == "search":

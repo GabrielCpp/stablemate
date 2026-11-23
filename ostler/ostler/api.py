@@ -230,9 +230,9 @@ class Ostler:
         return path if path.is_absolute() else root / path
 
     def list(self, etype: str, *, epic: str | None = None,
-             status: str | None = None) -> builtins.list[dict]:
+             status: str | None = None, repo: str | None = None) -> builtins.list[dict]:
         """Concepts of ``etype`` (``ostler list --type``), optionally filtered."""
-        return query_mod.list_entities(self.graph, etype, epic, status)
+        return query_mod.list_entities(self.graph, etype, epic, status, repo)
 
     def approved_milestone(self) -> Milestone:
         """The one milestone with `status: approved`; raises `MilestoneSelectionError` for none or several."""

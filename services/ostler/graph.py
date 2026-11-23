@@ -46,6 +46,27 @@ class ListStoryRows(Command):
     source = ("ostler/ostler/query.py::list_entities",)
 
 
+class ListRepoStoryRows(Command):
+    does = ("Print one JSON line for each story of the epics one repo minted. `--repo` takes this repo's name or an id "
+            "prefix, because one artifacts folder holds the epics of every repo that shares it.")
+    program = "ostler"
+    argv = ("--full-ids", "list", "--type", "story", "--repo", "TST")
+    args = ARGS
+    answers = (Exit(0, OPAQUE, "the stories of the epics minted under the prefix, or (none)"),)
+    carries = act.Reading
+    source = ("ostler/ostler/query.py::list_entities", "ostler/ostler/ids.py::prefix_for_repo")
+
+
+class ListUnknownRepoRows(Command):
+    does = "Refuse a `--repo` that is neither this repo's name nor a prefix any epic was minted under."
+    program = "ostler"
+    argv = ("--full-ids", "list", "--type", "story", "--repo", "nothing")
+    args = ARGS
+    answers = (Exit(2, STDERR, "no repo has the name or the prefix; the refusal names the prefixes it knows on standard error"),)
+    carries = act.ListUnknownRepo
+    source = ("ostler/ostler/ids.py::prefix_for_repo",)
+
+
 class SearchPlan(Command):
     does = "Rank the sections of the current book and decisions against a query."
     program = "ostler"
@@ -800,7 +821,7 @@ class EnvResetUnknown(Command):
 
 
 ALL = (
-    Doctor, ListEpicRows, ListStoryRows, SearchPlan, BuildIndex, QueryCovering, NextEpic, NextStory, ShowChecks, EvictCache,
+    Doctor, ListEpicRows, ListStoryRows, ListRepoStoryRows, ListUnknownRepoRows, SearchPlan, BuildIndex, QueryCovering, NextEpic, NextStory, ShowChecks, EvictCache,
     EditRename, EditRenameUnknown, CreateMilestone, MilestoneEpicsFirst, MilestoneEpicsBoth, MilestoneEpicsUnknown,
     MilestoneSourceItem, CreateSpec, CreateSpecOfUnknownStory, BacklogAdd, BacklogList, BacklogPrune, BacklogDropWithoutReason,
     FileDecision, TemplateNew, TemplateFind, TemplateApply, TemplateDelete, ListArtifactKinds, ScaffoldArtifact, VetArtifact,

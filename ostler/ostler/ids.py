@@ -76,6 +76,30 @@ def own_prefix(graph: Graph) -> str:
     return (manifest.repo.id_prefix if manifest is not None else None) or ""
 
 
+def minted_prefix(identifier: str) -> str:
+    """The prefix *identifier* was minted under; "" for an id that carries none."""
+    return _split(identifier)[0]
+
+
+def prefix_for_repo(graph: Graph, repo: str) -> str:
+    """The id prefix *repo* names: this repo's own prefix when *repo* is its name, else *repo* read as a prefix an epic was minted under."""
+    manifest = read_manifest(graph.root)
+    table = manifest.repo if manifest is not None else None
+    own = (table.id_prefix if table is not None else None) or ""
+    name = (table.name if table is not None else None) or graph.root.name
+    if own and repo.lower() == name.lower():
+        return own
+    known = {minted_prefix(epic.eid or epic.name) for epic in graph.epics} | {own}
+    known.discard("")
+    for prefix in known:
+        if prefix.lower() == repo.lower():
+            return prefix
+    raise ConfigError(
+        f"no repo '{repo}' here: pass this repo's name or an id prefix, "
+        f"one of {', '.join(sorted(known)) or 'none'}"
+    )
+
+
 def minted_elsewhere(identifier: str, prefix: str) -> str:
     """The prefix *identifier* was minted under when it differs from *prefix*; "" when the id is this repo's, carries no prefix, or the repo sets none."""
     minted = _split(identifier)[0]

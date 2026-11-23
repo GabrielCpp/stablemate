@@ -16,7 +16,7 @@ from ..graph import (EnvResetUnknown, EnvUpUnknown, RunGrpcPlan, RunPhonePlan, R
                      VetWithoutArguments, VetWithoutRegions, EnvAddress, EnvDown, EnvExec, EnvRender, EnvRenderUnknown, BacklogAdopt, BacklogAdd, CutFrames, LintBadPlan, LintPlan, ReadLedger, RecordAssertion, RecordStep, ReplayRun,
                      ReportRun, RunBadPlan, RunPlan, StartSession, StopSession, ValidateBadPlan, ValidatePlan, BacklogDropWithoutReason, BacklogList, BacklogPrune, BuildIndex, CleanQaScratch, CreateMilestone,
                      CreateSpec, CreateSpecOfUnknownStory, Doctor, EditRename, EditRenameUnknown, EnvCheck, EnvList, EnvListAll, EnvPrune, EnvSchema,
-                     EvictCache, FileDecision, ListArtifactKinds, ListEpicRows, ListStoryRows, MilestoneEpicsBoth,
+                     EvictCache, FileDecision, ListArtifactKinds, ListEpicRows, ListRepoStoryRows, ListStoryRows, ListUnknownRepoRows, MilestoneEpicsBoth,
                      MilestoneEpicsFirst, MilestoneEpicsUnknown, MilestoneSourceItem, NextEpic, NextStory, QueryCovering,
                      ScaffoldArtifact, SearchPlan, ShowChecks, TemplateApply, TemplateDelete, TemplateFind, TemplateNew,
                      VetArtifact)
@@ -197,6 +197,8 @@ READ_ACTIONS: dict[str, Callable[[Plan], object]] = {
     "doctor": lambda m: Doctor(nothing()),
     "list the epics": lambda m: ListEpicRows(nothing()),
     "list the stories": lambda m: ListStoryRows(nothing()),
+    "list one repo's stories": lambda m: ListRepoStoryRows(nothing()),
+    "list the stories of an unknown repo": lambda m: ListUnknownRepoRows(nothing()),
     "search": lambda m: SearchPlan(nothing()),
     "build the index": lambda m: BuildIndex(nothing()),
     "query the stories covering a seed": lambda m: QueryCovering(nothing()),

@@ -7,7 +7,9 @@ import pytest
 from ostler import crud, query, select
 from ostler.model import load
 
-from conftest import EPIC_A, EPIC_B, FOO_ID, present, write, epics_root
+from ostler._vendor.stablemate_core.config import ConfigError
+
+from conftest import EPIC_A, EPIC_B, FOO_ID, epic_md, epics_root, present, story_md, write, write_prefix
 
 pytestmark = pytest.mark.usefixtures("minting_root")
 
@@ -29,6 +31,44 @@ def test_list_filters(repo: Path):
     assert {r["id"] for r in rows} == {"seed-a1", "seed-a2"}
     rows = query.list_entities(g, "seed", status="resolved")
     assert {r["id"] for r in rows} == {"seed-a2"}
+
+
+def _another_repos_epic() -> None:
+    write(epics_root() / "u-1" / "epic.md", epic_md(
+        "u-1", "epic-u", seeds=[("seed-u1", "researched", "you")],
+        stories=[("01-baz", "Baz", ["seed-u1"], "u-01baz")], slug="epic-u",
+    ))
+    write(epics_root() / "u-1/stories/u-01baz/story.md",
+          story_md("01-baz", "Baz", "Not started", eid="u-01baz"))
+
+
+def test_list_keeps_the_concepts_one_repo_minted(repo: Path):
+    _another_repos_epic()
+    g = load(repo)
+
+    assert {r["slug"] for r in query.list_entities(g, "story", repo="t")} == {"01-foo", "01-bar"}
+    assert {r["slug"] for r in query.list_entities(g, "story", repo="U")} == {"01-baz"}
+    assert {r["name"] for r in query.list_entities(g, "epic", repo="u")} == {"u-1"}
+    assert {r["id"] for r in query.list_entities(g, "seed", repo="u")} == {"seed-u1"}
+
+
+def test_list_reads_this_repos_name_as_its_prefix(repo: Path):
+    _another_repos_epic()
+    write_prefix(repo, "u")
+
+    rows = query.list_entities(load(repo), "story", repo=repo.name)
+
+    assert {r["slug"] for r in rows} == {"01-baz"}
+
+
+def test_list_refuses_a_repo_it_cannot_resolve(repo: Path):
+    with pytest.raises(ConfigError, match="one of X, t"):
+        query.list_entities(load(repo), "story", repo="acme")
+
+
+def test_list_refuses_a_repo_filter_on_a_kind_outside_the_epics(repo: Path):
+    with pytest.raises(ConfigError, match="--repo filters"):
+        query.list_entities(load(repo), "milestone", repo="t")
 
 
 def test_search_hits_body(repo: Path):

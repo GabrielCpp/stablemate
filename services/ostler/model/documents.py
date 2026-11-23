@@ -550,6 +550,15 @@ class RenderUnknownBook(Action[Nothing, Plan]):
         return Transaction()
 
 
+class ListUnknownRepo(Action[Nothing, Plan]):
+    accept = Nothing
+    rules = (Rule[Nothing, Plan]("error: no repo 'nothing' here: pass this repo's name or an id prefix, one of TST", _always, Exited(2)),)
+
+    @staticmethod
+    def reduce(a: Nothing, s: Plan, by: Actor | None) -> Transaction:
+        return Transaction()
+
+
 class ResetUnknownCopy(Action[Nothing, Plan]):
     accept = Nothing
     rules = (Rule[Nothing, Plan]("no copy named nothing is up: bring it up with ostler env up", _always, FAILED),)

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from ostler import crud_generic, textindex
+from ostler import crud_generic, ids, textindex
+from ostler._vendor.stablemate_core.config import ConfigError
 from ostler.model import Graph
 
 
@@ -32,11 +33,20 @@ def _seed_row(epic, seed) -> dict:
             "services": list(seed.services)}
 
 
+_REPO_SCOPED = ("epic", "story", "seed")
+
+
 def list_entities(graph: Graph, etype: str, epic: str | None = None,
-                  status: str | None = None) -> list[dict]:
+                  status: str | None = None, repo: str | None = None) -> list[dict]:
+    epics = graph.epics
+    if repo is not None:
+        if etype not in _REPO_SCOPED:
+            raise ConfigError(f"--repo filters {', '.join(_REPO_SCOPED)}, not {etype}")
+        prefix = ids.prefix_for_repo(graph, repo)
+        epics = [e for e in epics if ids.minted_prefix(e.eid or e.name) == prefix]
     rows: list[dict] = []
     if etype == "epic":
-        for e in graph.epics:
+        for e in epics:
             rows.append({"type": "epic", "name": e.name, "id": e.eid, "title": e.title,
                          "status": e.status, "seeds": len(e.seeds), "stories": len(e.stories)})
     elif etype == "milestone":
@@ -46,11 +56,11 @@ def list_entities(graph: Graph, etype: str, epic: str | None = None,
                           "sourceItems": m.source_items,
                           "path": m.path.relative_to(graph.root).as_posix()})
     elif etype == "story":
-        for e in graph.epics:
+        for e in epics:
             for s in e.stories:
                 rows.append(_story_row(graph, e, s))
     elif etype == "seed":
-        for e in graph.epics:
+        for e in epics:
             for s in e.seeds:
                 rows.append(_seed_row(e, s))
     else:
