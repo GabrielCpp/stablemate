@@ -183,7 +183,7 @@ class ReadTurn(Endpoint):
         Answer(404, ERROR, "the run has no turn with this slug"),
         Answer(503, ERROR, "the turn's transcript could not be read, which only a container run answers while its records are still to be pulled"),
     )
-    source = (APP + "run_turn", APP + "_turn", "groom/groom/activity.py::turn", "groom/groom/turns.py")
+    source = (APP + "run_turn", APP + "_turn", "groom/groom/activity.py", "groom/groom/activity.py::turn", "groom/groom/turns.py", "groom/groom/transcript_parse.py")
     does = "Reads one agent turn: its head figures, its prompt and thinking, its messages with the final one marked, and its tool calls with the whole output of a failed one."
     carries = actions.ReadTurn
 

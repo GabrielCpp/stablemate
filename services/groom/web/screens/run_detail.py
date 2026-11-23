@@ -9,6 +9,18 @@ class RunDetail(Screen):
         "groom/groom/assets/dashboard.js::loadOverview",
         "groom/groom/assets/dashboard.js::retryOverview",
         "groom/groom/assets/dashboard.js::TurnReading",
+        "groom/groom/assets/dashboard.js::TurnPane",
+        "groom/groom/assets/dashboard.js::TurnHead",
+        "groom/groom/assets/dashboard.js::PartFold",
+        "groom/groom/assets/dashboard.js::ToolRun",
+        "groom/groom/assets/dashboard.js::ToolLine",
+        "groom/groom/assets/dashboard.js::toolRuns",
+        "groom/groom/assets/dashboard.js::runLabel",
+        "groom/groom/assets/dashboard.js::fmtToolTime",
+        "groom/groom/assets/dashboard.js::missingParts",
+        "groom/groom/assets/dashboard.js::wordCount",
+        "groom/groom/assets/dashboard.js::flip",
+        "groom/groom/assets/dashboard.js::flush",
     )
     route = "/"
     name = "Run detail"
