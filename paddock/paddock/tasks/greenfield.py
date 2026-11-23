@@ -230,6 +230,11 @@ def _end_phase(run: Run, phase: str, *, rc: int | None, wall_s: float) -> None:
     run.write_json(ledger_path(run), phases)
 
 
+def phase_run_id(run: Run, phase: str) -> str:
+    """The workflow run id of *phase* in this round, unique across rounds so groom keeps each round apart."""
+    return f"{run.name.task}-{run.name.key}-{run.name.n}-{phase}"
+
+
 def launch_phase(
     run: Run, phase: str, argv: Sequence[str], *, cwd: Path, env: dict[str, str]
 ) -> CommandResult | None:
@@ -246,8 +251,9 @@ def launch_phase(
         command = [*prefix, Path(resume_argv[0]).name, *resume_argv[1:]]
     else:
         workflow = Path(argv[0]).name.removeprefix("workhorse-")
-        command = [*prefix, *argv, "--run-id", phase]
-        _begin_phase(run, phase, f"{workflow}-{phase}")
+        run_id = phase_run_id(run, phase)
+        command = [*prefix, *argv, "--run-id", run_id]
+        _begin_phase(run, phase, f"{workflow}-{run_id}")
     started = time.monotonic()
     rc: int | None = None
     try:

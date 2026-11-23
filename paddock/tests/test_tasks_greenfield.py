@@ -187,7 +187,7 @@ def test_a_stopped_phase_interrupts_the_round(tmp_path: Path, monkeypatch: pytes
         greenfield.run_phase(run, FOLDER_FIXTURE, "author", "workhorse-author", "run")
 
     (entry,) = greenfield.phases_of(run)
-    assert (entry["phase"], entry["rc"], entry["run_dir"]) == ("author", rc, "author-author")
+    assert (entry["phase"], entry["rc"], entry["run_dir"]) == ("author", rc, f"author-{greenfield.phase_run_id(run, 'author')}")
 
 
 def test_a_fresh_phase_names_its_run_dir_and_records_it(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -197,9 +197,10 @@ def test_a_fresh_phase_names_its_run_dir_and_records_it(tmp_path: Path, monkeypa
     greenfield.run_phase(run, FOLDER_FIXTURE, "coder", "workhorse-coder", "run")
 
     argv = calls[0]
-    assert argv[argv.index("--run-id") + 1] == "coder"
+    assert argv[argv.index("--run-id") + 1] == "task-aaaaaaaaaaaa-bbbbbbbbbbbb-3-coder"
     (entry,) = greenfield.phases_of(run)
-    assert (entry["phase"], entry["rc"], entry["run_dir"]) == ("coder", 0, "coder-coder")
+    assert (entry["phase"], entry["rc"], entry["run_dir"]) == (
+        "coder", 0, "coder-task-aaaaaaaaaaaa-bbbbbbbbbbbb-3-coder")
 
 
 def test_a_phase_that_finished_is_skipped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
