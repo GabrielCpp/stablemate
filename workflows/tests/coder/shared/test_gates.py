@@ -3,9 +3,11 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
+from workhorse_workflows.coder.shared import service_gates
 from workhorse_workflows.coder.shared.provenance import changed_files
 from workhorse_workflows.coder.shared.service_gates import (
     GATE_ORDER,
@@ -131,6 +133,35 @@ def test_a_failing_command_is_dirty_and_carries_its_output(repo: Path) -> None:
 
     assert outcome.status == "dirty"
     assert "boom" in outcome.output
+
+
+def test_a_gate_that_keeps_writing_outlives_the_silence_limit(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A suite of 906 s was killed at a 600 s wall clock while every package was passing."""
+    monkeypatch.setattr(service_gates, "GATE_SILENCE", 0.5)
+    _agents(repo, "services:\n  api: {test: 'for i in 1 2 3 4 5 6; do echo .; sleep 0.25; done'}\n")
+
+    outcome = _call(run_gate, cwd=str(repo / "api-service"), service="api", gate="test",
+                    repo_dir=str(repo))
+
+    assert outcome.status == "clean", outcome
+
+
+def test_a_gate_that_says_nothing_for_the_silence_limit_is_killed(
+    repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(service_gates, "GATE_SILENCE", 0.5)
+    _agents(repo, "services:\n  api: {test: 'echo started; sleep 30'}\n")
+
+    started = time.monotonic()
+    outcome = _call(run_gate, cwd=str(repo / "api-service"), service="api", gate="test",
+                    repo_dir=str(repo))
+
+    assert (outcome.status, outcome.reason) == ("dirty", "timeout"), outcome
+    assert "reported nothing for 0.5s" in outcome.output
+    assert "started" in outcome.output
+    assert time.monotonic() - started < 10
 
 
 def test_an_undeclared_gate_is_skipped_not_failed(repo: Path) -> None:

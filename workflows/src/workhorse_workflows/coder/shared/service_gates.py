@@ -2,8 +2,13 @@
 from __future__ import annotations
 
 import logging
+import os
+import signal
 import subprocess
+import threading
+import time
 from pathlib import Path
+from typing import IO
 
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.contract import normalize_service_path
@@ -13,7 +18,64 @@ from workhorse_workflows.kit.manifest import read_manifest
 
 MAX_GATE_OUTPUT = 4000
 
-GATE_TIMEOUT = 600
+GATE_SILENCE = 600
+
+_KEPT_OUTPUT = 64_000
+
+
+class _Listener:
+    """What a gate command wrote and when it last wrote anything, so its limit measures silence rather than work."""
+
+    def __init__(self) -> None:
+        self._last = time.monotonic()
+        self._lock = threading.Lock()
+        self.output = bytearray()
+
+    def drain(self, stream: IO[bytes]) -> None:
+        with stream:
+            self._read(stream.fileno())
+
+    def _read(self, fd: int) -> None:
+        for chunk in iter(lambda: os.read(fd, 4096), b""):
+            with self._lock:
+                self._last = time.monotonic()
+                self.output.extend(chunk)
+                del self.output[:-_KEPT_OUTPUT]
+
+    def remaining(self, silence: float) -> float:
+        with self._lock:
+            return max(silence - (time.monotonic() - self._last), 0.0)
+
+
+def _run_until_silent(command: str, where: Path) -> tuple[int | None, str]:
+    """Run *command* until it exits, or kill it after `GATE_SILENCE` seconds without a byte of output; the exit code is None when killed."""
+    process = subprocess.Popen(
+        command,
+        cwd=where,
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+    listener = _Listener()
+    assert process.stdout is not None
+    reader = threading.Thread(target=listener.drain, args=(process.stdout,), daemon=True)
+    reader.start()
+    exit_code: int | None = None
+    while exit_code is None:
+        try:
+            exit_code = process.wait(timeout=max(listener.remaining(GATE_SILENCE), 0.05))
+        except subprocess.TimeoutExpired:
+            if listener.remaining(GATE_SILENCE) > 0:
+                continue
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            process.wait()
+            break
+    reader.join(timeout=5)
+    return exit_code, listener.output.decode("utf-8", errors="replace")
 
 GATE_ORDER = ("lint", "test")
 
@@ -188,23 +250,7 @@ def run_gate(
         )
 
     try:
-        result = subprocess.run(
-            command,
-            cwd=where,
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=GATE_TIMEOUT,
-        )
-    except subprocess.TimeoutExpired:
-        logger.warning("%s command '%s' timed out after %ss", gate, command, GATE_TIMEOUT)
-        return GateOutcome(
-            gate=gate,
-            status="dirty",
-            command=command,
-            output=f"{gate} timed out after {GATE_TIMEOUT}s",
-            reason="timeout",
-        )
+        exit_code, output = _run_until_silent(command, where)
     except OSError as exc:
         logger.warning("%s command '%s' could not be launched: %s", gate, command, exc)
         return GateOutcome(
@@ -215,22 +261,32 @@ def run_gate(
             reason=f"{gate} command could not be launched",
         )
 
-    if result.returncode == 0:
+    if exit_code == 0:
         logger.info("%s clean for %s", gate, where)
         return GateOutcome(
             gate=gate, status="clean", command=command, reason=f"{gate} passed"
         )
 
-    output = (result.stdout + result.stderr).strip()
+    output = output.strip()
     if len(output) > MAX_GATE_OUTPUT:
         output = "…(truncated)…\n" + output[-MAX_GATE_OUTPUT:]
-    logger.warning("%s dirty for %s (exit %s)", gate, where, result.returncode)
+    if exit_code is None:
+        silence = f"{gate} reported nothing for {GATE_SILENCE:g}s and was killed"
+        logger.warning("%s command '%s' reported nothing for %gs and was killed", gate, command, GATE_SILENCE)
+        return GateOutcome(
+            gate=gate,
+            status="dirty",
+            command=command,
+            output=f"{output}\n{silence}".strip(),
+            reason="timeout",
+        )
+    logger.warning("%s dirty for %s (exit %s)", gate, where, exit_code)
     return GateOutcome(
         gate=gate,
         status="dirty",
         command=command,
         output=output,
-        reason=f"{gate} exited {result.returncode}",
+        reason=f"{gate} exited {exit_code}",
     )
 
 
