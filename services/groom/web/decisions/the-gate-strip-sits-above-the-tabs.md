@@ -9,7 +9,7 @@ The strip lists every open gate of the run, keyed by its gate file. Telemetry re
 
 On the Overview the text the operator reads keeps its screen position while the strip opens, folds or clears. It shares the hold of `the-overview-refreshes-on-a-committed-span-batch`. Diff and Files keep their scroll offset instead, as story SM-01M6CP8M6RMAF18Y66ZZGQSTK9 settled, so a gate never moves the file the operator reads. When the strip is taller than the Overview's scroll offset the place cannot be held, because scrolling stops at the top.
 
-A detail frame that opens or closes a gate re-renders the strip only. Diff and Files keep their tab, their selected file and their scroll offset, and read no diff or tree again, because an operator reading a diff is often reading it to answer the gate (story SM-01M6CP8M6RMAF18Y66ZZGQSTK9).
+A detail frame that opens or closes a gate re-renders the pane, and Diff and Files keep their tab, their selected file and their scroll offset and read no diff or tree again, because the views are reused and their data does not change. An operator reading a diff is often reading it to answer the gate (story SM-01M6CP8M6RMAF18Y66ZZGQSTK9).
 
 Folding hides the blocks and keeps them, so a typed answer survives. The fold lasts while the same run stays selected, across tabs and live pushes. It resets on another run and after the run's detail is closed. A gate that opens while the strip is folded is counted on the folded line.
 
