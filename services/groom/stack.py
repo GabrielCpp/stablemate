@@ -10,7 +10,7 @@ from ostler.book import Fresh, Process, Stack
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 APP = os.path.abspath(os.path.join(HERE, "..", "..", "groom"))
-PORT = os.environ.get("GROOM_BOOK_PORT", "18792")
+PORT = os.environ.get("GROOM_BOOK_PORT", "18893")
 LAUNCH = "from groom.cli import main; main()"
 
 
