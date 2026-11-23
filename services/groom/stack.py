@@ -6,7 +6,7 @@ import os
 import sys
 import tempfile
 
-from ostler.book import Process, Stack
+from ostler.book import Fresh, Process, Stack
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 APP = os.path.abspath(os.path.join(HERE, "..", "..", "groom"))
@@ -33,4 +33,4 @@ def stack(log_dir: str) -> Stack:
         "XDG_CONFIG_HOME": os.path.join(home, "config"),
         "XDG_STATE_HOME": os.path.join(home, "state"),
     }
-    return Stack((Process("api", [sys.executable, "-c", LAUNCH, "serve", "--port", PORT], APP, "Uvicorn running", env),), log_dir)
+    return Stack((Process("api", [sys.executable, "-c", LAUNCH, "serve", "--port", PORT], APP, "Uvicorn running", env),), log_dir, fresh=Fresh(("true",)))
