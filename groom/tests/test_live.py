@@ -500,6 +500,27 @@ def test_a_transcript_line_reaches_the_open_run_within_a_second(tmp_path):
     assert after is not None and after > opened
 
 
+def test_lines_read_by_the_activity_request_still_push_a_detail(tmp_path):
+    _, path = _native(tmp_path)
+
+    async def drive():
+        live.bind(asyncio.get_running_loop())
+        queue = await _open()
+        follower = state.TRANSCRIPT_TASKS["run-w"]
+        follower.cancel()
+        await until(follower.done, "the transcript follower ending")
+        await settled()
+        opened = _details(_drain(queue))[0]["detail"]["activity_rev"]
+        with path.open("a") as handle:
+            handle.write(_line("second", 11.0))
+        await groom_app._live_turns("run-w")
+        await settled()
+        return opened, _details(_drain(queue))
+
+    opened, sent = asyncio.run(drive())
+    assert sent and sent[-1]["detail"]["activity_rev"] > opened
+
+
 def test_releasing_the_last_watcher_cancels_the_transcript_task(tmp_path):
     _native(tmp_path)
 

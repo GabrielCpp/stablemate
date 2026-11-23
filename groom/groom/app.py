@@ -158,31 +158,31 @@ def _native_run_dir(wf: WorkflowContainer) -> str:
 
 
 async def _tail_transcript(wf: WorkflowContainer) -> None:
-    """Read the new complete transcript lines of a native run whose pane is open into its history."""
+    """Read the new complete transcript lines of a native run whose pane is open into its history, and mark the run when lines arrived, whoever asked for the read."""
     run_dir = _native_run_dir(wf)
     history = state.HISTORIES.get(projection.run_id_of(wf))
     if not run_dir or history is None or not history.loaded:
         return
     async with state.HISTORY_LOCK:
+        before = history.activity_rev
         await asyncio.to_thread(live_transcript.poll, history, run_dir)
+        arrived = history.activity_rev != before
+    if arrived:
+        live.mark_run(wf.container_id)
 
 
 _TRANSCRIPT_FILTER = DefaultFilter()
 
 
 async def _follow_transcript(wf: WorkflowContainer) -> None:
-    """Read a watched native run's new transcript lines the moment a transcript file changes, and mark the run when lines arrived."""
+    """Read a watched native run's new transcript lines the moment a transcript file changes."""
     run_dir = _native_run_dir(wf)
     marker = f"{os.sep}transcripts{os.sep}"
     try:
         async for changes in awatch(run_dir, watch_filter=_TRANSCRIPT_FILTER, debounce=100, step=50):
             if not any(marker in path for _, path in changes):
                 continue
-            history = state.HISTORIES.get(projection.run_id_of(wf))
-            before = history.activity_rev if history is not None else 0
             await _tail_transcript(wf)
-            if history is not None and history.activity_rev != before:
-                live.mark_run(wf.container_id)
     except Exception:  # noqa: BLE001 - a pane whose transcript is not watched is not a broken groom
         logger.debug("transcript watch failed for %s", wf.container_id, exc_info=True)
 
