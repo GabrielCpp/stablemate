@@ -125,5 +125,30 @@ class RunDetail(Screen):
         "Time and cost per work item",
         does="By work item: one row per item with its passes, agent time, cost and outcome. Passes are the most turns any one node took for the item, the laps `groom loops` counts, and agent time and cost cover all the item's turns. The item touched last on a live run is marked 'open'. An 'outside any work item' row and a Total make the rows add up to the run's time and cost. The outcome reads done or not counted from the run's progress count, and is blank when no count was reported",
     )
+    wall_clock = Text(
+        "#detail-wall-clock",
+        "Where the wall clock went",
+        does="a bar of six segments with a legend that names each one with its duration: Agent turns, Deterministic, Infra, Waits, Unclassified and Stopped between sessions. The segments add up to the wall time, from the first span to the last, and Agent turns, Deterministic and Infra add up to the active time of the Active time tile. An instant that more than one kind covers counts once, in this order: stopped between sessions, a wait, agent, infra, deterministic, unclassified. The bar is an image whose accessible name lists every segment with its duration, so the section reads without color",
+    )
+    models_table = Text(
+        "table[aria-label=\"Models\"]",
+        "Models",
+        does="one row per model with its turns, cost, output tokens and cache read. The cache read is the share of the context tokens read from the cache, with the token count as its tooltip. A model with no priced turn reads 'not reported' and never $0. A model with some priced turns reads 'N of M priced' beside its cost. Turns that name no model fall under '(no model recorded)'. Priced models come first, by cost. The costs add up to the run's cost report",
+    )
+    facts = Text(
+        "#detail-facts",
+        "Run",
+        does="the run's facts, each with a copy button: Started, Branch, Run id and Run directory when known. A native run adds its Checkout path, and a container run has none, because its workspace volume is not a path on the operator's machine. A run that ended adds Ending and Ended (or Last record), and a run with a pid or gas adds them. The section shows on a run with no finished node too",
+    )
+    copy = Button(
+        "#detail-facts button.copy",
+        "Copy run id",
+        does="copies the fact beside it and works from Enter and Space. Its name is 'Copy <fact>', such as Copy branch or Copy run directory. A status note beside it reads 'Copied <fact>' for four seconds, or 'Could not copy <fact>' when the browser refuses the write, and a screen reader announces it",
+    )
+    sessions_table = Text(
+        "table[aria-label=\"Sessions\"]",
+        "Sessions",
+        does="one row per session, the same count as the Active time tile. Each row gives when the session started, its active time, how long the run stayed stopped before the next session and how the session stopped. The ending reads finished, interrupted, reloaded, failed or crashed, with the recorded message or error class after a colon. A session whose root span recorded no ending reads 'no recorded ending'. The last session of a running or blocked run reads 'running', with 'still running' in place of the gap",
+    )
     activity = Text("#tab-activity", "Activity", does="the tab of the run's turns")
     rejected = Text("#toasts .toast:has(.t-title:text(\"answer not taken\"))", "toast", does="the notice shown when groom refuses the answer, with the reason groom gave")

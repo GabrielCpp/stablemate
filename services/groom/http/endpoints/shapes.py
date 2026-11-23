@@ -224,7 +224,7 @@ HEAD = Object(
     exit_ok=Field(Bool(), does="true when the run exited with code 0"),
     activity=Field(Str()),
     worktree=Field(Str()),
-    checkout=Field(Str()),
+    checkout=Field(Str(), does="the checkout path of a native run, shown among the run's facts; empty for a container run, whose workspace volume is not a path on the operator's machine"),
 )
 
 METRICS = Object("Metrics", empty=Field(Bool()), cells=Field(List(Str())), alerts=Field(List(Str())), run_dir=Field(Str()))
@@ -367,7 +367,12 @@ STANDING = Object(
     problems=Field(Int(), does="failed steps plus retries plus failed gate checks plus churn alerts; an answered gate is not one"),
 )
 
-FACTS = Object("Facts", started_ts=Field(Num(), nullable=True), branch=Field(Str()), run_dir=Field(Str()))
+FACTS = Object(
+    "Facts",
+    started_ts=Field(Num(), nullable=True, does="when the run's first span began; null when the run has no span"),
+    branch=Field(Str(), does="the branch of the run's latest span that names one; empty when none does"),
+    run_dir=Field(Str(), does="the run directory of the run's latest span that names one; empty when none does"),
+)
 
 OVERVIEW = Object(
     "Overview",
@@ -390,10 +395,20 @@ OVERVIEW = Object(
         does="null when no turn of the run carries a work item. Otherwise it holds rows with each item's passes, seconds, cost and outcome, an outside row for the work done under no item, and a total",
     ),
     time_s=Field(Num()),
-    clock=Field(Map(Str()), nullable=True),
-    models=Field(List(Str())),
-    sessions=Field(List(ENTRY), does=EMPTY_BECAUSE),
-    facts=Field(FACTS),
+    clock=Field(
+        Map(Str()),
+        nullable=True,
+        does="where the wall clock went, in seconds: agent, deterministic, infra, wait, unclassified and resume_gap add up to wall, and the first three add up to the active time. It is the time partition `groom profile` prints. " + OPAQUE_CLOCK,
+    ),
+    models=Field(
+        List(Str()),
+        does="one entry per model with its turns, priced turns, cost, output, input and cache tokens and cache read share; the cost is null when no turn of the model is priced. " + OPAQUE_CLOCK,
+    ),
+    sessions=Field(
+        List(ENTRY),
+        does="one entry per session, the count of figures.sessions: its start, end, active seconds, the gap to the next session, null for the last, and how its root span ended, null when none recorded an ending. " + EMPTY_BECAUSE,
+    ),
+    facts=Field(FACTS, does="the run's start time, branch and run directory, read from its spans"),
     as_of_ts=Field(Num(), nullable=True),
     ending=Field(Map(Str()), nullable=True, does="why a stopped run did not finish; null for a run with no recorded ending"),
 )
