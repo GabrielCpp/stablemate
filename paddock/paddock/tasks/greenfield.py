@@ -112,7 +112,7 @@ class Fixture:
             "scaffolds": joined(self.docs_scaffold, surface.scaffolds),
             "init_cmd": surface.init_cmd,
             "marker": surface.marker,
-            "workflows": "coder,author",
+            "assistants": "claude,codex",
         })
 
 

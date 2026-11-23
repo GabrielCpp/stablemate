@@ -274,3 +274,10 @@ def test_the_seed_is_recorded_and_never_rerun(tmp_path: Path, monkeypatch: pytes
 def test_an_unfinished_phase_shows_in_the_report() -> None:
     lines = greenfield.phase_lines([{"phase": "coder", "run_dir": "coder-coder", "rc": None, "wall_s": 60.0}])
     assert any("unfinished" in line for line in lines)
+
+
+def test_genesis_accepts_every_param_the_round_passes(tmp_path: Path) -> None:
+    genesis = pytest.importorskip("workhorse_workflows.coder.genesis.flow").Genesis
+    params = json.loads(FIXTURE.params(tmp_path, FIXTURE.surfaces[0]))
+    assert set(params) <= set(genesis.model_fields)
+    assert params["assistants"] == "claude,codex"
