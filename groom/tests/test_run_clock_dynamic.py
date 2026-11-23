@@ -199,6 +199,28 @@ def test_a_copy_button_works_from_the_keyboard_and_confirms_in_text_a_screen_rea
             page.close()
 
 
+def test_each_fact_carries_a_copy_button_that_copies_what_it_shows():
+    from playwright.sync_api import expect
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    with _run("clock-facts") as run:
+        page = _open(live)
+        try:
+            _pick(page, run)
+            _stub_clipboard(page, "ok")
+            facts = page.locator("#detail-facts")
+            expect(facts).to_be_visible()
+            for what in ("start time", "branch", "run directory", "run id"):
+                shown = facts.locator("dd", has=page.get_by_role("button", name="Copy " + what, exact=True)).locator(".fv").inner_text()
+                page.get_by_role("button", name="Copy " + what, exact=True).click()
+                expect(facts.get_by_text("Copied " + what)).to_be_visible()
+                assert page.evaluate("() => window.__copied.at(-1)") == shown
+                assert shown
+        finally:
+            page.close()
+
+
 def test_a_failed_clipboard_write_says_so():
     from playwright.sync_api import expect
 
