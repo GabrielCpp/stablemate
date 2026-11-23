@@ -94,6 +94,7 @@ def test_the_last_turn_age_counts_up_every_second_and_asks_the_server_for_nothin
             _pick(page, run)
             _post_turn(live, "00000000000000c2", usd=1.0, run=run, node="dev")
             expect(page.get_by_role("tabpanel")).to_contain_text("$4.50")
+            page.wait_for_timeout(1500)
             requests = _api_requests(page)
             readings = []
             for _ in range(4):
