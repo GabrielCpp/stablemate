@@ -358,6 +358,18 @@ def test_pressing_the_control_switches_between_following_and_paused(tmp_path):
         assert _in_view(page, _newest(page))
 
 
+def test_a_scroll_event_that_moved_nothing_does_not_resume_a_paused_follow(tmp_path):
+    from playwright.sync_api import expect
+
+    with _following(tmp_path, "fol-still") as (_live, page, _name):
+        page.locator(CONTROL).click()
+        expect(page.locator(CONTROL)).to_have_text("Paused")
+        assert _bottom_gap(page) <= 4
+        page.locator(LIST).evaluate("el => el.dispatchEvent(new Event('scroll'))")
+        page.wait_for_timeout(300)
+        expect(page.locator(CONTROL)).to_have_text("Paused")
+
+
 def test_a_lost_connection_says_the_timeline_is_not_connected(tmp_path):
     from playwright.sync_api import expect
 

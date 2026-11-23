@@ -2699,10 +2699,11 @@ function ActivityTab({ detail }) {
     const list = event.currentTarget;
     const away = list.scrollHeight - list.clientHeight - list.scrollTop;
     const up = list.scrollTop < lastTop.current;
+    const down = list.scrollTop > lastTop.current;
     lastTop.current = list.scrollTop;
     if (!alive) return;
     if (activity.follow && up && away > FOLLOW_EDGE) pauseFollow(alive);
-    else if (!activity.follow && away <= FOLLOW_EDGE) resumeFollow();
+    else if (!activity.follow && down && away <= FOLLOW_EDGE) resumeFollow();
   };
   const toggle = () => (activity.follow ? pauseFollow(alive) : resumeFollow());
   const back = () => {
