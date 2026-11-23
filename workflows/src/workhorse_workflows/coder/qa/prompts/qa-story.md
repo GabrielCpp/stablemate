@@ -223,8 +223,9 @@ unblock you and what you ruled out.
 ## Commit Identity
 
 Commit nothing but QA artifacts that live in the repo: the stack definition, the regression specs, local
-config. Every commit carries `Epic: {{ workhorse_var('epic') }}` and
-`Story: {{ workhorse_var('story_id') }}` as footers, spelled exactly so. Do not push.
+config. Close the message with one trailer block: `Epic: {{ workhorse_var('epic') }}` and
+`Story: {{ workhorse_var('story_id') }}`, then every other trailer such as Co-Authored-By, as one
+last paragraph with no blank line between them. Never put a blank line after `Story:`. Spell them exactly so. Do not push.
 
 ## Machine-Readable Result (required)
 

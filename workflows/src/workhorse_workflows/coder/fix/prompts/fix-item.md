@@ -136,9 +136,9 @@ this session.
 
 ## Commit Identity
 
-Commit the completed repair in each repository it changed. Every commit carries
-`Epic: {{ workhorse_var('epic') }}` and `Story: {{ workhorse_var('story_id') }}` as footers,
-spelled exactly so, and nowhere else in the message. Do not push and do not open a pull
+Commit the completed repair in each repository it changed. Close the message with one trailer block: `Epic: {{ workhorse_var('epic') }}` and
+`Story: {{ workhorse_var('story_id') }}`, then every other trailer such as Co-Authored-By, as one
+last paragraph with no blank line between them. Never put a blank line after `Story:`. Spell them exactly so, and put them nowhere else in the message. Do not push and do not open a pull
 request. The workflow owns both.
 
 ## Return Format

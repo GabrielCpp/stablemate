@@ -50,8 +50,9 @@ again.
    repository's code. Common causes are generated-file drift, formatting, a failing test and
    a build break. Keep the change scoped to what CI flagged, and refactor nothing else.
 6. **Verify.** Re-run the failing job's commands yourself, and leave them green.
-7. **Commit** on `{{ ci_branch }}`. Every commit carries `Epic: {{ ci_epic }}` as a
-   trailer, spelled exactly so. The run record ties a commit to its epic through it. Do not
+7. **Commit** on `{{ ci_branch }}`. Close the message with one trailer block: `Epic: {{ ci_epic }}`, then every other trailer such
+   as Co-Authored-By, as one last paragraph with no blank line between them. This lane carries
+   no Story trailer. Spell the Epic trailer exactly so. The run record ties a commit to its epic through it. Do not
    push, and do not open or merge a pull request.
 
 This lane may not add or change a user-facing service, screen, component, command,
