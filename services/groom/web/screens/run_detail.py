@@ -150,7 +150,71 @@ class RunDetail(Screen):
         "Sessions",
         does="one row per session, the same count as the Active time tile. Each row gives when the session started, its active time, how long the run stayed stopped before the next session and how the session stopped. The ending reads finished, interrupted, reloaded, failed or crashed, with the recorded message or error class after a colon. A session whose root span recorded no ending reads 'no recorded ending'. The last session of a running or blocked run reads 'running', with 'still running' in place of the gap",
     )
-    activity = Text("#tab-activity", "Activity", does="the tab of the run's turns")
+    activity = Text(
+        "#tab-activity",
+        "Activity",
+        does="the tab of the run's agent turns, directly after Overview, so the tabs read Overview, Activity, Files and Diff, and Overview and Activity alone on a run without a sidecar. A native run's tab works as a container run's does",
+    )
+    activity_list = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .tl[role="log"]',
+        "Run activity",
+        does="the run's agent turns, oldest first, as a log a screen reader can follow. A finished run's turn that the timeline still holds as running reads as ended with no record",
+    )
+    activity_turn = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev',
+        "turn",
+        does="one agent turn: its start time, its node, its one-line result, its duration and its cost. Its accessible name says the node, the state in words (running, finished, failed or ended with no record), when it started, the figures and the result. Pressing it, by mouse or by keyboard, opens the turn in the reading pane beside the list and marks the row with aria-current",
+    )
+    turn_head = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd > .rd-head',
+        "turn header",
+        does="the node, the work item, a chip that says running, finished, failed or no record, the flow and its pass, the visit, the model, the duration, the cost and the output tokens. A turn outside any flow shows no pass. A running turn shows its elapsed time, reads its cost as landing at the turn's end, and leaves out the figures it cannot know yet",
+    )
+    turn_body = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd .rd-body',
+        "Turn",
+        does="the turn's messages and tool calls in order, named 'Turn <node>' and scrollable from the keyboard. A message reads as prose: its markdown is formatted, raw HTML in it is shown as text, an image becomes its alt text, and the result goes through DOMPurify, so no script runs. A turn whose record could not be matched says its messages and tool calls are not shown. A running turn whose start the live history dropped says its earlier output is not shown",
+    )
+    turn_tool = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd .at-tool-head',
+        "tool call",
+        does="one tool call on one line, its name and a short summary set as text, so markup in either shows as written. A failed call says failed in words and shows its output below the line",
+    )
+    turn_reading = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd .detail-empty.loading',
+        "Reading this turn…",
+        does="shown while the turn is read, announced as a status, and gone when the turn appears. A turn of an archived run reads 'Reading this turn from the archive…'",
+    )
+    turn_unreadable = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd .act-state:has(button.retry-turn)',
+        "This turn could not be read",
+        does="shown in the pane when the turn's read fails, announced as an alert, with 'The rest of the run is still here.' The list stays as it was",
+    )
+    turn_retry = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] button.retry-turn',
+        "Retry now",
+        does="reads the turn again. A read that succeeds replaces the failure with the turn",
+    )
+    activity_reading = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .detail-empty.loading:text("Reading this run")',
+        "Reading this run's activity…",
+        does="shown while the run's timeline is read, announced as a status",
+    )
+    activity_unreadable = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .act-state:has(button.retry-activity)',
+        "This run's activity could not be read",
+        does="shown when the timeline's read fails, announced as an alert, with 'The Overview tab still works.' It never reads as a run with no activity",
+    )
+    activity_retry = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] button.retry-activity',
+        "Retry now",
+        does="reads the timeline again. A read that succeeds replaces the failure with the list",
+    )
+    activity_empty = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .empty-big[role="status"]',
+        "No activity yet",
+        does="shown when the timeline holds no turn: 'No activity yet. The first agent turn appears here when it starts.', then 'The run is alive: last beat <time> ago.' for a live run or 'The run has finished.' for an ended one. A run that reported no telemetry says so in its place",
+    )
     files_tab = Text(
         "#tab-files",
         "Files",
