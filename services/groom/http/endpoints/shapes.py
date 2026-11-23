@@ -319,17 +319,17 @@ FILE_TEXT = Object(
 
 DIFF = Object(
     "Diff",
-    diff=Field(Str(), does="the `git diff HEAD` text of the checkout"),
+    diff=Field(Str(), does="the `git diff HEAD` text of the checkout, or on a branch view the `git diff <base>` text"),
     untracked=Field(List(Str()), does="the paths git does not track yet, which `git diff` leaves out"),
     failed=Field(Bool(), does="true when either git command failed or timed out, or no checkout could be read, so a failed read is never an empty diff"),
     reported=Field(Bool(), does="false when the sidecar sent no `failed`, so an empty diff from a sidecar too old to report failure cannot be confirmed"),
     served=Field(Enum(("sidecar", "volume"))),
     repos=Field(List(Str()), required=False, does="the checkouts a sidecar names, when it names them"),
     based=Field(Bool(), required=False, does="whether a sidecar reported where the branch started, on a branch view"),
-    base=Field(Str(), required=False),
-    base_ref=Field(Str(), required=False),
-    base_branch=Field(Str(), required=False),
-    base_reason=Field(Str(), required=False),
+    base=Field(Str(), required=False, does="the merge base of the checkout's `HEAD` and its default branch; empty when there is none to compare against"),
+    base_ref=Field(Str(), required=False, does="the ref the default branch was found at: `origin/<name>` from `origin/HEAD`, else a local `main` or `master`"),
+    base_branch=Field(Str(), required=False, does="the default branch's name"),
+    base_reason=Field(Str(), required=False, does="empty when a base was found, `default-branch` when the checkout is on its default branch, `not-found` when there is no default branch or no shared history"),
 )
 
 REFRESHED = Object("Refreshed", ok=Field(Bool()), count=Field(Int(), does="how many workflows the scan found"))

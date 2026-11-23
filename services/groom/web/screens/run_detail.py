@@ -225,17 +225,42 @@ class RunDetail(Screen):
     diff_tab = Text(
         "#tab-diff",
         "Diff",
-        does="the tab of a live container run whose row says a sidecar is connected, after Overview, Activity and Files. A native run, an ended run and a container run with no connected sidecar have no Diff tab. It appears within five seconds of the sidecar connecting, with no reload. Selecting the run reads the diff once and a sidecar that connects while its run is selected reads it once more. A run that is not selected costs no read. When the run ends while Diff is open the tab goes and Overview shows. When the sidecar drops the tab stays and reads 'stale', with the last diff kept. With more than one checkout, the tab reads the checkout the selector shows.",
+        does="the tab of a live container run whose row says a sidecar is connected, after Overview, Activity and Files. A native run, an ended run and a container run with no connected sidecar have no Diff tab. It appears within five seconds of the sidecar connecting, with no reload. Selecting the run reads the diff once and a sidecar that connects while its run is selected reads it once more. A run that is not selected costs no read. When the run ends while Diff is open the tab goes and Overview shows. When the sidecar drops the tab stays and reads 'stale', with the last diff kept. With more than one checkout, the tab reads the checkout the selector shows. The tab reads the view the Diff view switch shows.",
+    )
+    diff_view = Text(
+        "#detail-diff-view-switch",
+        "Diff view",
+        does="the switch on the Diff tab and on no other tab, a group named Diff view with the buttons Uncommitted and Since branch start, one of them pressed. Uncommitted is the default for a run the page has not seen. Each button exposes its pressed state and works from the keyboard, and the pressed one is marked by weight and an underline beside its colour. Choosing a view reads that view of the selected checkout, and the tab's size and tree follow it. The position is held per run in the browser, and it holds across a refresh of the diff, another tab of the run, another checkout, and another run and back. Uncommitted sends the read with no view, so the reply is the one the terminal client gets",
+    )
+    diff_branch_empty = Text(
+        "#detail-diff-branch-empty",
+        "This branch has no change since it started",
+        does="'This branch has no change since it started at <short commit> on <branch>.', with no count on the tab. A branch whose only change is untracked lists those files and says 'No tracked file has changed since this branch started at <short commit> on <branch>.'",
+    )
+    diff_branch_missing = Text(
+        "#detail-diff-branch-missing",
+        "Where this branch started could not be found",
+        does="shown when the sidecar finds no default branch ('The checkout has no default branch to compare with.') or a branch sharing no history with it ('This branch shares no history with <branch>.'), each with 'Uncommitted still works.' and a Retry now button. The tab shows no count, and the bar shows no read time or refresh. It clears when a read finds the start",
+    )
+    diff_branch_default = Text(
+        "#detail-diff-branch-default",
+        "its default branch",
+        does="'This checkout is on <branch>, its default branch, so it has no branch of its own to compare.'",
+    )
+    diff_branch_old = Text(
+        "#detail-diff-branch-old",
+        "This view needs a newer sidecar",
+        does="shown when the sidecar reports no branch start, with 'Uncommitted still works.' It never shows that sidecar's uncommitted diff as this view",
     )
     diff_size = Text(
         "#detail-diff-count",
         "+N −M",
-        does="the lines added and removed by the tracked change, shown on the tab before it is opened. A file git does not track yet adds nothing. A clean checkout, a checkout with only untracked files and an unreadable read show no count. The tab's name carries the size as words, 'Diff, N lines added, M lines removed', so it reads without color",
+        does="the lines added and removed by the tracked change, shown on the tab before it is opened. A file git does not track yet adds nothing. A clean checkout, a checkout with only untracked files and an unreadable read show no count. The tab's name carries the size as words, 'Diff, N lines added, M lines removed', so it reads without color. It is the size of the view being read",
     )
     diff_read = Text(
         "#detail-diff-read",
         "read",
-        does="when the diff was read, as a clock time and an age that ticks each second, and 'reading…' while a refresh is under way",
+        does="when the diff was read, as a clock time and an age that ticks each second, and 'reading…' while a refresh is under way. It is hidden, with the refresh, while Since branch start has no start to compare against",
     )
     diff_refresh = Button(
         "#detail button[aria-label=\"Read the diff again\"]",
@@ -245,7 +270,7 @@ class RunDetail(Screen):
     diff_tree = Text(
         "#detail-panel .fd-tree",
         "changed files",
-        does="the changed files in a folder tree, each with its lines added and removed. A chain of single-child folders is one row. Files git does not track yet sit in their own group, 'Not tracked by git yet', with no counts. The lines equal what `git diff HEAD` reports for the checkout",
+        does="the changed files in a folder tree, each with its lines added and removed. A chain of single-child folders is one row. Files git does not track yet sit in their own group, 'Not tracked by git yet', with no counts. The lines equal what `git diff HEAD` reports for the checkout on Uncommitted, and what `git diff <merge base>` reports on Since branch start, where the merge base is that of the checkout's `HEAD` and its default branch",
     )
     diff_file = Button(
         "#detail-panel .fd-tree .tree-file",
@@ -255,7 +280,7 @@ class RunDetail(Screen):
     diff_file_head = Text(
         "#detail-diff-file-head",
         "file header",
-        does="the path of the shown file, its lines added and removed, the word 'uncommitted', and 'new file', 'deleted file' or 'renamed from <old path>' in words",
+        does="the path of the shown file, its lines added and removed, the word 'uncommitted', or on Since branch start 'since <short commit> on <branch>' with the full commit and the ref it was found at as its title, and 'new file', 'deleted file' or 'renamed from <old path>' in words",
     )
     diff_changes = Text(
         "#detail-panel .fd-view[role=\"region\"]",
@@ -265,12 +290,12 @@ class RunDetail(Screen):
     diff_reading = Text(
         "#detail-panel .detail-empty.loading",
         "Reading the diff…",
-        does="shown while the first read is under way, announced as a status, and gone when the diff arrives",
+        does="shown while the first read is under way, announced as a status, and gone when the diff arrives. On Since branch start it reads 'Reading the change since the branch started…'",
     )
     diff_unreadable = Text(
         "#detail-diff-unreadable",
         "This diff could not be read",
-        does="shown for a read git failed, a sidecar error or text diff2html cannot parse, with 'This does not mean there are no changes.' It never reads as no changes, and it clears when a read succeeds",
+        does="shown for a read git failed, a sidecar error or text diff2html cannot parse, with 'This does not mean there are no changes.' It never reads as no changes, and it clears when a read succeeds. On Since branch start it reads 'This view could not be read' with 'This does not mean there is no change.'",
     )
     diff_retry = Button("#detail-diff-unreadable button", "Retry now", does="reads the diff again")
     diff_empty = Text(

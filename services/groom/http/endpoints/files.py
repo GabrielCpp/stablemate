@@ -47,7 +47,7 @@ class ReadDiff(Endpoint):
     )
     answers = (Answer(200, DIFF, "the diff, the untracked files and whether the read failed"),)
     source = (APP + "diff", APP + "_branch_start", "groom/groom/gitdiff.py", *READERS)
-    does = "Reads the change of one run's checkout, from its sidecar or else from its volume. A run with no volume fails the read."
+    does = "Reads the change of one run's checkout, from its sidecar or else from its volume. A run with no volume fails the read. With `view=branch` it reads only from the sidecar, against the merge base the sidecar computes, and a run with no sidecar fails the read. With no `view` the reply is the uncommitted read, unchanged."
     carries = actions.ReadDiff
 
 
