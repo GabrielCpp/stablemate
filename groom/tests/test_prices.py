@@ -302,3 +302,17 @@ if __name__ == "__main__":
             print(f"FAIL  {fn.__name__}: {type(e).__name__}: {e}")
     print(f"\n{len(fns) - failed}/{len(fns)} passed")
     raise SystemExit(1 if failed else 0)
+
+
+def test_a_claude_turn_that_spent_no_tokens_charges_nothing():
+    with _env():
+        zero = {key: 0 for key in _TOKENS}
+        worked = _turn("q" * 16, "claude-sonnet-5", _TOKENS, cost=5.56)
+        capped = _turn("r" * 16, "claude-sonnet-5", zero, cost=5.56)
+        for span in (worked, capped):
+            span["attrs"]["backend"] = "claude"
+        store.insert_spans([worked, capped])
+
+        charged = {span["span_id"]: span["profile_cost_usd"] for span in store.run_turn_spans("R1")}
+
+        assert charged == {"q" * 16: 5.56, "r" * 16: 0.0}

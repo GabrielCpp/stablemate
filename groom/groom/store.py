@@ -791,7 +791,14 @@ def _charges(scope: str) -> str:
     )
 
 
-_charge = f"COALESCE(charges.charge_usd, {_cost})"
+_idle = (
+    "json_extract(attrs_json, '$.backend') IN ("
+    + ", ".join(f"'{backend}'" for backend in SESSION_TOTAL_BACKENDS)
+    + ") AND "
+    + " AND ".join(f"COALESCE({tokens}, -1) = 0" for tokens in (_input, _output, _cache_read, _cache_write))
+)
+
+_charge = f"CASE WHEN {_idle} THEN 0.0 ELSE COALESCE(charges.charge_usd, {_cost}) END"
 
 _ESTIMABLE = (
     "name = 'agent_turn' AND ("
