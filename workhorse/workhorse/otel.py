@@ -1198,6 +1198,8 @@ class _Telemetry(Telemetry):
                 self._turn_active.set(1, attrs)
             if self._turn_idle is not None:
                 self._turn_idle.set(0.0, attrs)
+            if self._turn_compactions is not None:
+                self._turn_compactions.set(0, attrs)
             if self._turn_elapsed is not None:
                 self._turn_elapsed.set(0.0, attrs)
 
@@ -1232,6 +1234,8 @@ class _Telemetry(Telemetry):
                 self._turn_active.set(0, attrs)
             if self._turn_idle is not None:
                 self._turn_idle.set(0.0, attrs)
+            if self._turn_compactions is not None:
+                self._turn_compactions.set(0, attrs)
             if self._turn_elapsed is not None:
                 self._turn_elapsed.set(0.0, attrs)
 

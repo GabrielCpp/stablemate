@@ -995,6 +995,19 @@ def test_turn_lifecycle_clears_stale_idle_when_the_turn_ends():
     )
 
 
+def test_turn_start_zeroes_the_compaction_count_of_the_previous_turn():
+    t, _, meter, _ = _telemetry()
+
+    t.turn_start("investigate", "sonnet", "high", 300.0)
+    t.turn_compactions("investigate", 3)
+    t.turn_end()
+    t.turn_start("investigate", "sonnet", "high", 300.0)
+
+    records = meter.instruments["workhorse.turn.compactions"].records
+    assert records[-1] == ("set", 0, {"node": "investigate"})
+    assert ("set", 3, {"node": "investigate"}) in records
+
+
 def test_run_heartbeat_tick_reports_the_open_node_and_its_age():
     """One tick of the background loop."""
     t, _, meter, _ = _telemetry()
