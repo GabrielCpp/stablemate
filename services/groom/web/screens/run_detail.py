@@ -59,5 +59,30 @@ class RunDetail(Screen):
         "Attention",
         does="the gates of the run, the time spent waiting on them and the problem count. With any problems, the count is a button that opens the Activity tab with problems on. It counts failed steps, backend retries, failed gate checks and churn alerts, so it is never below the retries, and an answered gate does not count",
     )
+    breakdown_view = Text(
+        "[role=group][aria-label=\"Breakdown view\"]",
+        "Breakdown view",
+        does="the switch above the time and cost table: By flow, By node and, only for a run whose turns carry a work item, By work item. By flow is the default. Each button exposes its pressed state and works from the keyboard. The choice survives a trip to Activity and back and a live refresh, and selecting another run resets it to By flow",
+    )
+    breakdown_sort = Text(
+        "[role=group][aria-label=\"Sort by\"]",
+        "Sort by",
+        does="the Time and Cost buttons that order the rows of By flow and By node. Each exposes its pressed state. Sorting runs in the browser with no request, ranks by output tokens when the backend reports no cost, and is absent on By work item. The sort survives a trip to Activity and back and a live refresh, and selecting another run resets it to Time",
+    )
+    flow_table = Text(
+        "table[aria-label=\"Time and cost per flow\"]",
+        "Time and cost per flow",
+        does="By flow: the flow, state and node rows with visits, time, time share, cost, cost share and retries. The rows add up to the run's time and cost",
+    )
+    node_table = Text(
+        "table[aria-label=\"Time and cost per node\"]",
+        "Time and cost per node",
+        does="By node: one row per node, merged across the flows and states that reach it, with kind, visits, time, mean, the mean against the node's median, longest visit, cost, cost share and retries. The times equal the leaves of the tree `groom profile` prints. The comparison heading reads 'vs median of N' from the successful runs of the same workflow, and under five such runs it reads 'vs median: N runs, under five' with the cells blank. On a live run a mean 20% or more above the median reads 'longer' in words beside the warning color",
+    )
+    item_table = Text(
+        "table[aria-label=\"Time and cost per work item\"]",
+        "Time and cost per work item",
+        does="By work item: one row per item with its passes, agent time, cost and outcome, the item touched last on a live run marked 'open'. An 'outside any work item' row and a Total make the rows add up to the run's time and cost. The outcome reads done or not counted from the run's progress count, and is blank when no count was reported",
+    )
     activity = Text("#tab-activity", "Activity", does="the tab of the run's turns")
     rejected = Text("#toasts .toast:has(.t-title:text(\"answer not taken\"))", "toast", does="the notice shown when groom refuses the answer, with the reason groom gave")
