@@ -8,14 +8,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from groom.attend_transcript import _text_of, session_message, tool_subject
+from groom.attend_transcript import MAX_DETAIL_CHARS, _result_text, _text_of, session_message, tool_subject
 from groom.projection import transcript_entry
 
 Window = tuple[float, float]
 
 MAX_RESULT_CHARS = 1_000_000
-
-MAX_DETAIL_CHARS = 4000
 
 
 def _records(path: Path) -> Iterator[dict[str, Any]]:
@@ -64,14 +62,6 @@ def _tool(
         "detail": detail[:MAX_DETAIL_CHARS], "result": result[:MAX_RESULT_CHARS], "failed": failed,
         "duration_s": duration_s,
     }
-
-
-def _result_text(content: Any) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        return "\n".join(str(block.get("text") or "") for block in content if isinstance(block, dict) and block.get("type") == "text")
-    return ""
 
 
 def _span(begun: float | None, ended: float | None) -> float | None:
@@ -164,7 +154,7 @@ def _claude(path: Path, window: Window | None) -> list[dict[str, Any]]:
         for block in results:
             call = pending.pop(str(block.get("tool_use_id") or ""), None)
             if call is not None:
-                call["result"] = _result_text(block.get("content"))[:MAX_RESULT_CHARS]
+                call["result"] = _result_text(block.get("content"), MAX_RESULT_CHARS)
                 call["failed"] = bool(block.get("is_error"))
                 call["duration_s"] = _span(called.pop(id(call), None), stamp)
         if results:

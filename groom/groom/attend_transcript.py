@@ -131,17 +131,18 @@ def _detail_of(args: Any) -> str:
     return "\n".join(lines)[:MAX_DETAIL_CHARS]
 
 
-def _result_text(content: Any) -> str:
+def _result_text(content: Any, limit: int | None = MAX_DETAIL_CHARS) -> str:
     if isinstance(content, str):
-        return content[:MAX_DETAIL_CHARS]
-    if isinstance(content, list):
-        parts = [
+        text = content
+    elif isinstance(content, list):
+        text = "\n".join(
             str(block.get("text") or "")
             for block in content
             if isinstance(block, dict) and block.get("type") == "text"
-        ]
-        return "\n".join(parts)[:MAX_DETAIL_CHARS]
-    return ""
+        )
+    else:
+        return ""
+    return text[:limit]
 
 
 def _entries(path: Path, sidechain: bool = False) -> list[dict[str, Any]]:
