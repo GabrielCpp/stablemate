@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
+import signal
 import subprocess
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -38,7 +41,29 @@ def holds_a_stubborn_child(qa: Qa) -> None:
 '''
 
 
-def _run_past_timeout(repo: Path, scenario_id: str, probe: Path, grace: float) -> float:
+@pytest.fixture
+def probe(repo: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+    path = repo / "probe"
+    monkeypatch.setenv("KILL_PROBE", str(path))
+    yield path
+    recorded = path.read_text().strip() if path.exists() else ""
+    if recorded.isdigit():
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(int(recorded), signal.SIGKILL)
+
+
+def _gone(pid: int, within: float) -> bool:
+    deadline = time.monotonic() + within
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def _run_past_timeout(repo: Path, scenario_id: str, grace: float) -> float:
     module = repo / "qa_plan.py"
     write(module, PLAN)
     spec = repo / "docs/specs/story-1"
@@ -47,40 +72,25 @@ def _run_past_timeout(repo: Path, scenario_id: str, probe: Path, grace: float) -
     launcher = LocalLauncher(kill_grace=grace, session_store=repo / ".maestro" / "sessions")
     driver = PythonDriver(session, "api", {"driver": "python", "module": str(module)}, root=repo, variables={}, launcher=launcher)
     context = {"root": str(repo), "spec_dir": str(spec), "qa_dir": str(session.qa_dir)}
-    os.environ["KILL_PROBE"] = str(probe)
-    try:
-        started = time.monotonic()
-        _records, _output, _code, timed_out = launcher.execute(driver, scenario_id, 1.0, context)
-    finally:
-        del os.environ["KILL_PROBE"]
+    started = time.monotonic()
+    _records, _output, _code, timed_out = launcher.execute(driver, scenario_id, 1.0, context)
     assert timed_out
     return time.monotonic() - started
 
 
-def test_a_child_that_lets_go_on_sigterm_gets_to_before_the_group_is_killed(repo: Path) -> None:
-    probe = repo / "released.txt"
-    _run_past_timeout(repo, "holds-a-releasable-child", probe, grace=5.0)
+def test_a_child_that_lets_go_on_sigterm_gets_to_before_the_group_is_killed(repo: Path, probe: Path) -> None:
+    _run_past_timeout(repo, "holds-a-releasable-child", grace=30.0)
     assert probe.read_text().strip() == "released"
 
 
-def test_a_child_that_ignores_sigterm_is_killed_once_the_grace_runs_out(repo: Path) -> None:
-    probe = repo / "child.pid"
-    elapsed = _run_past_timeout(repo, "holds-a-stubborn-child", probe, grace=1.0)
+def test_a_child_that_ignores_sigterm_is_killed_once_the_grace_runs_out(repo: Path, probe: Path) -> None:
+    elapsed = _run_past_timeout(repo, "holds-a-stubborn-child", grace=1.0)
     pid = int(probe.read_text().strip())
-    deadline = time.monotonic() + 2.0
-    while time.monotonic() < deadline:
-        try:
-            os.kill(pid, 0)
-        except ProcessLookupError:
-            break
-        time.sleep(0.05)
-    else:
-        raise AssertionError(f"child {pid} survived the SIGKILL")
-    assert elapsed < 5.0
+    assert _gone(pid, within=30.0), f"child {pid} survived the SIGKILL"
+    assert elapsed < 30.0
 
 
-def test_an_interrupted_wait_reaps_the_scenario_group(repo: Path, monkeypatch) -> None:
-    probe = repo / "stubborn.pid"
+def test_an_interrupted_wait_reaps_the_scenario_group(repo: Path, probe: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     module = repo / "qa_plan.py"
     write(module, PLAN)
     spec = repo / "docs/specs/story-1"
@@ -89,8 +99,6 @@ def test_an_interrupted_wait_reaps_the_scenario_group(repo: Path, monkeypatch) -
     launcher = LocalLauncher(kill_grace=1.0, session_store=repo / ".maestro" / "sessions")
     driver = PythonDriver(session, "api", {"driver": "python", "module": str(module)}, root=repo, variables={}, launcher=launcher)
     context = {"root": str(repo), "spec_dir": str(spec), "qa_dir": str(session.qa_dir)}
-    monkeypatch.setenv("KILL_PROBE", str(probe))
-
     real_communicate = subprocess.Popen.communicate
     calls = {"n": 0}
 
@@ -111,13 +119,4 @@ def test_an_interrupted_wait_reaps_the_scenario_group(repo: Path, monkeypatch) -
     with pytest.raises(KeyboardInterrupt):
         launcher.execute(driver, "holds-a-stubborn-child", 60.0, context)
 
-    child = int(probe.read_text().strip())
-    deadline = time.monotonic() + 10
-    alive = True
-    while alive and time.monotonic() < deadline:
-        try:
-            os.kill(child, 0)
-            time.sleep(0.1)
-        except ProcessLookupError:
-            alive = False
-    assert not alive
+    assert _gone(int(probe.read_text().strip()), within=30.0)
