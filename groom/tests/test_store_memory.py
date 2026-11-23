@@ -5,6 +5,7 @@ import os
 import re
 import tempfile
 
+from _sql_trace import traced_statements
 from groom import alerts, overview, state, store
 from groom.models import RunTelemetry, WorkflowContainer
 
@@ -133,13 +134,9 @@ def test_broad_telemetry_queries_do_not_scan_the_wide_spans_table():
 
 
 def _whole_table_scans(run_id: str) -> list[str]:
-    conn = store.read_connection()
-    statements: list[str] = []
-    conn.set_trace_callback(statements.append)
-    try:
+    with traced_statements() as statements:
         overview.run_overview(run_id)
-    finally:
-        conn.set_trace_callback(None)
+    conn = store.read_connection()
     scans = []
     for sql in statements:
         if not sql.lstrip().upper().startswith(("SELECT", "WITH")):

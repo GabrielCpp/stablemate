@@ -128,10 +128,10 @@ def test_a_norm_that_changes_after_its_first_read_moves_the_pane_revision_and_th
     with _DB():
         _history(ok=5, failed=0)
         _live()
-        wf = WorkflowContainer(container_id="c1", name="c1", run_id=RUN)
+        wf = WorkflowContainer(container_id="c1", name="c1", run_id=RUN, workflow_type="coder")
         overview.run_overview(RUN)
         start = groom_app._figures_rev(wf)
-        assert norms.revision() == 0
+        assert norms.revision("coder") == 0
         store.insert_spans(
             [_span("late-root", "late", "", "run:coder", "run:coder", 1000.0, 900.0, {"workhorse.terminal": "terminal"}),
              _turn("late-t", "late", "", "build", 1000.0, 400.0, 1.0)]
@@ -141,6 +141,28 @@ def test_a_norm_that_changes_after_its_first_read_moves_the_pane_revision_and_th
             assert groom_app._figures_rev(wf) == start + 1
             assert asyncio.run(norms.refresh("coder", "build")) is False
             assert groom_app._figures_rev(wf) == start + 1
+        finally:
+            pools.shutdown_all()
+
+
+def test_a_norm_change_for_another_workflow_leaves_this_runs_figures_revision_still():
+    with _DB():
+        _history(ok=5, failed=0)
+        _live()
+        coder = WorkflowContainer(container_id="c1", name="c1", run_id=RUN, workflow_type="coder")
+        globex = WorkflowContainer(container_id="c2", name="c2", run_id="other", workflow_type="globex")
+        overview.run_overview(RUN)
+        norms.CACHE[("globex", "build")] = {}
+        coder_start = groom_app._figures_rev(coder)
+        globex_start = groom_app._figures_rev(globex)
+        store.insert_spans(
+            [_span("g-root", "g1", "", "run:globex", "run:globex", 1000.0, 900.0, {"workhorse.terminal": "terminal"}) | {"workflow": "globex"},
+             _turn("g-t", "g1", "", "build", 1000.0, 400.0, 1.0) | {"workflow": "globex"}]
+        )
+        try:
+            assert asyncio.run(norms.refresh("globex", "build")) is True
+            assert groom_app._figures_rev(coder) == coder_start
+            assert groom_app._figures_rev(globex) == globex_start + 1
         finally:
             pools.shutdown_all()
 

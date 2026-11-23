@@ -15,6 +15,7 @@ import pytest
 from litestar.testing import TestClient
 from _settle import settled, until
 
+from _sql_trace import traced_statements
 from groom import app as groom_app
 from groom import discovery, live, sidecar_hub, state, store
 from groom.models import AnswerResult, GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
@@ -349,8 +350,15 @@ def test_a_mark_on_a_quiet_run_sends_nothing_and_reads_no_history():
             await _settle()
         assert queue.empty()
         state.remove_client(queue)
+        with traced_statements() as control:
+            store.read_connection().execute("SELECT 1").fetchall()
+        return opened, pushed, statements, control
 
-    asyncio.run(drive())
+    opened, pushed, statements, control = asyncio.run(drive())
+    assert all(detail["found"] for detail in pushed)
+    assert {detail["figures_rev"] for detail in pushed} == {opened}
+    assert statements == []
+    assert _reads(control) == ["SELECT 1"]
 
 
 def _transcript_line(text: str, ts: float) -> str:
@@ -590,6 +598,7 @@ def test_a_span_batch_moves_the_watched_figures_revision_and_only_for_an_open_pa
         live.bind(asyncio.get_running_loop())
         await groom_app._store_history_batch([span], store.insert_spans)
         assert not state.HISTORIES
+        assert _reads(unopened) == []
         queue = asyncio.Queue()
         state.add_client(queue)
         await groom_app._handle_command({"cmd": "watch", "run_id": "worker"}, queue)

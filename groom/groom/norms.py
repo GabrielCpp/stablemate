@@ -12,13 +12,13 @@ MIN_RUNS = store.MIN_NORM_RUNS
 CACHE: dict[tuple[str, str], dict[str, dict[str, Any]]] = {}
 _NODE_OF_RUN: dict[str, tuple[str, str]] = {}
 _COMPUTING: set[tuple[str, str]] = set()
-_REVISION = [0]
+_REVISION: dict[str, int] = {}
 KINDS = {"agent": "turn", "step": "step"}
 
 
-def revision() -> int:
-    """How many cached norms changed after their first read, so a pane knows its comparison is stale."""
-    return _REVISION[0]
+def revision(workflow: str) -> int:
+    """How many of one workflow's cached norms changed after their first read, so a pane on that workflow knows its comparison is stale."""
+    return _REVISION.get(workflow, 0)
 
 
 def cached(workflow: str, node: str) -> dict[str, dict[str, Any]] | None:
@@ -60,7 +60,7 @@ async def refresh(workflow: str, node: str) -> bool:
         _COMPUTING.discard(key)
     changed = CACHE.get(key) != computed
     if changed and key in CACHE:
-        _REVISION[0] += 1
+        _REVISION[workflow] = _REVISION.get(workflow, 0) + 1
     CACHE[key] = computed
     return changed
 
@@ -83,4 +83,4 @@ def reset() -> None:
     CACHE.clear()
     _NODE_OF_RUN.clear()
     _COMPUTING.clear()
-    _REVISION[0] = 0
+    _REVISION.clear()

@@ -108,9 +108,11 @@ def _all_workflows() -> list:
 
 
 def _figures_rev(wf: WorkflowContainer) -> int:
-    """How many span batches the watched run has absorbed plus how many cached norms changed after their first read, so a pane knows when its Overview figures are stale."""
-    history = state.HISTORIES.get(projection.run_id_of(wf))
-    return (history.revision if history is not None else 0) + norms.revision()
+    """How many span batches the watched run has absorbed plus how many cached norms of its workflow changed after their first read, so a pane knows when its Overview figures are stale."""
+    run_id = projection.run_id_of(wf)
+    history = state.HISTORIES.get(run_id)
+    workflow = projection.run_workflow(wf, state.RUNS.get(run_id))
+    return (history.revision if history is not None else 0) + norms.revision(workflow)
 
 
 _NORM_TASKS: set[asyncio.Task] = set()
