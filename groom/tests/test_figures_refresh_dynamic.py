@@ -208,6 +208,47 @@ def test_a_refresh_that_fails_keeps_the_old_figures_and_catches_up_with_no_new_t
             page.close()
 
 
+def test_a_refresh_keeps_the_scroll_position_of_the_open_overview_while_held_and_after():
+    from playwright.sync_api import expect
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    with _isolated_run("refresh-scroll") as run:
+        page = _open(live)
+        held: list = []
+        try:
+            page.set_viewport_size({"width": 1400, "height": 330})
+            _pick(page, run)
+            panel = page.get_by_role("tabpanel")
+            expect(panel).to_contain_text("$3.50")
+            _post_metric(live, "workhorse.run.heartbeat", 1, run=run, workflow="coder", node="dev")
+            expect(panel.locator(".now")).to_contain_text("dev")
+            page.wait_for_timeout(LIVE_TICK_WAIT_MS)
+            scroller = panel.locator(".ov").first
+            scroller.evaluate("el => { el.scrollTop = 120; }")
+            assert scroller.evaluate("el => el.scrollTop") == 120
+            mark = "() => document.querySelector('#detail-wall-clock').getBoundingClientRect().top"
+            placed = page.evaluate(mark)
+            page.route(f"**/api/run/{run}/overview", lambda route: held.append(route))
+            _post_turn(live, "00000000000000c8", usd=1.0, run=run, node="dev")
+            deadline = 20
+            while not held and deadline:
+                page.wait_for_timeout(250)
+                deadline -= 1
+            assert len(held) == 1
+
+            assert scroller.evaluate("el => el.scrollTop") == 120
+            assert abs(page.evaluate(mark) - placed) <= 1
+            held[0].continue_()
+            expect(page.locator("#detail-cost-tile")).to_contain_text("$4.50")
+            assert scroller.evaluate("el => el.scrollTop") > 0
+            assert abs(page.evaluate(mark) - placed) <= 1
+        finally:
+            for route in held[1:]:
+                route.continue_()
+            page.close()
+
+
 def test_a_finished_node_loses_the_running_mark_and_the_next_node_gains_it():
     from playwright.sync_api import expect
 
