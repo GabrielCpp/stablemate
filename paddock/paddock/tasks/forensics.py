@@ -342,11 +342,24 @@ def flow_rows(turns: list[dict[str, Any]], run_dir: Path) -> list[dict[str, Any]
 
 
 def flow_costs(run_dir: Path) -> list[dict[str, Any]]:
-    """The per-flow rows of one finished run dir, read back from groom by the run id it recorded."""
+    """The per-flow rows of one finished run dir, read back from groom by its run id and kept to its own start and end."""
     from groom import store
 
-    run_id = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["run_id"]
-    return flow_rows(store.run_turn_spans(run_id), run_dir)
+    record = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    start = _epoch(record.get("started_at"), float("-inf"))
+    end = _epoch(record.get("ended_at"), float("inf"))
+    turns = [turn for turn in store.run_turn_spans(record["run_id"])
+             if start <= float(turn.get("start_ts") or 0.0) <= end]
+    return flow_rows(turns, run_dir)
+
+
+def _epoch(stamp: Any, default: float) -> float:
+    if not isinstance(stamp, str):
+        return default
+    try:
+        return datetime.fromisoformat(stamp).timestamp()
+    except ValueError:
+        return default
 
 
 def flow_cost_lines(rows: list[dict[str, Any]]) -> list[str]:

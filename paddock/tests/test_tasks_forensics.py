@@ -201,6 +201,26 @@ def test_a_round_groom_never_saw_says_so_and_prints_no_zero(tmp_path: Path) -> N
     assert lines == ["cost: groom holds no turn for this run, so start groom before the round"]
 
 
+def test_flow_costs_count_only_turns_inside_the_run_window(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from groom import store
+
+    (tmp_path / "run.json").write_text(json.dumps({
+        "run_id": "coder",
+        "started_at": "2026-11-23T05:00:00+00:00",
+        "ended_at": "2026-11-23T06:00:00+00:00",
+    }), encoding="utf-8")
+    inside = 1795410000.0
+    turns = [
+        {"name": "agent_turn", "node": "qa-story", "start_ts": inside - 86400, "profile_cost_usd": 9.0},
+        {"name": "agent_turn", "node": "qa-story", "start_ts": inside, "profile_cost_usd": 2.0},
+    ]
+    monkeypatch.setattr(store, "run_turn_spans", lambda run: turns)
+
+    rows = fx.flow_costs(tmp_path)
+
+    assert [row["usd"] for row in rows] == [2.0]
+
+
 def test_an_unpriced_turn_falls_back_to_its_estimate(tmp_path: Path) -> None:
     turn = {"name": "agent_turn", "node": "dev-build", "profile_duration_ms": 1000.0}
 
