@@ -436,6 +436,17 @@ _MAIN = [
 ]
 
 
+def test_a_line_that_is_not_a_session_line_adds_nothing_to_the_conversation(attending: Configure):
+    """Claude Code files the request it sent beside the conversation, and a line that carries a message is still not something the attendant said."""
+    attending()
+    blob = {"type": "api-request-blob", "message": {"role": "user", "content": "the request body"}}
+    _transcript("sess-1", [_MAIN[0], blob, *_MAIN[1:]])
+    rendered = attend_transcript.render_session("sess-1")
+    assert [entry.get("text") for entry in rendered["entries"] if entry["kind"] == "message"] == [
+        "Attend this gate.", "Reading the gate first.", "Declining: this is a credential wall.",
+    ]
+
+
 def test_a_session_reads_back_as_a_conversation(attending: Configure):
     """The pane shows what an attendant did and said, the way a terminal would."""
     attending()

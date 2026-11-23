@@ -8,7 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from groom.attend_transcript import _text_of
+from groom.attend_transcript import _text_of, session_message, tool_subject
 from groom.projection import transcript_entry
 
 Window = tuple[float, float]
@@ -56,18 +56,6 @@ def _message(role: str, text: str) -> dict[str, Any]:
     return {"kind": "message", "role": role, "text": text, "collapsed": role == "user"}
 
 
-SUMMARY_KEYS = ("file_path", "filePath", "path", "command", "pattern", "query", "url", "description", "prompt")
-
-
-def _tool_summary(args: Any) -> str:
-    if isinstance(args, dict):
-        for key in SUMMARY_KEYS:
-            value = args.get(key)
-            if isinstance(value, str) and value.strip():
-                return value.strip().splitlines()[0][:160]
-    return ""
-
-
 def _tool(
     name: str, summary: str, detail: str = "", result: str = "", failed: bool = False, duration_s: float | None = None,
 ) -> dict[str, Any]:
@@ -104,7 +92,7 @@ CHUNKS = ("user_message_chunk", "agent_message_chunk", "agent_thought_chunk")
 def _acp_tool(entry: dict[str, Any], update: dict[str, Any]) -> dict[str, Any]:
     """An ACP call is titled with its tool and its arguments, so the tool is the first word and the rest is the summary."""
     head, _, rest = str(entry["name"]).partition(" ")
-    summary = rest.strip() or _tool_summary(update.get("rawInput")) or str(entry["summary"])
+    summary = rest.strip() or tool_subject(update.get("rawInput")) or str(entry["summary"])
     return entry | {"name": head, "summary": summary.splitlines()[0][:160] if summary else ""}
 
 
@@ -163,13 +151,11 @@ def _claude(path: Path, window: Window | None) -> list[dict[str, Any]]:
     pending: dict[str, dict[str, Any]] = {}
     called: dict[int, float | None] = {}
     for record in _records(path):
-        if record.get("type") not in ("user", "assistant"):
+        message = session_message(record)
+        if message is None:
             continue
         stamp = _epoch(record.get("timestamp"))
         if not _within(stamp, window):
-            continue
-        message = record.get("message")
-        if not isinstance(message, dict):
             continue
         role = str(message.get("role") or record.get("type") or "")
         content = message.get("content")
@@ -193,7 +179,7 @@ def _claude(path: Path, window: Window | None) -> list[dict[str, Any]]:
                 continue
             name = str(block.get("name") or "tool")
             args = block.get("input")
-            call = _tool(name, _tool_summary(args), _args_text(args))
+            call = _tool(name, tool_subject(args), _args_text(args))
             entries.append(call)
             if block.get("id"):
                 pending[str(block["id"])] = call
@@ -253,7 +239,7 @@ def _opencode_tool(part: dict[str, Any]) -> dict[str, Any]:
     timing = state.get("time")
     begun, ended = (_epoch(timing.get("start")), _epoch(timing.get("end"))) if isinstance(timing, dict) else (None, None)
     return _tool(
-        name, _tool_summary(args), _args_text(args),
+        name, tool_subject(args), _args_text(args),
         output if isinstance(output, str) else "", state.get("status") == "error", _span(begun, ended),
     )
 

@@ -38,6 +38,8 @@ def _archive() -> Iterator[Path]:
                     )
                     + "\n"
                     + json.dumps({"type": "attachment", "path": "a.png"})
+                    + "\n"
+                    + json.dumps({"type": "api-request-blob", "message": {"role": "user", "content": "request"}})
                     + "\n{ this line never parses\n",
                     encoding="utf-8",
                 )

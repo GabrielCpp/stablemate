@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from groom import store, turns
+from groom.attend_transcript import session_message
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +34,8 @@ def _iso(ts: Any) -> str:
 
 def _message_of(entry: dict[str, Any]) -> dict[str, Any] | None:
     """The message a transcript line carries, in the one shape every backend maps onto."""
-    message = entry.get("message")
-    if isinstance(message, dict) and message.get("role"):
+    message = session_message(entry)
+    if message is not None and message.get("role"):
         kept = {"role": message.get("role"), "content": message.get("content")}
         if message.get("model"):
             kept["model"] = message["model"]

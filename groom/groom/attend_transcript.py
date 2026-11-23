@@ -87,16 +87,35 @@ def _text_of(content: Any) -> str:
     return "\n\n".join(part for part in parts if part).strip()
 
 
+SUMMARY_KEYS = ("file_path", "filePath", "path", "command", "pattern", "query", "url", "description", "prompt")
+
+SESSION_TYPES = ("user", "assistant")
+
+
+def tool_subject(args: Any) -> str:
+    """What the call was *about* — the path, the command, the pattern — as one line."""
+    if isinstance(args, dict):
+        for key in SUMMARY_KEYS:
+            value = args.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip().splitlines()[0][:160]
+    return ""
+
+
+def session_message(record: dict[str, Any]) -> dict[str, Any] | None:
+    """The message of a Claude Code transcript line, or None for a line that is not a session line.
+
+    Claude Code also writes the API requests it sent and its attachments into the same file, and the ones that carry a ``message`` are not part of the conversation.
+    """
+    if record.get("type", SESSION_TYPES[0]) not in SESSION_TYPES:
+        return None
+    message = record.get("message")
+    return message if isinstance(message, dict) else None
+
+
 def _tool_summary(name: str, args: Any) -> str:
-    """One line naming what the call was *about* — the path, the command, the pattern."""
-    if not isinstance(args, dict):
-        return name
-    for key in ("file_path", "path", "command", "pattern", "query", "url", "prompt"):
-        value = args.get(key)
-        if isinstance(value, str) and value.strip():
-            first = value.strip().splitlines()[0]
-            return f"{name}: {first[:160]}"
-    return name
+    subject = tool_subject(args)
+    return f"{name}: {subject}" if subject else name
 
 
 def _detail_of(args: Any) -> str:
@@ -144,8 +163,8 @@ def _entries(path: Path, sidechain: bool = False) -> list[dict[str, Any]]:
             continue
         if not isinstance(record, dict):
             continue
-        message = record.get("message")
-        if not isinstance(message, dict):
+        message = session_message(record)
+        if message is None:
             continue
         role = str(message.get("role") or record.get("type") or "")
         content = message.get("content")
