@@ -131,13 +131,14 @@ class Fix(Gated):
 
     def check(self, laps: int = 0, blocks: int = 0) -> Continue | Await:
         """Run the repo's own gates over what the turn changed, check it left nothing behind, and send what failed back."""
-        failures = self._gate_failures(laps)
+        changed = self._changed_dirs()
+        failures = self._gate_failures(laps, changed)
         state = self.call(
             check_repos_clean,
             self._story.story_slug,
             self._story.spec_dir,
             self._dirty_at(snapshot_owner_baseline),
-            roots=self._changed_dirs(),
+            roots=changed,
             skip_artifacts=True,
         )
         reports = [render_gate(f) for f in failures]
@@ -191,10 +192,10 @@ class Fix(Gated):
         answer = self.call(read_operator_context, self._story.story_path)
         return Continue(answer, self.work, operator_context=answer.content, blocks=blocks)
 
-    def _gate_failures(self, laps: int) -> list[FailureReport]:
+    def _gate_failures(self, laps: int, changed: list[str]) -> list[FailureReport]:
         """The first red gate of each changed repository."""
         failures: list[FailureReport] = []
-        for repo_dir in self._changed_dirs():
+        for repo_dir in changed:
             for gate in GATE_ORDER:
                 outcome = self.call(run_gate, repo_dir, "", gate)
                 if outcome.status == "dirty":

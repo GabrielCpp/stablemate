@@ -190,3 +190,21 @@ def test_a_cut_resolver_turn_lands_on_the_gate(
     assert "the page size is a product decision nobody has made" in gate, gate
     assert "The resolver turn was cut after 180 minutes" in gate, gate
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
+
+
+def test_a_check_pass_reads_what_git_changed_once_for_each_directory(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    """The gates and the leftovers check share one reading of git, so a pass costs one `changed_files` a directory."""
+    flow = Fix()
+    run_env = env()
+
+    drive_flow(flow, run_env, ScriptedAgent(workspace))
+
+    entered = [e.node for e in run_env.writer.read_events() if e.phase == "enter"]
+    checking = entered[: entered.index("check_repos_clean")]
+    reads = checking.count("changed_files")
+    assert reads == len(flow.ctx.dirs), (reads, flow.ctx.dirs, checking)
