@@ -730,7 +730,7 @@ def test_the_time_since_the_last_finished_turn_counts_up_every_second():
         page.close()
 
 
-def _seed_author_history(*, runs: int, step_seconds: float) -> None:
+def _seed_author_history(*, runs: int, step_seconds: float, turn_seconds: float | None = None) -> None:
     from groom import norms, store
 
     for index in range(5):
@@ -738,9 +738,14 @@ def _seed_author_history(*, runs: int, step_seconds: float) -> None:
     spans = []
     for index in range(runs):
         run = f"author-ok-{index}"
+        visit = (
+            ("split_stories", "split_stories", step_seconds, {})
+            if turn_seconds is None
+            else ("split_stories", "agent_turn", turn_seconds, {"duration_ms": turn_seconds * 1000})
+        )
         for node, name, seconds, attrs in (
             ("run:author", "run:author", 900.0, {"workhorse.terminal": "terminal"}),
-            ("split_stories", "split_stories", step_seconds, {}),
+            visit,
         ):
             spans.append({
                 "span_id": f"{run}-{node}", "trace_id": run, "parent_id": "", "run_id": run,
@@ -879,6 +884,31 @@ def test_the_strip_says_a_step_is_longer_than_usual_in_words_and_its_counts_tick
         expect(strip).not_to_have_text(first)
         assert not _scan(page)
     finally:
+        page.close()
+
+
+def test_the_strip_says_a_turn_is_longer_than_usual_in_words():
+    from playwright.sync_api import expect
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    _seed_author_history(runs=5, step_seconds=60.0, turn_seconds=60.0)
+    _ingest_aged(
+        "run-running", "split_stories",
+        {"workhorse.node.active": 1.0, "workhorse.node.elapsed_s": 600.0, "workhorse.turn.active": 1.0,
+         "workhorse.turn.elapsed_s": 600.0, "workhorse.turn.idle_s": 5.0},
+        age=0.0,
+    )
+    page = _open(live)
+    try:
+        _pick(page, "author")
+        strip = page.get_by_role("group", name="Where the run is now")
+        expect(strip).to_contain_text("In turn")
+        expect(strip).to_contain_text("longer than usual: a turn here usually takes 1m 0s")
+        expect(strip).not_to_contain_text("In step")
+        assert not _scan(page)
+    finally:
+        _ingest_aged("run-running", "split_stories", {"workhorse.turn.active": 0.0}, age=0.0)
         page.close()
 
 

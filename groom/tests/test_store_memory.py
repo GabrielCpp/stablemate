@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 import os
-import re
 import tempfile
 
-from _sql_trace import traced_statements
+from _sql_trace import whole_table_scans
 from groom import alerts, overview, state, store
 from groom.models import RunTelemetry, WorkflowContainer
 
@@ -134,17 +133,7 @@ def test_broad_telemetry_queries_do_not_scan_the_wide_spans_table():
 
 
 def _whole_table_scans(run_id: str) -> list[str]:
-    with traced_statements() as statements:
-        overview.run_overview(run_id)
-    conn = store.read_connection()
-    scans = []
-    for sql in statements:
-        if not sql.lstrip().upper().startswith(("SELECT", "WITH")):
-            continue
-        for row in conn.execute("EXPLAIN QUERY PLAN " + sql):
-            if re.match(r"SCAN (spans|charges|turns|metrics|logs)\b(?!.* USING)", row[3]):
-                scans.append(f"{row[3]} <- {sql[:80]}")
-    return scans
+    return whole_table_scans(lambda: overview.run_overview(run_id))
 
 
 def test_opening_an_overview_runs_no_query_that_scans_every_span():

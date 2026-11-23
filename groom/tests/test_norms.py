@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
-
+from _sql_trace import whole_table_scans
 from groom import alerts, norms, pools, projection, state, store
 from groom import app as groom_app
 from groom.models import RunTelemetry, WorkflowContainer, WorkflowState
@@ -103,6 +103,19 @@ def test_a_node_nobody_has_run_has_no_runs() -> None:
         found = store.node_norms("coder", "never-ran")
     assert found["turn"] == {"median_s": None, "runs": 0}
     assert found["step"] == {"median_s": None, "runs": 0}
+
+
+def test_reading_a_norm_scans_no_whole_telemetry_table() -> None:
+    with _DB():
+        _seed_history()
+        assert whole_table_scans(lambda: store.node_norms("coder", "qa")) == []
+
+
+def test_the_norm_scan_check_sees_a_scan_when_the_node_index_is_gone() -> None:
+    with _DB():
+        _seed_history()
+        store._connection().execute("DROP INDEX spans_node")
+        assert whole_table_scans(lambda: store.node_norms("coder", "qa"))
 
 
 def _wf() -> WorkflowContainer:

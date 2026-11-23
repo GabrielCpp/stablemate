@@ -1,6 +1,7 @@
 """One place that records every SQL statement the store runs, on any thread."""
 from __future__ import annotations
 
+import re
 import sqlite3
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
@@ -35,3 +36,18 @@ def traced_statements() -> Iterator[list[str]]:
             for conn in touched:
                 with suppress(sqlite3.Error):
                     conn.set_trace_callback(None)
+
+
+def whole_table_scans(call: Callable[[], object]) -> list[str]:
+    """Run ``call`` and list each statement it ran whose query plan walks a whole telemetry table with no index."""
+    with traced_statements() as statements:
+        call()
+    conn = store.read_connection()
+    scans = []
+    for sql in statements:
+        if not sql.lstrip().upper().startswith(("SELECT", "WITH")):
+            continue
+        for row in conn.execute("EXPLAIN QUERY PLAN " + sql):
+            if re.match(r"SCAN (spans|charges|turns|metrics|logs)\b(?!.* USING)", row[3]):
+                scans.append(f"{row[3]} <- {sql[:80]}")
+    return scans
