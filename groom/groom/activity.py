@@ -14,7 +14,7 @@ from workhorse import gates as gate_file
 from workhorse.turnkey import VisitKey
 
 from groom import churn, flows, gates, localfs, overview, problems, store, transcript_parse, turns
-from groom.projection import TURN_SPAN, transcript_entry
+from groom.projection import TURN_SPAN
 
 LiveRows = dict[str, list[dict[str, Any]]]
 
@@ -171,12 +171,9 @@ def _finished_row(
 
 
 def _result_of(rows: list[dict[str, Any]]) -> str:
-    for row in reversed(rows):
-        update = row["update"]
-        if update.get("sessionUpdate") == "agent_message_chunk":
-            entry = transcript_entry(update)
-            if _first_line(entry["text"]):
-                return _first_line(entry["text"])
+    for entry in reversed(transcript_parse.from_updates(row["update"] for row in rows)):
+        if entry["kind"] == "message" and entry["role"] == "assistant" and _first_line(entry["text"]):
+            return _first_line(entry["text"])
     return ""
 
 

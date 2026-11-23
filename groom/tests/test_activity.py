@@ -158,7 +158,9 @@ def test_a_turn_is_numbered_by_the_runs_of_its_flow_node() -> None:
         _turn("t2", "n2", "check"),
         _turn("lost", "gone", "check"),
     ]
-    assert flows.turn_passes(spans) == {"t1": ("qa", 1), "t2": ("qa", 2)}
+    passes = flows.span_passes(spans)
+    assert (passes["t1"], passes["t2"]) == (("qa", 1, False), ("qa", 2, False))
+    assert "lost" not in passes
 
 
 def _seed_run(tmp_path: Path) -> None:
@@ -220,6 +222,25 @@ def test_a_turn_with_no_span_yet_is_running_and_reads_from_the_live_rows() -> No
         body = activity.turn(RUN, "001-00003-qa-story", live)
     assert [(row["status"], row["cost_usd"], row["duration_s"], row["result"]) for row in rows] == [("running", None, None, "Rerunning it.")]
     assert [entry["text"] for entry in body["entries"]] == ["Rerunning it."]
+
+
+def test_a_running_turns_result_is_the_first_line_of_its_last_message_joined_from_chunks() -> None:
+    slug = "001-00003-qa-story"
+    live = {slug: [_live(slug, "Rerun", BASE + 5), _live(slug, "ning it.\nSecond", BASE + 6), _live(slug, " line", BASE + 7)]}
+    with _DB():
+        rows = activity.timeline(RUN, live)["rows"]
+    assert [row["result"] for row in rows] == ["Rerunning it."]
+
+
+def test_a_running_turns_result_ignores_a_thought_and_a_tool_call_after_its_message() -> None:
+    slug = "001-00003-qa-story"
+    thought = {"sessionUpdate": "agent_thought_chunk", "content": {"type": "text", "text": "pondering"}}
+    call = {"sessionUpdate": "tool_call", "toolCallId": "c1", "title": "Read x", "status": "pending"}
+    extra = [{"key": f"{slug}-{n}", "slug": slug, "ts": BASE + n, "node": "qa-story", "parent": "", "update": update} for n, update in ((8, thought), (9, call))]
+    live = {slug: [_live(slug, "Rerun", BASE + 5), _live(slug, "ning it.", BASE + 6), *extra]}
+    with _DB():
+        rows = activity.timeline(RUN, live)["rows"]
+    assert [row["result"] for row in rows] == ["Rerunning it."]
 
 
 def test_an_unknown_turn_is_not_found_and_a_container_turn_with_no_transcript_is_unreadable(tmp_path: Path) -> None:
