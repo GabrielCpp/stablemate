@@ -601,7 +601,14 @@ def test_overview_says_it_is_reading_then_offers_a_retry_when_the_read_fails():
 
 
 def _post_turn(
-    live: _Live, span_id: str, *, usd: float, run: str = "run-blocked", workflow: str = "coder", node: str = "qa-story"
+    live: _Live,
+    span_id: str,
+    *,
+    usd: float | None,
+    run: str = "run-blocked",
+    workflow: str = "coder",
+    node: str = "qa-story",
+    progress: str = "",
 ) -> None:
     from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
         ExportTraceServiceRequest,
@@ -619,11 +626,13 @@ def _post_turn(
     now = time.time()
     span.start_time_unix_nano = int((now - 5) * 1e9)
     span.end_time_unix_nano = int(now * 1e9)
-    for key, value in {"workhorse.node": node, "backend": "claude"}.items():
+    strings = {"workhorse.node": node, "backend": "claude", **({"progress": progress} if progress else {})}
+    for key, value in strings.items():
         kv = span.attributes.add()
         kv.key, kv.value.string_value = key, value
-    kv = span.attributes.add()
-    kv.key, kv.value.double_value = "total_cost_usd", usd
+    if usd is not None:
+        kv = span.attributes.add()
+        kv.key, kv.value.double_value = "total_cost_usd", usd
     kv = span.attributes.add()
     kv.key, kv.value.int_value = "duration_ms", 5000
     http = urllib.request.Request(

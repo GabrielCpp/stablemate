@@ -133,6 +133,38 @@ def test_the_row_carries_the_cached_figures_and_the_order_is_unchanged() -> None
     assert rows[1]["figures"] is None
 
 
+def _fleet_with_figures(size: int) -> list[WorkflowContainer]:
+    cached = {"finished": True, "reports_cost": True, "cost_usd": 3.0, "turns": 4, "priced_turns": 3,
+              "active_s": 90.0, "items_done": 1, "items_total": 2}
+    state.RUNS.clear()
+    workflows = []
+    for index in range(size):
+        run = f"run-{index}"
+        state.RUNS[run] = RunTelemetry(run_id=run, last_heartbeat_ts=100.0, figures=dict(cached))
+        workflows.append(WorkflowContainer(container_id=run, name=run, run_id=run, state=WorkflowState.RUNNING))
+    return workflows
+
+
+def test_the_fleet_push_reads_no_more_of_the_store_for_two_hundred_rows_than_for_one() -> None:
+    from _sql_trace import traced_statements
+
+    saved = dict(state.RUNS)
+    try:
+        with _DB():
+            one_fleet = _fleet_with_figures(1)
+            with traced_statements() as one:
+                one_message = projection.state_message(one_fleet, now=101.0)
+            many_fleet = _fleet_with_figures(200)
+            with traced_statements() as many:
+                many_message = projection.state_message(many_fleet, now=101.0)
+    finally:
+        state.RUNS.clear()
+        state.RUNS.update(saved)
+    assert len(many_message["runs"]) == 200
+    assert len(many) == len(one)
+    assert one_message["runs"][0]["figures"]["cost_usd"] == 3.0
+
+
 def test_refreshes_coalesce_to_one_running_and_one_rerun(monkeypatch: pytest.MonkeyPatch) -> None:
     gate = threading.Event()
     calls: list[str] = []

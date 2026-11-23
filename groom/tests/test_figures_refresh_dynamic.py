@@ -5,6 +5,7 @@ import re
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import Any
 
 from test_a11y_dynamic import (
     _UNAVAILABLE,
@@ -23,11 +24,11 @@ TICK_RISE_BUDGET_S = 3.0
 
 
 @contextmanager
-def _isolated_run(run: str) -> Iterator[str]:
+def _isolated_run(run: str, **seed: Any) -> Iterator[str]:
     from groom import state
 
     try:
-        with _run(run) as seeded:
+        with _run(run, **seed) as seeded:
             yield seeded
     finally:
         state.RUNS.pop(run, None)
