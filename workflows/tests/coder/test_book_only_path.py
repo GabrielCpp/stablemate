@@ -82,7 +82,7 @@ def test_the_dev_prompt_lists_the_book_paths_as_the_spec(tmp_path: Path) -> None
 def test_the_book_seat_keeps_source_pointers_and_the_index_current(tmp_path: Path) -> None:
     text = _rendered("book_qa/prompts/qa-book.md", tmp_path, True)
 
-    assert "`source=` pointers and\n   `index.tsv` current" in text
+    assert "`source=` pointers current" in text
 
 
 QA_PROMPTS = ("qa/prompts/qa-story.md",)

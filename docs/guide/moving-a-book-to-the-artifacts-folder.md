@@ -37,7 +37,7 @@ Run every command from the repository root. `<artifacts>` is the artifacts folde
 
    The move stops with exit 2, and changes nothing, in three cases. A name has no folder under `services/`. `services/<repo>/` already holds a folder of that name. A book imports a moved book with an absolute `from services.<name>` or `import services.<name>` line while `<repo>` is not a Python identifier, such as `acme-app`. Write that import as a relative import first, because no import statement can spell `services.acme-app.<name>`.
 
-   The move rewrites every `services.<name>` module name in `.py`, `.md`, `.tsv`, `.yml`, `.yaml`, `.j2` and `.toml` files under `<artifacts>/services/`, and it rewrites the `index.tsv` addresses with them. It leaves slash paths alone and lists each line that holds a `services/<name>/` path as `check by hand: <path>:<line>: <text>`. Step 5 covers those lines. It deletes the bytecode caches of the moved folders.
+   The move rewrites every `services.<name>` module name in `.py`, `.md`, `.tsv`, `.yml`, `.yaml`, `.j2` and `.toml` files under `<artifacts>/services/`. It deletes a leftover `index.tsv` of a moved book, because search keeps its index in the user cache. It leaves slash paths alone and lists each line that holds a `services/<name>/` path as `check by hand: <path>:<line>: <text>`. Step 5 covers those lines. It deletes the bytecode caches of the moved folders.
 
 4. Copy the product pages, `product/*.md`, to `<artifacts>/products/<product>/`. The product is `book.product` in the repository's `agents.yml`. Without that key it is the repository folder's name in lower case, with `.` and `_` written as `-`. A repository folder `Acme_App` has the product `acme-app`.
 

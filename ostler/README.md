@@ -323,10 +323,10 @@ ostler book run     services.api --no-stack --only AddTodo,FindTodos
 ostler book run     services.api --fresh-data   # reload the data first: the stack's `fresh` command, else a reset of the `ostler env` copy, else a refusal
 ostler book explore services.api --seed-only   # walk the model's state graph, no app
 ostler book walk    services.api --scene overdue --action read
-ostler book search  overdue               # what the book says, read from index.tsv, and the company, team and product pages
+ostler book search  overdue               # what the book says, read from its index in the user cache, and the company, team and product pages
 ostler book pages [--level company|team|product] [--check]   # one line per page: level, slug, date, status, statement; --check names a page with no date or an empty body
 ostler book explain services.api AddTodo
-ostler book index   services.api          # rewrite index.tsv
+ostler book index   services.api          # rebuild the search index in the user cache; search keeps it itself, nothing is committed
 ostler book stale   services.api --app ../api   # what changed in the app since the verified commit
 # --story <id>: only the story's commits
 ostler book verified services.api --app ../api  # record the app's head once stale is worked

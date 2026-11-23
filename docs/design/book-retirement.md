@@ -116,7 +116,7 @@ written, not generated.
   scaffold/fmt/gc/relink) writes a Python book with the `ostler-book` skill, gated by `ostler book check`
   and a green `ostler book run` on a stack copy. `reground_book_flow.py` becomes the stale-driven update.
   `exercise_book_flow.py` becomes the book run.
-- Finding: **reshape**. Agents use `ostler book` search (`ostler/book/search.py`, `index.tsv`) instead of
+- Finding: **reshape**. Agents use `ostler book` search (`ostler/book/search.py`, its index in the user cache) instead of
   `ostler search`, `trace` and `reach` over markdown.
 - Stack bring-up: **exists**. `ensure_stack` brings the repo's stack copy up before it reads the
   markdown graph (`kit/qa/runner.py`), so a book with no markdown pages still plays against its copy.

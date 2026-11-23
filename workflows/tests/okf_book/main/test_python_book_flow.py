@@ -259,8 +259,8 @@ def test_a_two_surface_prompt_asks_for_one_model_and_judges_each_surface(tmp_pat
     assert "reached by: http, web" in rendered
     assert "`services/ledger/model/`" in rendered
     for module in ("services.ledger.http", "services.ledger.web"):
-        for verb in ("check", "index"):
-            assert f"python -m ostler.book {verb} {module}\n" in rendered
+        assert f"python -m ostler.book check {module}\n" in rendered
+        assert f"python -m ostler.book index {module}\n" not in rendered
         assert f"python -m ostler.book run {module} --only " in rendered
 
 

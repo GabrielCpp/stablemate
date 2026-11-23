@@ -101,8 +101,7 @@ earlier assumption in the story, the book or a finding. Do not raise the same bl
    healthy. Report `blocked` and repair nothing.
 9. **Stay in the book.** Edit only under `{{ workhorse_var('service_books') }}/<name>/` of the covered services. Put no
    sleep, timer or retry loop in the book.
-   No document pass runs after this turn, so you keep every touched endpoint's `source=` pointers and
-   `index.tsv` current with the code the story changed.
+   No document pass runs after this turn, so you keep every touched endpoint's `source=` pointers current with the code the story changed.
 10. **Leave the register alone.** `{{ workhorse_var('service_books') }}/<name>/UNDERSPECIFIED.md` is the product owner's list of
     fields the book models no dimension for. A scheduled whole play, outside any story, adds a finding there when it lies
     outside the calls the story's diff selects, and reports it as known. A finding on a call it selects is yours:

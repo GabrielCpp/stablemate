@@ -11,7 +11,7 @@ of those surfaces, and hold the book to its bar:
 
 The service is reached by more than one surface, so the book is one shared model under
 `{{ package }}/model/` and one service per surface, each at `{{ package }}/<surface>/service.py`
-with its own surface, journeys and `index.tsv`. A record or a rule lives once, in the model.
+with its own surface and journeys. A record or a rule lives once, in the model.
 {% endif %}
 {% if "-" in service %}
 
@@ -77,8 +77,7 @@ no behaviour a user reaches, such as a test, a generated file or a style sheet, 
 instead by a pattern in the service's `App(ignore=...)`. A file that holds a page, a route or a
 command is never ignored. It gets its element.
 
-You are done when every `check` and `missing` below exits 0, run from the app root `{{ app_root }}` or from the book root with `--app`, each `index` has
-rewritten its `index.tsv`, and each endpoint and interaction this turn added or changed has
+You are done when every `check` and `missing` below exits 0, run from the app root `{{ app_root }}` or from the book root with `--app`, and each endpoint and interaction this turn added or changed has
 passed a run `--only` it since its last edit. After the turn the flow plays the whole book once,
 and a failure comes back to you as the next lap's gate. Play nothing wider yourself, and play
 nothing a second time that passed and that you have not edited since: on a first book that
@@ -89,7 +88,6 @@ second pass is a whole play, which the flow is about to run anyway.
 python -m ostler.book check {{ module }}
 python -m ostler.book run {{ module }} --only <each endpoint or interaction this turn touched>{% if stack_copy %} --copy {{ stack_copy }}{% endif %}
 python -m ostler.book missing {{ module }} --app {{ app_root }}{% if source_folder %} --under {{ source_folder }}{% endif %}
-python -m ostler.book index {{ module }}
 {% endfor %}
 ```
 
