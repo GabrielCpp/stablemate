@@ -2,8 +2,11 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import tempfile
 import threading
+from pathlib import Path
 
 from test_a11y_dynamic import (
     _UNAVAILABLE,
@@ -18,13 +21,18 @@ from test_diff_tab_dynamic import (
     SIGN_IN,
     SIZE,
     _container_run,
+    _expect_diff_on_screen,
+    _numstat,
     _open_diff,
     _patch,
     _pick as _pick_run,
+    _RealSidecar,
     _settle,
+    _size_on_disk,
     _tab,
     _wait_for,
 )
+from test_gitdiff import _dirty, _feature, _git as _git_in, _history, _snapshot
 from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
 
@@ -647,6 +655,47 @@ def test_a_removed_line_paired_with_an_added_one_is_as_red_as_a_removed_line_alo
             assert looks["added"]["number"] == "rgba(46, 160, 67, 0.14)"
             assert looks["removed"]["inner"] in ("none", "rgba(0, 0, 0, 0)")
             assert looks["added"]["inner"] in ("none", "rgba(0, 0, 0, 0)")
+        finally:
+            page.close()
+            sidecar.drop()
+
+
+def test_a_real_feature_branch_shows_the_diff_git_reports_since_its_merge_base_and_the_read_writes_nothing():
+    from groom import sidecar_hub
+    from playwright.sync_api import expect
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    with tempfile.TemporaryDirectory() as tmp, _run():
+        repo = _history(Path(tmp))
+        start = _feature(repo)
+        _git_in(repo, "update-ref", "refs/remotes/origin/main", start)
+        _git_in(repo, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+        _dirty(repo)
+        for entry in (repo / "src").iterdir():
+            os.utime(entry, (1_000_000_000, 1_000_000_000))
+        base = _git_in(repo, "merge-base", "HEAD", "origin/main").strip()
+        assert base == start
+        expected = _git_in(repo, "diff", base)
+        numstat = _numstat(repo, base)
+        before = _snapshot(repo)
+        sidecar = _RealSidecar(live, CONTAINER, Path(tmp))
+        _wait_for(lambda: sidecar_hub.get(CONTAINER) is not None, "the sidecar to register")
+        page = _open(live)
+        try:
+            _pick(page)
+            _open_diff(page)
+            _since_view(page)
+            expect(_tab(page, "Diff")).to_contain_text(_size_on_disk(repo, base))
+            head = page.locator("#detail-diff-file-head")
+            expect(head).to_contain_text(f"since {base[:7]} on main")
+            expect(head.locator(".diff-scope")).to_have_attribute("title", f"against {base} from origin/main")
+            _expect_diff_on_screen(page, expected, numstat)
+            group = page.locator("#detail-panel .fd-tree").locator(".tree-dir", has_text="Not tracked by git yet")
+            expect(group.locator(".tree-file")).to_have_text([re.compile("notes.md")])
+            _view(page, "Uncommitted").click()
+            expect(page.locator("#detail-diff-file-head")).to_contain_text("uncommitted")
+            assert _snapshot(repo) == before
         finally:
             page.close()
             sidecar.drop()

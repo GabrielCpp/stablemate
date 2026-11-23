@@ -789,12 +789,12 @@ def _dirty_checkout(root: Path, name: str, before: dict[str, str], after: dict[s
     return repo
 
 
-def _numstat(repo: Path) -> list[list[str]]:
-    return [line.split("\t") for line in _git(repo, "diff", "--numstat", "HEAD").splitlines()]
+def _numstat(repo: Path, base: str = "HEAD") -> list[list[str]]:
+    return [line.split("\t") for line in _git(repo, "diff", "--numstat", base).splitlines()]
 
 
-def _size_on_disk(repo: Path) -> str:
-    rows = _numstat(repo)
+def _size_on_disk(repo: Path, base: str = "HEAD") -> str:
+    rows = _numstat(repo, base)
     return f"+{sum(int(row[0]) for row in rows)} −{sum(int(row[1]) for row in rows)}"
 
 
@@ -803,6 +803,21 @@ def _dirty_repo(root: Path, *, untracked: bool = False) -> Path:
     if untracked:
         after["notes.md"] = "not committed\nnot staged\n"
     return _dirty_checkout(root, "app", {"alpha.txt": "one\ntwo\nthree\n", "beta.txt": "keep\n"}, after)
+
+
+def _expect_diff_on_screen(page, expected: str, numstat: list[list[str]]) -> None:
+    from playwright.sync_api import expect
+
+    tree = page.locator("#detail-panel .fd-tree")
+    for plus, minus, name in numstat:
+        row = tree.get_by_role("button", name=re.compile(re.escape(Path(name).name)))
+        expect(row).to_contain_text(f"+{plus} −{minus}")
+    for block in expected.split("diff --git ")[1:]:
+        name = Path(block.split(" b/")[0].removeprefix("a/")).name
+        tree.get_by_role("button", name=re.compile(re.escape(name))).click()
+        for line in block.splitlines():
+            if line[:1] in "+-" and line[:3] not in ("+++", "---"):
+                expect(page.locator("#detail-panel .fd-view")).to_contain_text(line[1:])
 
 
 def test_a_real_checkout_shows_the_diff_git_reports_while_the_sidecar_is_connected():
@@ -822,16 +837,8 @@ def test_a_real_checkout_shows_the_diff_git_reports_while_the_sidecar_is_connect
             _pick(page)
             expect(_tab(page, "Diff")).to_contain_text(_size_on_disk(repo))
             _open_diff(page)
+            _expect_diff_on_screen(page, expected, numstat)
             tree = page.locator("#detail-panel .fd-tree")
-            for plus, minus, name in numstat:
-                row = tree.get_by_role("button", name=re.compile(re.escape(name)))
-                expect(row).to_contain_text(f"+{plus} −{minus}")
-            for block in expected.split("diff --git ")[1:]:
-                name = block.split(" b/")[0].removeprefix("a/")
-                tree.get_by_role("button", name=re.compile(re.escape(name))).click()
-                for line in block.splitlines():
-                    if line[:1] in "+-" and line[:3] not in ("+++", "---"):
-                        expect(page.locator("#detail-panel .fd-view")).to_contain_text(line[1:])
             group = tree.locator(".tree-dir", has_text="Not tracked by git yet")
             expect(group.locator(".tree-file")).to_have_text([re.compile("notes.md")])
             group.get_by_role("button", name=re.compile("notes.md")).click()
