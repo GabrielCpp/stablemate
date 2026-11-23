@@ -61,6 +61,9 @@ DEFAULT_PRICES: dict[str, Price] = {
     "gpt-5.6-terra": Price(input=2.00, output=12.00, cache_read=0.20, cache_write=2.50),
     "gpt-5.6-terra-fast": Price(input=4.00, output=24.00, cache_read=0.40, cache_write=5.00),
     "gpt-5.6-luna": Price(input=0.20, output=1.20, cache_read=0.02, cache_write=0.25),
+    "gpt-6.2-astra": Price(input=8.00, output=40.00, cache_read=0.40, cache_write=10.00),
+    "gpt-6.2-sol": Price(input=2.00, output=10.00, cache_read=0.10, cache_write=2.50),
+    "gpt-6.1-terra": Price(input=1.00, output=5.00, cache_read=0.05, cache_write=1.25),
 }
 
 _table: dict[str, Price] | None = None

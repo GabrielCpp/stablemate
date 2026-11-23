@@ -99,6 +99,13 @@ def test_a_model_recorded_with_a_leading_at_prices_as_the_model_it_names():
         assert named is not None and named == prices.price_for("gpt-5.6-terra")
 
 
+def test_the_gpt_6_astra_model_prices_as_its_explicit_row():
+    with _env():
+        assert prices.price_for("gpt-6.2-astra") == prices.Price(
+            input=8.00, output=40.00, cache_read=0.40, cache_write=10.00
+        )
+
+
 def test_the_override_file_extends_and_corrects_the_built_in_table():
     with _env('[models."acme/fast-1"]\ninput = 2.0\noutput = 8.0\n'):
         added = prices.price_for("acme/fast-1")
