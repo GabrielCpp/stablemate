@@ -221,6 +221,49 @@ def test_flow_costs_count_only_turns_inside_the_run_window(tmp_path: Path, monke
     assert [row["usd"] for row in rows] == [2.0]
 
 
+def test_flow_costs_drop_a_concurrent_round_that_shares_the_run_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from groom import store
+
+    (tmp_path / "run.json").write_text(json.dumps({"run_id": "coder", "started_at": None}), encoding="utf-8")
+    turns = [
+        {"name": "agent_turn", "node": "qa-story", "run_dir": str(tmp_path), "profile_cost_usd": 2.0},
+        {"name": "agent_turn", "node": "qa-story", "run_dir": "/elsewhere/coder-coder", "profile_cost_usd": 9.0},
+    ]
+    monkeypatch.setattr(store, "run_turn_spans", lambda run: turns)
+
+    rows = fx.flow_costs(tmp_path)
+
+    assert [row["usd"] for row in rows] == [2.0]
+
+
+def test_flow_costs_price_a_turn_the_server_stored_without_an_estimate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from groom import store
+
+    (tmp_path / "run.json").write_text(json.dumps({"run_id": "coder"}), encoding="utf-8")
+    turns = [{
+        "name": "agent_turn",
+        "node": "qa-story",
+        "run_dir": str(tmp_path),
+        "attrs": {"model": "@gpt-6.2-sol"},
+        "profile_cost_usd": None,
+        "est_cost_usd": None,
+        "profile_input_tokens": 1_000_000,
+        "profile_output_tokens": 100_000,
+        "profile_cache_read_tokens": 0,
+        "profile_cache_write_tokens": 0,
+    }]
+    monkeypatch.setattr(store, "run_turn_spans", lambda run: turns)
+
+    rows = fx.flow_costs(tmp_path)
+
+    assert rows[0]["usd"] == 3.0
+    assert rows[0]["estimated"] == 1
+
+
 def test_an_unpriced_turn_falls_back_to_its_estimate(tmp_path: Path) -> None:
     turn = {"name": "agent_turn", "node": "dev-build", "profile_duration_ms": 1000.0}
 

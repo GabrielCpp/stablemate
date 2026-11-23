@@ -342,15 +342,36 @@ def flow_rows(turns: list[dict[str, Any]], run_dir: Path) -> list[dict[str, Any]
 
 
 def flow_costs(run_dir: Path) -> list[dict[str, Any]]:
-    """The per-flow rows of one finished run dir, read back from groom by its run id and kept to its own start and end."""
+    """The per-flow rows of one finished run dir, read back from groom by its run id and kept to its own turns."""
     from groom import store
 
     record = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     start = _epoch(record.get("started_at"), float("-inf"))
     end = _epoch(record.get("ended_at"), float("inf"))
-    turns = [turn for turn in store.run_turn_spans(record["run_id"])
-             if start <= float(turn.get("start_ts") or 0.0) <= end]
+
+    def ours(turn: dict[str, Any]) -> bool:
+        if turn.get("run_dir"):
+            return Path(str(turn["run_dir"])) == run_dir
+        return start <= float(turn.get("start_ts") or 0.0) <= end
+
+    turns = [_priced(turn) for turn in store.run_turn_spans(record["run_id"]) if ours(turn)]
     return flow_rows(turns, run_dir)
+
+
+def _priced(turn: dict[str, Any]) -> dict[str, Any]:
+    """The turn with an estimate at today's rate card when groom stored it before the card knew its model."""
+    if turn.get("profile_cost_usd") is not None or turn.get("est_cost_usd") is not None:
+        return turn
+    from groom import prices
+
+    estimated = prices.estimate(
+        str((turn.get("attrs") or {}).get("model") or ""),
+        turn.get("profile_input_tokens"),
+        turn.get("profile_output_tokens"),
+        turn.get("profile_cache_read_tokens"),
+        turn.get("profile_cache_write_tokens"),
+    )
+    return {**turn, "est_cost_usd": estimated}
 
 
 def _epoch(stamp: Any, default: float) -> float:
