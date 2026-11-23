@@ -260,6 +260,7 @@ class Telemetry:
     def turn_event(self, name: str, error: bool, attrs: dict[str, Any]) -> None: ...
     def heartbeat(self, node_id: str, remaining_s: float) -> None: ...
     def turn_heartbeat(self, node_id: str, idle_s: float, elapsed_s: float) -> None: ...
+    def turn_compactions(self, node_id: str, count: int) -> None: ...
 
     def current_node(self) -> str:
         return ""
@@ -634,6 +635,11 @@ def turn_heartbeat(node_id: str, idle_s: float, elapsed_s: float) -> None:
     _host.active.turn_heartbeat(node_id, idle_s, elapsed_s)
 
 
+def turn_compactions(node_id: str, count: int) -> None:
+    """The number of auto-compactions the streaming agent turn has made so far."""
+    _host.active.turn_compactions(node_id, count)
+
+
 def current_node() -> str:
     """The node the run is currently inside, or "" — for tagging log records."""
     return _host.active.current_node()
@@ -726,6 +732,10 @@ class _Telemetry(Telemetry):
                 "workhorse.turn.idle_s",
                 description="Seconds since the streaming agent last emitted a line",
             )
+            self._turn_compactions = meter.create_gauge(
+                "workhorse.turn.compactions",
+                description="Auto-compactions the current agent turn has made",
+            )
             self._turn_elapsed = meter.create_gauge(
                 "workhorse.turn.elapsed_s",
                 description="Seconds the current agent turn has been running",
@@ -745,6 +755,7 @@ class _Telemetry(Telemetry):
             self._wait_active = self._wait_elapsed = None
             self._turn_beats = self._turn_active = None
             self._turn_idle = self._turn_elapsed = None
+            self._turn_compactions = None
             self._run_beats = self._node_elapsed = None
 
     def enabled(self) -> bool:
@@ -1282,6 +1293,11 @@ class _Telemetry(Telemetry):
     def _set_node_active(self, node_id: str, value: int) -> None:
         if self._node_active is not None:
             self._node_active.set(value, self._live_attrs(node_id))
+
+    @_failsoft(None)
+    def turn_compactions(self, node_id: str, count: int) -> None:
+        if self._turn_compactions is not None:
+            self._turn_compactions.set(count, self._live_attrs(node_id))
 
     @_failsoft(None)
     def turn_heartbeat(self, node_id: str, idle_s: float, elapsed_s: float) -> None:

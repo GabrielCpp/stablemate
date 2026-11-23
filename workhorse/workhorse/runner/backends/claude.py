@@ -315,6 +315,7 @@ class ClaudeTurnStream:
     rate_limited: bool = False
     rate_reset_at: float | None = None
     returncode: int = 0
+    compactions: int = 0
 
     @property
     def diagnostics_text(self) -> str:
@@ -364,6 +365,11 @@ def _stream_events(
                 stream.rate_reset_at = reset_at
             if blocked:
                 stream.rate_limited = True
+        elif etype == "system" and event.get("subtype") == "compact_boundary":
+            stream.compactions += 1
+            print(f"[{node_id}] auto-compacted ({stream.compactions})", flush=True)
+            otel.turn_event("auto_compact", count=stream.compactions)
+            otel.turn_compactions(node_id, stream.compactions)
         elif etype == "system" and "session_id" in event:
             stream.session_id = event["session_id"]
             _failure.record_session_start(session_id_path, stream.session_id)

@@ -5,8 +5,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
+from workhorse import otel
+from workhorse.config_run import AgentResilience
 from workhorse.runner import acp
+from workhorse.runner.backends import claude
 from workhorse.runner.backends.claude import ClaudeBackend, ClaudeTranscript
 
 FIXTURE = Path(__file__).parent / "fixtures" / "claude_turn.jsonl"
@@ -325,3 +329,22 @@ def test_a_task_update_for_an_unknown_task_emits_nothing():
     mapper = ClaudeTranscript()
     use = {"type": "tool_use", "id": "u1", "name": "TaskUpdate", "input": {"taskId": "9", "status": "completed"}}
     assert mapper.updates({"type": "assistant", "message": {"content": [use]}}) == []
+
+
+def test_each_compact_boundary_is_counted_and_reported_live():
+    boundary = json.dumps({"type": "system", "subtype": "compact_boundary", "session_id": "s1"})
+    reported: list[int] = []
+
+    def fake_stream(cmd, node_id, timeout, on_line, **kwargs):
+        for _ in range(3):
+            on_line(boundary)
+        return False, 0
+
+    with (
+        patch.object(claude._process, "stream_subprocess", fake_stream),
+        patch.object(otel, "turn_compactions", lambda node_id, count: reported.append(count)),
+    ):
+        stream = claude._stream_events(["claude"], "n", 60, resilience=AgentResilience())
+
+    assert stream.compactions == 3
+    assert reported == [1, 2, 3]

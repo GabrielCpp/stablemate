@@ -274,6 +274,7 @@ span state:
 | `workhorse.turn.heartbeat` {node} | the agent CLI turn is alive |
 | `workhorse.turn.active` {node} | whether an agent turn is open; closing it clears stale idle and elapsed values |
 | `workhorse.turn.idle_s` {node} | seconds since the agent last wrote a line — **small = streaming, climbing = wedged** |
+| `workhorse.turn.compactions` {node} | auto-compactions the open agent turn has made so far; a climbing count means the turn rereads its own context instead of working |
 | `workhorse.wait.active` {node, wait_kind} | whether an explicit operator/cap/retry/reframe wait is open |
 | `workhorse.wait.elapsed_s` {node, wait_kind} | seconds spent in that still-open explicit wait |
 | `workhorse.cap_wait.heartbeat` {node} | a spending-cap sleep is alive, not hung |
