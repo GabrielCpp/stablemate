@@ -278,7 +278,7 @@ class RunDetail(Screen):
     gate_head = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .rd.rd-gate > .rd-head',
         "gate header",
-        does="for an operator gate, the words 'operator gate', its work item, a chip that says 'waiting' with the wait so far for an open gate, 'answered in' with the wait for an answered one, or 'ended after' with the wait for one that ended without an answer, and its flow, pass and gate file",
+        does="for an operator gate, the words 'operator gate', its work item, a chip that says 'waiting' with the wait so far for an open gate, 'answered in' with the wait for an answered gate the run has taken the answer of, 'answered, waiting' with the wait for an answered gate the run has not yet taken the answer of, or 'ended after' with the wait for one that ended without an answer, and its flow, pass and gate file",
     )
     gate_question = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .rd.rd-gate .at-msg:has(.at-role:text("Question"))',
@@ -288,7 +288,7 @@ class RunDetail(Screen):
     gate_answer = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .rd.rd-gate .at-msg:has(.at-role:text("Your answer"))',
         "Your answer",
-        does="the answer to this asking, read from the gate file, with the clock time the gate ended. An open gate reads 'Not answered yet. Answer in the box above the tabs.' and holds no answer box of its own, because the box above the tabs is the one place to answer. When the operator answers there, the pane turns to the answered view and the selection stays on the gate. A gate that ended with no answer in its file says so",
+        does="the answer to this asking, read from the gate file. Its label carries the clock time the gate ended only once the run has taken the answer. Before that the pane reads 'Answered. The run has not picked the answer up yet.', and once the run has taken it a gate file with no answer for this asking reads 'The gate file holds no answer for this asking.'. An open gate reads 'Not answered yet. Answer in the box above the tabs.' and holds no answer box of its own, because the box above the tabs is the one place to answer. When the operator answers there, the pane turns to the answered view and the selection stays on the gate. A gate that ended with no answer in its file says so",
     )
     entry_reading = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .rd .detail-empty.loading:text("Reading this step")',

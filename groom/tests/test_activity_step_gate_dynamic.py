@@ -276,7 +276,8 @@ def test_answering_in_the_box_above_the_tabs_turns_the_pane_answered_and_keeps_t
         page.get_by_role("button", name="Send answer").click()
         expect(pane.locator(".at-msg.user")).to_contain_text("Use 423.")
         expect(selected).to_have_attribute("data-entry", "gate:qa-story#1")
-        expect(pane.locator(".rd-head .chip")).to_contain_text("answered")
+        expect(pane.locator(".rd-head .chip")).to_have_text(re.compile(r"^answered, waiting "))
+        expect(pane.locator(".at-msg.user .at-role")).to_have_text("Your answer")
         assert "Use 423." in (tmp_path / "ws" / GATE).read_text()
 
     _with(tmp_path, "gate-answer", "gate:qa-story#1", check, gate="open")
