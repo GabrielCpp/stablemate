@@ -18,6 +18,16 @@ class RunDetail(Screen):
                    takes="answer", holds=Wire(Str(), required=False, nullable=True))
     send = Button("#detail form.answer button[type=submit]", "Send answer", does="sends the answer to the run's gate")
     close = Button("#detail .close-detail", "Close run detail", does="closes the run's detail pane")
-    overview = Text("#tab-overview", "Overview", does="the tab of the run's cost and facts, refreshed in place when a span batch of the run commits")
+    now = Text(
+        "#detail .now",
+        "Where the run is now",
+        does="the strip above the Overview of a live run: the current node, how long the node has been open, the current turn, step or wait with the node's norm, agent idle and the last beat. Each length counts up every second in the browser with no reload. The norm reads 'a turn here usually takes' or 'this step usually takes'. Under five comparable runs it reads 'no norm yet: N comparable runs'. A wait on the operator reads 'Waiting on you' with 'no norm while waiting'",
+    )
+    past_norm = Text(
+        "#detail .now .warn",
+        "longer than usual",
+        does="the words, beside the warning color, that mark a turn or step lasting longer than its node's norm",
+    )
+    overview = Text("#tab-overview", "Overview", does="the tab of the run's cost and facts, refreshed in place when a span batch of the run commits, with the strip of a live run above it")
     activity = Text("#tab-activity", "Activity", does="the tab of the run's turns")
     rejected = Text("#toasts .toast:has(.t-title:text(\"answer not taken\"))", "toast", does="the notice shown when groom refuses the answer, with the reason groom gave")

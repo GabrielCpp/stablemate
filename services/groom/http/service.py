@@ -78,6 +78,7 @@ UNSEEN = (
         Unseen(ReadWorker, f"200: {field}", Because.NEVER_FILLED, NEVER_PUSHED)
         for field in (
             "gates[].kind", "running.wait_kind", "strip.wait_kind", "strip.idle_since_ts", "strip.beat_ts", "strip.norm",
+            "strip.norm.median_s", "strip.norm.runs",
             "ended", "head.type", "head.pid", "head.cli", "head.activity", "head.worktree", "head.checkout",
             "metrics.cells", "metrics.alerts", "metrics.run_dir", "logs", "history",
         )

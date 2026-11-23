@@ -185,16 +185,25 @@ RUNNING = Object(
     node_since_ts=Field(Num(), opaque="the server's clock when the node was first seen"),
 )
 
+NORM = Object(
+    "Norm",
+    median_s=Field(Num(), nullable=True, does="the median length in seconds, null under five comparable runs"),
+    runs=Field(Int(), does="successful runs of the same workflow that visited the node"),
+)
+
 STRIP = Object(
     "Strip",
     node=Field(Str()),
-    kind=Field(Str()),
+    kind=Field(
+        Enum(("turn", "step", "between", "node", "wait")),
+        does="turn while an agent turn runs, step for a deterministic node, between for an agent node with no turn running, node for a node with no finished visit anywhere, wait while the run waits",
+    ),
     wait_kind=Field(Str()),
     started_ts=Field(Num(), opaque="the server's clock"),
     node_since_ts=Field(Num(), opaque="the server's clock"),
     idle_since_ts=Field(Num(), nullable=True),
     beat_ts=Field(Num(), nullable=True),
-    norm=Field(Num(), nullable=True),
+    norm=Field(NORM, nullable=True, does="null until the first read of the node's norm returns and while the run waits"),
 )
 
 HEAD = Object(
