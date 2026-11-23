@@ -51,9 +51,14 @@ class NoSecrets:
 class DotenvFile:
     """A dotenv file in the checkout, read in place, or in the main checkout from a worktree."""
 
-    def __init__(self, repo: Path, file: str) -> None:
+    def __init__(self, repo: Path, file: str, also: str = "") -> None:
         self._repo = repo
         self._file = file
+        self._also = also
+
+    def _missing(self, path: Path) -> SecretError:
+        tried = f"{path} nor {self._also}" if self._also else str(path)
+        return SecretError(f"the secret file {tried} does not exist")
 
     def _path(self) -> Path:
         return checkout.locate(self._repo, self._repo / self._file)
@@ -61,13 +66,13 @@ class DotenvFile:
     def names(self) -> frozenset[str]:
         path = self._path()
         if not path.is_file():
-            raise SecretError(f"the secret file {path} does not exist")
+            raise self._missing(path)
         return parse_names(path.read_text(encoding="utf-8"))
 
     def files(self, copy: Copy) -> list[Path]:
         path = self._path()
         if not path.is_file():
-            raise SecretError(f"the secret file {path} does not exist")
+            raise self._missing(path)
         return [path]
 
     def exec_prefix(self) -> list[str]:
@@ -159,7 +164,7 @@ def write_private(path: Path, text: str) -> None:
 def source_for(catalog: Catalog, repo: Path, runner: Runner) -> SecretSource:
     """The secret source the stack root names, or the null one."""
     if catalog.secrets.file:
-        return DotenvFile(repo, catalog.secrets.file)
+        return DotenvFile(repo, catalog.secrets.file, catalog.secrets.also)
     if catalog.secrets.decrypt:
         return DecryptCommand(repo, catalog.secrets.decrypt, runner)
     if catalog.secrets.saddlebag:

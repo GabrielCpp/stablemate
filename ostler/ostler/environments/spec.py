@@ -14,7 +14,7 @@ from yaml.constructor import ConstructorError
 from yaml.resolver import BaseResolver
 
 from ostler._vendor.stablemate_core import books
-from ostler.environments.checkout import locate
+from ostler.environments.checkout import locate, main_checkout
 from ostler.qa import addresses
 
 STACK_FILE = "stack.yml"
@@ -199,6 +199,7 @@ class SecretSpec:
     """The stack root's `secrets:`: a dotenv file, a command whose stdout is dotenv, or saddlebag tags."""
 
     file: str = ""
+    also: str = ""
     decrypt: str = ""
     saddlebag: str = ""
 
@@ -564,7 +565,16 @@ def _read_secrets(
     item = item.strip()
     if key == "file" and item.startswith(REPO_SCHEME):
         resolved = _repo_path(catalog, where, "secrets file", item, repos)
-        return SecretSpec(file=str(resolved)) if resolved else SecretSpec()
+        if not resolved:
+            return SecretSpec()
+        member = item.removeprefix(REPO_SCHEME).partition("/")[0]
+        checkout = repos()[member].resolve()
+        located = locate(checkout, resolved)
+        if located.is_file() or located != resolved:
+            return SecretSpec(file=str(located))
+        main = main_checkout(checkout)
+        other = main / resolved.relative_to(checkout) if main != checkout else None
+        return SecretSpec(file=str(resolved), also=str(other or ""))
     return SecretSpec(**{str(key): item})
 
 

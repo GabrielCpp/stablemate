@@ -2023,6 +2023,57 @@ def test_a_repo_secrets_file_is_read_from_the_code_checkout(
     assert source.files(runtime.copy_for(root, "c1")) == [(code / "services/ops/.env").resolve()]
 
 
+def _linked_worktree(code: Path) -> Path:
+    linked = code.parent / "acme-linked"
+    subprocess.run(["git", "-C", str(code), "worktree", "add", "--quiet", "-b", "linked", str(linked)],
+                   check=True, capture_output=True)
+    return linked.resolve()
+
+
+def test_a_repo_secrets_file_missing_from_a_worktree_is_read_from_the_main_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, code = _fixture_world(tmp_path, monkeypatch)
+    _file(code, "ops/.env", "TOKEN=main\n")
+    linked = _linked_worktree(code)
+    _secrets_stack(root, {"file": "repo://acme/ops/.env"})
+    catalog = spec.load(root, code=linked)
+    assert not catalog.errors
+    source = secrets.source_for(catalog, root, commands.run_command)
+    assert source.names() == {"TOKEN"}
+    assert source.files(runtime.copy_for(root, "c1")) == [(code / "ops/.env").resolve()]
+
+
+def test_a_repo_secrets_file_of_a_worktree_wins_over_the_main_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, code = _fixture_world(tmp_path, monkeypatch)
+    _file(code, "ops/.env", "TOKEN=main\n")
+    linked = _linked_worktree(code)
+    _file(linked, "ops/.env", "OWN=linked\n")
+    _secrets_stack(root, {"file": "repo://acme/ops/.env"})
+    catalog = spec.load(root, code=linked)
+    assert not catalog.errors
+    source = secrets.source_for(catalog, root, commands.run_command)
+    assert source.names() == {"OWN"}
+    assert source.files(runtime.copy_for(root, "c1")) == [(linked / "ops/.env").resolve()]
+
+
+def test_a_repo_secrets_file_missing_everywhere_names_both_places(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, code = _fixture_world(tmp_path, monkeypatch)
+    linked = _linked_worktree(code)
+    _secrets_stack(root, {"file": "repo://acme/ops/.env"})
+    catalog = spec.load(root, code=linked)
+    assert not catalog.errors
+    source = secrets.source_for(catalog, root, commands.run_command)
+    with pytest.raises(secrets.SecretError) as raised:
+        source.names()
+    assert str(linked / "ops/.env") in str(raised.value)
+    assert str(code / "ops/.env") in str(raised.value)
+
+
 def test_a_relative_secrets_file_is_read_under_the_book_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
