@@ -476,6 +476,34 @@ def test_files_says_the_sidecar_stopped_answering_and_clears_on_reconnect():
             page.close()
 
 
+def test_a_stale_files_tab_drops_the_open_file_and_reads_the_tree_again_on_reconnect():
+    from playwright.sync_api import expect
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    with _container_run(CONTAINER):
+        sidecar = _connect(live)
+        page = _open(live)
+        try:
+            _pick(page)
+            _open_files(page)
+            _open_file(page, "sign_in.py")
+            expect(page.locator("#detail-panel .fd-tree .tree-file.active")).to_have_text("sign_in.py")
+            sidecar.drop()
+            expect(page.locator("#detail-files-stale")).to_be_visible(timeout=5000)
+            expect(page.locator("#detail-panel .fd-tree")).to_have_count(0)
+            again = _connect(live)
+            try:
+                expect(page.locator("#detail-panel .fd-split")).to_be_visible(timeout=5000)
+                expect(page.locator("#detail-panel .fd-view")).to_have_text("Select a file to read it.")
+                expect(page.locator("#detail-panel .fd-tree .tree-file.active")).to_have_count(0)
+                assert again.tree_reads == 1
+            finally:
+                again.drop()
+        finally:
+            page.close()
+
+
 def test_the_tab_goes_and_overview_shows_when_the_run_ends_while_files_is_open():
     from playwright.sync_api import expect
 

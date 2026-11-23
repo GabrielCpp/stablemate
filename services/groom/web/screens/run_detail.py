@@ -154,7 +154,7 @@ class RunDetail(Screen):
     files_tab = Text(
         "#tab-files",
         "Files",
-        does="the tab of a live container run whose row says a sidecar is connected, directly before Diff, so the tabs read Overview, Activity, Files and Diff. A native run, an ended run and a container run with no connected sidecar have no Files tab. Selecting a run reads no tree. The first open of Files for a selection reads the tree once. Another tab of the same run and back keeps the tree, the selected file and the collapsed folders, with no new read. Selecting another run resets them. When the run ends while Files is open the tab goes and Overview shows. A gate leaves the tab alone",
+        does="the tab of a live container run whose row says a sidecar is connected, directly before Diff, so the tabs read Overview, Activity, Files and Diff. A native run and an ended run have no Files tab. A container run whose sidecar dropped keeps it, stale, while the page holds a diff for the run, and loses it with no diff held. Selecting a run reads no tree. The first open of Files for a selection reads the tree once. Another tab of the same run and back keeps the tree, the selected file and the collapsed folders, with no new read. Selecting another run resets them. When the run ends while Files is open the tab goes and Overview shows. A gate leaves the tab alone",
     )
     files_tree = Text(
         '#detail-panel[aria-labelledby="tab-files"] .fd-tree',
@@ -209,7 +209,7 @@ class RunDetail(Screen):
     files_stale = Text(
         "#detail-files-stale",
         "The sidecar stopped answering",
-        does="shown on Files when the sidecar drops while the page holds a diff for the run, with 'The run may still be working.' The tab stays, keeps its tree and file, and reads the tree again when the sidecar returns. With no diff held the tab goes",
+        does="shown on Files when the sidecar drops while the page holds a diff for the run, with 'The run may still be working.' The tab stays and shows no tree or file: it drops its tree, its selected file and its collapsed folders, and reads the tree again when the sidecar returns, with no file selected. With no diff held the tab goes",
     )
     sidecar_chip = Text(
         "#run-sidecar-chip",

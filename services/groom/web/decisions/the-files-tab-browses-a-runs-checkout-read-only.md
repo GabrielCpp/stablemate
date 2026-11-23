@@ -11,7 +11,7 @@ A read that did not happen is never shown as an empty result. A tree the sidecar
 
 The file's text goes through the page's one highlighting path, beside a gutter of line numbers that screen readers skip, on a band darker than the pane. The tab sets no other markup from a file or a path, so content cannot inject markup. The tab has no control that edits, saves, deletes or refreshes. Retry shows only beside a failed read or a stale tab. The folders, files and the contents region carry roles and names and work from the keyboard, and Close keeps the top right of the run head's first row.
 
-The story's criterion 7 says the tab goes when the sidecar disconnects. The epic's required state and story SM-01M6CP8HF9R9DWZPT3MR7FFZS3 overturn that half. While the page holds a diff for the run, the tab stays, says the sidecar stopped answering, keeps its tree and file, offers 'Retry now' and reads the tree again when the sidecar returns. With no diff held the tab goes. The half where the run ends holds: the tab goes and Overview shows.
+The story's criterion 7 says the tab goes when the sidecar disconnects. The epic's required state and story SM-01M6CP8HF9R9DWZPT3MR7FFZS3 overturn that half. While the page holds a diff for the run, the tab stays, says the sidecar stopped answering and offers 'Retry now'. It drops its tree, its selected file and its collapsed folders, so the returning sidecar gets a fresh tree read and no file is selected. With no diff held the tab goes. The half where the run ends holds: the tab goes and Overview shows.
 
 This story keeps `the-details-tab-gave-way-to-activity-files-and-diff`: the run has no Details tab, and the working-tree files show only on Files.
 
