@@ -29,6 +29,7 @@ from workhorse.config_run import AgentResilience
 from workhorse.runner import extract as wh_extract
 from workhorse.runner.backends.registry import get_backend
 from paddock._vendor.stablemate_core.clock import SYSTEM_CLOCK
+from paddock._vendor.stablemate_core.config import ARTIFACTS_DIR_ENV
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +116,11 @@ class Fixture:
         })
 
 
+
+
+def artifacts_of(run: Run) -> Path:
+    """Where the round's epics and specs live: the artifacts folder its phases are launched with."""
+    return Path(tree.launch(run, run.stage).env[ARTIFACTS_DIR_ENV])
 
 
 def home_of(run: Run) -> Path:
@@ -393,7 +399,7 @@ def run_author(run: Run, fixture: Fixture) -> None:
 
 def run_coder(run: Run, fixture: Fixture) -> None:
     """Implement every epic the milestones list, watching for gates without answering them."""
-    if not find_epics(home_of(run)):
+    if not find_epics(artifacts_of(run)):
         raise TrialError("no epics — author produced none to implement")
     stop, thread = og.gates_watched(run, "coder")
     thread.start()
@@ -484,6 +490,12 @@ def find_epics(repo: Path) -> list[Path]:
     return sorted([*repo.glob("docs/epics/*/epic.md"), *repo.glob("epics/*/epic.md")])
 
 
+def epic_names(epic_md: Path) -> set[str]:
+    """The names a milestone may list an epic by: its folder and the slug its front matter declares."""
+    slug = frontmatter(epic_md).get("slug", "")
+    return {registry.epic_slug(name) for name in (epic_md.parent.name, slug) if name}
+
+
 def frontmatter(md: Path) -> dict[str, str]:
     """The `---`-delimited YAML header, as flat strings."""
     try:
@@ -510,8 +522,7 @@ def listed_epics(run: Run, fixture: Fixture) -> set[str]:
 def unlisted_epics(run: Run, fixture: Fixture) -> list[str]:
     """The epic directories the milestone's `epics` list does not name."""
     listed = listed_epics(run, fixture)
-    return [e.parent.name for e in find_epics(home_of(run))
-            if registry.epic_slug(e.parent.name) not in listed]
+    return [e.parent.name for e in find_epics(artifacts_of(run)) if not epic_names(e) & listed]
 
 
 def trace_journeys(run: Run, fixture: Fixture) -> list[dict[str, Any]]:
@@ -520,15 +531,15 @@ def trace_journeys(run: Run, fixture: Fixture) -> list[dict[str, Any]]:
     listed = listed_epics(run, fixture)
 
     owned: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for epic_md in find_epics(home_of(run)):
-        if registry.epic_slug(epic_md.parent.name) not in listed:
+    for epic_md in find_epics(artifacts_of(run)):
+        if not epic_names(epic_md) & listed:
             continue
         doc = markdown.split(epic_md.read_text(encoding="utf-8"))
         section = doc.find_section(registry.MILESTONE_JOURNEYS_HEADING)
         if section is None:
             continue
         stories = [
-            {"slug": s.parent.name, "status": frontmatter(s).get("status", "unknown")}
+            {"slug": frontmatter(s).get("slug") or s.parent.name, "status": frontmatter(s).get("status", "unknown")}
             for s in sorted(epic_md.parent.glob("stories/*/story.md"))
         ]
         info = {"epic": epic_md.parent.name, "stories": stories}

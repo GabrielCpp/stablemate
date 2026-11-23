@@ -290,3 +290,15 @@ def test_a_phase_keeps_its_artifacts_inside_the_round(tmp_path: Path, make_run: 
     run = make_run(tmp_path)
     env = greenfield.phase_env(run, FIXTURE, "author")
     assert Path(env[core_config.ARTIFACTS_DIR_ENV]).is_relative_to(tmp_path)
+
+
+def test_epics_are_read_from_the_rounds_artifacts_by_their_slug(tmp_path: Path) -> None:
+    run = fake_run(tmp_path)
+    milestone = greenfield.produced_milestone(run, FIXTURE)
+    milestone.parent.mkdir(parents=True)
+    milestone.write_text("---\nepics: [shorten-links]\n---\n", encoding="utf-8")
+    for folder, slug in (("STAG-01", "shorten-links"), ("STAG-02", "stray")):
+        epic = greenfield.artifacts_of(run) / "epics" / folder / "epic.md"
+        epic.parent.mkdir(parents=True)
+        epic.write_text(f"---\nslug: {slug}\n---\n", encoding="utf-8")
+    assert greenfield.unlisted_epics(run, FIXTURE) == ["STAG-02"]
