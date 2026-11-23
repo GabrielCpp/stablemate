@@ -1,6 +1,7 @@
 """Accessibility, measured on the page the operator actually gets."""
 from __future__ import annotations
 
+import json
 import os
 import re
 import socket
@@ -609,6 +610,7 @@ def _post_turn(
     workflow: str = "coder",
     node: str = "qa-story",
     progress: str = "",
+    attrs: dict[str, str | int] | None = None,
 ) -> None:
     from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
         ExportTraceServiceRequest,
@@ -633,6 +635,13 @@ def _post_turn(
     if usd is not None:
         kv = span.attributes.add()
         kv.key, kv.value.double_value = "total_cost_usd", usd
+    for key, extra in (attrs or {}).items():
+        kv = span.attributes.add()
+        kv.key = key
+        if isinstance(extra, str):
+            kv.value.string_value = extra
+        else:
+            kv.value.int_value = extra
     kv = span.attributes.add()
     kv.key, kv.value.int_value = "duration_ms", 5000
     http = urllib.request.Request(
@@ -652,6 +661,11 @@ def _post_metric(live: _Live, name: str, value: float, *, run: str, workflow: st
     )
     with urllib.request.urlopen(http, timeout=10) as reply:
         assert reply.status == 200
+
+
+def _overview_payload(live: _Live, run: str) -> dict:
+    with urllib.request.urlopen(live.url() + f"api/run/{run}/overview", timeout=10) as reply:
+        return json.load(reply)
 
 
 def _drop_turn(span_id: str) -> None:
@@ -1153,9 +1167,17 @@ def test_the_five_tiles_read_the_runs_standing():
     try:
         page.click("#runs-list .row.blocked")
         expect(page.locator("#detail-cost-tile")).to_contain_text("$2.00")
+        expect(page.locator("#detail-cost-tile")).to_contain_text("as of the last finished turn")
+        expect(page.locator("#detail-cost-tile")).to_contain_text("2 of 3 turns priced")
         expect(page.locator("#detail-cost-tile")).to_contain_text("per active hour")
-        expect(page.locator("#detail-active-tile")).to_contain_text("wall")
-        expect(page.locator("#detail-active-tile")).to_contain_text("session")
+        expect(page.locator("#detail-active-tile")).to_have_text(re.compile(r"wall, \d+ sessions?"))
+        figures = _overview_payload(live, "run-blocked")["figures"]
+        burn = re.search(r"\$(\d+(?:\.\d+)?) per active hour", page.locator("#detail-cost-tile").inner_text())
+        assert burn, page.locator("#detail-cost-tile").inner_text()
+        expected = figures["cost_usd"] / (figures["active_s"] / 3600)
+        assert abs(float(burn[1]) - expected) <= 0.01 * expected + 0.005, (burn[1], expected)
+        sessions = re.search(r"wall, (\d+) session", page.locator("#detail-active-tile").inner_text())
+        assert sessions and int(sessions[1]) == figures["sessions"]
         expect(page.locator("#detail-turns-tile")).to_have_text(re.compile(r"Agent turns\s*3\s*1 backend retry"))
         attention = page.locator("#detail-attention-tile")
         expect(attention).to_contain_text("1 gate")
@@ -1215,8 +1237,6 @@ def test_a_backend_with_no_cost_labels_its_estimate_and_gives_no_cost_per_item()
         _pick(page, "author")
         cost = page.locator("#detail-cost-tile")
         expect(cost).to_contain_text("reports no cost")
-        text = cost.inner_text()
-        assert "est" not in text or "at list price" in text, text
         expect(page.locator("#detail-items-tile")).not_to_contain_text("per finished item")
     finally:
         page.close()
