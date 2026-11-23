@@ -600,6 +600,27 @@ def test_a_tree_the_sidecar_errors_on_and_the_volume_cannot_read_reads_as_unread
             sidecar.drop()
 
 
+def test_a_tree_the_volume_reads_fine_still_reads_as_unreadable_when_the_sidecar_errors():
+    from groom import app as app_module
+    from playwright.sync_api import expect
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    volume_tree = {"paths": ["volume_only.py"], "failed": False}
+    with _container_run(CONTAINER), patch.object(app_module.docker_io, "read_tree", return_value=volume_tree):
+        sidecar = _connect(live, checkout=_Checkout(erroring=True))
+        page = _open(live)
+        try:
+            _pick(page)
+            _open_files(page)
+            expect(page.locator("#detail-panel").get_by_role("alert")).to_contain_text("This checkout could not be read")
+            expect(page.locator("#detail-panel .fd-tree")).to_have_count(0)
+            expect(page.locator("#detail-panel")).not_to_contain_text("volume_only.py")
+        finally:
+            page.close()
+            sidecar.drop()
+
+
 def test_a_file_that_cannot_be_read_says_so_offers_a_retry_and_clears_when_a_read_succeeds():
     from playwright.sync_api import expect
 

@@ -159,7 +159,7 @@ class RunDetail(Screen):
     files_tree = Text(
         '#detail-panel[aria-labelledby="tab-files"] .fd-tree',
         "checkout files",
-        does="the checkout's files in a folder tree, read from the run's sidecar, and the volume when the sidecar errors. A chain of single-child folders is one row. The folders .git, node_modules, __pycache__ and .venv are left out",
+        does="the checkout's files in a folder tree, read from the run's sidecar only. A tree answered by the volume reader is never listed, so it reads as unreadable. A chain of single-child folders is one row. The folders .git, node_modules, __pycache__ and .venv are left out",
     )
     files_folder = Button(
         '#detail-panel[aria-labelledby="tab-files"] .fd-tree .tree-dir-head',
@@ -194,7 +194,7 @@ class RunDetail(Screen):
     files_unreadable = Text(
         "#detail-files-unreadable",
         "This checkout could not be read",
-        does="shown for a tree the sidecar reported as failed, a sidecar error or a volume read that failed. It never reads as a checkout with no files, and it clears when a read succeeds. A checkout with no files reads 'This checkout has no files.', and an empty answer from a sidecar too old to report a failed read says it cannot confirm that",
+        does="shown for a tree the sidecar reported as failed, any sidecar error with no fallback, a rejected fetch or a tree answered by the volume reader, even when that read succeeded. It never reads as a checkout with no files, and it clears when a read succeeds. A checkout with no files reads 'This checkout has no files.', and an empty answer from a sidecar too old to report a failed read says it cannot confirm that",
     )
     file_unreadable = Text(
         "#detail-file-unreadable",
