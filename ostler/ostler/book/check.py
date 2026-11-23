@@ -912,11 +912,14 @@ def broken(service: Service[Any], module: str) -> bool:
     return any(f.blocks for f in found)
 
 
-def index_faults(service: Service[Any], module: str) -> list[Finding]:
+def refresh_index(service: Service[Any], module: str) -> str:
     from ostler.book.index import write
 
-    path, changed = write(service, module)
-    return [Finding("index", "index differed from the committed one", blocks=False)] if changed else []
+    try:
+        write(service, module)
+    except OSError:
+        pass
+    return "done"
 
 
 def secret_faults(service: Service[Any], name: str | None) -> list[Finding]:
@@ -943,11 +946,11 @@ def outside_notes(module: str) -> list[Finding]:
 
 
 def cmd_check(service: Service[Any], args: argparse.Namespace) -> int:
-    indexed: list[Finding] = []
-    attempt(indexed, "index", lambda: indexed.extend(index_faults(service, args.service)) or "done")
+    refreshed: list[Finding] = []
+    attempt(refreshed, "index", lambda: refresh_index(service, args.service))
     found = check(service, args.service, args.app)
     attempt(found, "secrets", lambda: found.extend(secret_faults(service, args.env)) or "done")
-    found.extend(indexed)
+    found.extend(refreshed)
     found.extend(outside_notes(args.service))
     report(found)
     return 1 if any(not f.told for f in found) else 0

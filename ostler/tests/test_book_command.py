@@ -274,10 +274,10 @@ def test_the_farrier_book_checks_clean():
 
 
 @pytest.mark.parametrize("module", ["services.groom.http", "services.groom.web"])
-def test_a_book_whose_fixtures_mint_names_checks_clean_against_its_index(module: str):
+def test_a_book_whose_fixtures_mint_names_checks_clean(module: str):
     done = _book(["check", module])
     assert done.returncode == 0, done.stdout + done.stderr
-    assert "index differed" not in done.stdout
+    assert "check: 0 findings" in done.stdout
 
 
 @pytest.mark.whole_run

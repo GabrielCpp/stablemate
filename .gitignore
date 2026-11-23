@@ -233,6 +233,8 @@ __marimo__/
 
 .lavish/
 
+services/**/index.tsv
+
 .agents/runs/
 .agents/worktrees/
 .agents/workflows/

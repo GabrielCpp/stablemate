@@ -12,6 +12,7 @@ from pathlib import Path
 from ostler._vendor.stablemate_core import books, config
 
 DOTTED = (".py", ".md", ".tsv", ".yml", ".yaml", ".j2", ".toml")
+LEFTOVER = "index.tsv"
 CHECKS_FILE = ".agent-checks.toml"
 
 
@@ -129,6 +130,8 @@ def _carry_out(plan: Plan, moves: list[tuple[Path, Path]]) -> None:
     for _, dest in moves:
         for cache in dest.rglob("__pycache__"):
             shutil.rmtree(cache, ignore_errors=True)
+        for leftover in dest.rglob(LEFTOVER):
+            leftover.unlink()
     init = plan.services / "__init__.py"
     if not init.exists():
         init.write_text("", encoding="utf-8")
@@ -151,11 +154,13 @@ def _files(folder: Path) -> list[Path]:
 
 
 def _documents(plan: Plan, moves: list[tuple[Path, Path]]) -> list[tuple[Path, Path, str]]:
-    """Each file to read, the path it has once moved, and its text; the `.tsv` files last so index.tsv stays newer than the book."""
+    """Each file to read, the path it has once moved, and its text."""
     found: dict[Path, Path] = {}
     folders = [plan.services, *(src for src, _ in moves if not src.is_relative_to(plan.services))]
     for folder in folders:
         for current in _files(folder):
+            if current.name == LEFTOVER:
+                continue
             shown = current
             for src, dest in moves:
                 if current == src or current.is_relative_to(src):
@@ -166,7 +171,7 @@ def _documents(plan: Plan, moves: list[tuple[Path, Path]]) -> list[tuple[Path, P
     if checks.is_file():
         found[checks] = checks
     out: list[tuple[Path, Path, str]] = []
-    for current, shown in sorted(found.items(), key=lambda item: (item[1].suffix == ".tsv", str(item[1]))):
+    for current, shown in sorted(found.items(), key=lambda item: str(item[1])):
         if shown.suffix not in DOTTED:
             continue
         try:

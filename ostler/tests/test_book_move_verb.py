@@ -42,11 +42,11 @@ def test_a_flat_book_moves_into_its_repository_folder_with_its_module_names_rewr
     assert (artifacts / "services/__init__.py").read_text() == ""
     assert not list((artifacts / "services").rglob("__pycache__"))
     assert (artifacts / "services/web/foreign.py").read_text() == 'Foreign("x", owner="services.acme.api")\n'
-    assert (artifacts / "services/acme/api/index.tsv").read_text() == "services.acme.api.endpoints:Ping\tendpoint\tPing\n"
+    assert not (artifacts / "services/acme/api/index.tsv").exists()
     assert (artifacts / "services/acme/api/decisions/one.md").read_text() == "The services.acme.api book says so.\n"
     assert "moved services/api to services/acme/api" in out
     assert "rewrote 1 reference(s) in services/web/foreign.py" in out
-    assert "rewrote 1 reference(s) in services/acme/api/index.tsv" in out
+    assert "index.tsv" not in out
 
 
 def test_text_that_is_not_a_module_path_is_left_alone(tmp_path, monkeypatch, capsys):
@@ -114,7 +114,7 @@ def test_a_book_named_like_its_repository_moves_one_folder_down(tmp_path, monkey
     assert _move(monkeypatch, tmp_path, "billing", "--repo", "billing") == 0
 
     assert (artifacts / "services/billing/billing/service.py").read_text() == BOOK
-    assert (artifacts / "services/billing/billing/index.tsv").read_text() == "services.billing.billing.endpoints:Ping\tendpoint\tPing\n"
+    assert not (artifacts / "services/billing/billing/index.tsv").exists()
     assert not (artifacts / "services/billing/service.py").exists()
     assert not list((artifacts / "services").glob(".*"))
 
@@ -206,7 +206,7 @@ def test_a_dry_run_says_what_would_change_and_changes_nothing(tmp_path, monkeypa
     assert _tree(artifacts) == before
     assert "would move services/api to services/acme/api" in out
     assert "would rewrite 1 reference(s) in services/web/foreign.py" in out
-    assert "would rewrite 1 reference(s) in services/acme/api/index.tsv" in out
+    assert "index.tsv" not in out
     assert "check by hand: services/acme/api/note.md:1: see services/api/x.py" in out
 
 

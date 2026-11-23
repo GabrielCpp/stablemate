@@ -1,20 +1,22 @@
-"""The book searched without running it: `index` writes what `search` finds in one service to
-`index.tsv` beside it, and `search` reads those files and the decisions as text."""
+"""The book searched without running it: `index` writes what `search` finds in one service to a file in
+the user cache, and `search` reads those files and the decisions as text."""
 
 from __future__ import annotations
 
+import hashlib
 import importlib
 import os
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ostler._vendor.stablemate_core import books
+from ostler._vendor.stablemate_core import base_cache, books
 from ostler.book import decisions, pages
 from ostler.book.search import Item, items, loose_hits, phrase_hits
 
-FILE = "index.tsv"
+CACHE_FOLDER = "book-index"
 
 
 @dataclass(frozen=True)
@@ -69,16 +71,32 @@ def build(service: Any, module: str) -> str:
     return render(items(service, module))
 
 
-def write(service: Any, module: str) -> tuple[str, bool]:
-    path = os.path.join(package_dir(module), FILE)
-    text = build(service, module)
+def cache_path(directory: str) -> str:
+    key = hashlib.sha256(str(Path(directory).resolve()).encode()).hexdigest()[:16]
+    return str(base_cache.cache_root() / CACHE_FOLDER / f"{key}.tsv")
+
+
+def store(path: str, text: str) -> bool:
     before = None
     if os.path.exists(path):
         with open(path) as f:
             before = f.read()
-    with open(path, "w") as f:
-        f.write(text)
-    return path, before != text
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    handle, temporary = tempfile.mkstemp(dir=os.path.dirname(path), suffix=".tmp")
+    try:
+        with os.fdopen(handle, "w") as f:
+            f.write(text)
+        os.replace(temporary, path)
+    except BaseException:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+        raise
+    return before != text
+
+
+def write(service: Any, module: str) -> tuple[str, bool]:
+    path = cache_path(package_dir(module))
+    return path, store(path, build(service, module))
 
 
 def newest(directory: str) -> float:
@@ -92,7 +110,7 @@ def newest(directory: str) -> float:
 
 
 def stale(directory: str) -> bool:
-    path = os.path.join(directory, FILE)
+    path = cache_path(directory)
     return not os.path.exists(path) or os.path.getmtime(path) < newest(directory)
 
 
@@ -126,12 +144,16 @@ def read_decisions(directory: str) -> list[Entry]:
 def entries_of(root: str, name: str) -> list[Entry]:
     directory = os.path.join(root, *name.split("."))
     if stale(directory):
-        print(f"index stale: {name}", file=sys.stderr)
         from ostler.book.cli import load
 
-        found = parse(build(load(name), name))
+        text = build(load(name), name)
+        found = parse(text)
+        try:
+            store(cache_path(directory), text)
+        except OSError:
+            pass
     else:
-        with open(os.path.join(directory, FILE)) as f:
+        with open(cache_path(directory)) as f:
             found = parse(f.read())
     return [e for e in found if e.kind != "decision"] + read_decisions(directory)
 

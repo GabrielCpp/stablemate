@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from ostler.book.index import FILE as INDEX_FILE
+from ostler.book.index import cache_path
 from ostler.book.index import parse as parse_index
 from ostler.book.sources import story_commits
 from workhorse._vendor.stablemate_core import books
@@ -720,7 +720,7 @@ def _run_argv(
 def _calls_by_module(root: Path, modules: tuple[str, ...]) -> dict[str, frozenset[str]]:
     held: dict[str, frozenset[str]] = {}
     for module in modules:
-        index = root / Path(*module.split(".")) / INDEX_FILE
+        index = Path(cache_path(str(root / Path(*module.split(".")))))
         text = index.read_text(encoding="utf-8") if index.is_file() else ""
         held[module] = frozenset(entry.name for entry in parse_index(text) if entry.kind in ("endpoint", "interaction"))
     return held

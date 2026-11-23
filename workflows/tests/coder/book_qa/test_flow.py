@@ -16,6 +16,7 @@ import pytest
 from _epics import epics_root
 from _books import SHARED_FILES, TODO_BOOK, import_shared, write_todo_book
 from _workspace import Workspace, cut_run_worktrees
+from ostler.book.index import cache_path
 from workhorse._vendor.stablemate_core import config as core_config
 from workhorse.pyflow import park as pyflow_park
 from workhorse.pyflow.blueprint import NODE_ATTR, node_spec
@@ -1481,7 +1482,7 @@ def _two_surfaces(
     (repo / "services" / "api" / "service.py").unlink()
     for surface, kind, call in (("http", "endpoint", "ListX"), ("web", "interaction", "BuildX")):
         write(repo / "services" / "api" / surface / "service.py", f"# the api {surface} surface\n")
-        write(repo / "services" / "api" / surface / "index.tsv", f"{kind}\t{call}\tx:{call}\td\n")
+        write(Path(cache_path(str(repo / "services" / "api" / surface))), f"{kind}\t{call}\tx:{call}\td\n")
     git(repo, "add", "-A")
     git(repo, "commit", "-qm", "chore: split the api book by surface")
 

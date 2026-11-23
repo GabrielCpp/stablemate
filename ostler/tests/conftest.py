@@ -219,6 +219,12 @@ def minting_root(tmp_path: Path) -> Path:
 
 
 @pytest.fixture(autouse=True)
+def _book_index_cache_is_per_test(tmp_path_factory, monkeypatch):
+    """Search keeps its book index in the user cache, so no test may write to the real one."""
+    monkeypatch.setenv("STABLEMATE_CACHE_DIR", str(tmp_path_factory.mktemp("book-cache")))
+
+
+@pytest.fixture(autouse=True)
 def _ostler_defects_raise(monkeypatch):
     """A defect inside ostler raises in a test instead of becoming the one-line internal error."""
     monkeypatch.setenv("OSTLER_DEBUG", "1")

@@ -57,16 +57,6 @@ class EchoArgs(Fixture):
 
 __all__ = ["EchoArgs"]
 ''',
-    "services/demo/index.tsv": r'''endpoint	Echo	services.demo.commands:Echo	echo hello\n  Print the word hello.\n  runs: echo hello\n  body: EchoArgs\n  0 → lines of text: the word\n  carries: Say\nsource: services/demo/surface.py
-endpoint	Look	services.demo.commands:Look	sandbox files\n  List the notes.\n  auth: none\n  0 → [File]: every watched file with the strings it holds\n  carries: ListFiles\nsource: services/demo/surface.py
-action	Say	services.demo.model.actions:Say	Say
-action	ListFiles	services.demo.model.actions:ListFiles	ListFiles
-journey	Greet	services.demo.journeys.greet:Greet	Greet\nA person says hello and looks at the notes.
-scene	notes	notes:notes	- **notes**: the notes file. Reached by: a fresh service, nothing done.
-decision	say-hello	decisions/say-hello.md:1	story: none
-decision	say-hello	decisions/say-hello.md:3	elements: Echo
-decision	say-hello	decisions/say-hello.md:5	The demo book greets with the word hello and nothing else.
-''',
     "services/demo/journeys/__init__.py": r'''from .greet import Greet
 
 ALL = (Greet,)

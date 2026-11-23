@@ -146,7 +146,7 @@ def build_parser(embedded: bool = False) -> argparse.ArgumentParser:
     explain = sub.add_parser("explain", help="everything the book says of one endpoint, action, screen, journey or component")
     explain.add_argument("service")
     explain.add_argument("name", help="a class name, or Screen.attribute for a component of a screen")
-    indexer = sub.add_parser("index", help="write the service's index.tsv, which search reads without importing the service")
+    indexer = sub.add_parser("index", help="rebuild the service's search index in the user cache, which search reads without importing the service")
     indexer.add_argument("service")
     checker = sub.add_parser("check", help="build everything the book declares, with no stack, and name what is broken")
     checker.add_argument("service")

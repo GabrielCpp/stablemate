@@ -32,12 +32,12 @@ class CheckBook(Command):
 
 
 class IndexBook(Command):
-    does = "Write the service's index.tsv, which search reads without importing the service."
+    does = "Rebuild the service's search index in the user cache, which search reads without importing the service."
     program = "ostler"
     argv = ("--full-ids", "book", "index", "services.demo")
     args = ARGS
-    answers = (Exit(0, Lines(), "the index file's path and whether it changed"),)
-    carries = act.IndexBook
+    answers = (Exit(0, OPAQUE, "the cache file's path and whether it changed"),)
+    carries = act.Reading
     source = (*CORE, "ostler/ostler/book/decisions.py", "ostler/ostler/book/questions.py", "ostler/ostler/book/search.py")
 
 

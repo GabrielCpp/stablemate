@@ -483,14 +483,6 @@ class CheckBook(Action[Nothing, Plan]):
         return Transaction(says=("check: 0 findings",))
 
 
-class IndexBook(Action[Nothing, Plan]):
-    accept = Nothing
-
-    @staticmethod
-    def reduce(a: Nothing, s: Plan, by: Actor | None) -> Transaction:
-        return Transaction(says=("<sandbox>/services/demo/index.tsv: unchanged",))
-
-
 class ListBookDecisions(Action[Nothing, Plan]):
     accept = Nothing
 

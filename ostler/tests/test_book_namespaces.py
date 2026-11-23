@@ -7,12 +7,13 @@ import time
 from pathlib import Path
 
 from conftest import write
+from ostler.book import index as book_index
 from test_book_home_resolution import _artifacts, _lone_repository, _ostler
 
 
 def _book(root: Path, folder: str, term: str) -> None:
     write(root / folder / "service.py", "")
-    index = root / folder / "index.tsv"
+    index = Path(book_index.cache_path(str(root / folder)))
     write(index, f"endpoint\tThing\tendpoints.py:1\t{term} is here\n")
     later = time.time() + 5
     os.utime(index, (later, later))
