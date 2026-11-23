@@ -1,9 +1,7 @@
 """A gate opening, collapsing and being answered above the Diff and Files tabs, measured on the page the operator gets."""
 from __future__ import annotations
 
-import json
 import re
-import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 
@@ -27,9 +25,10 @@ from test_diff_tab_dynamic import (
     _tab,
     _wait_for,
 )
-from test_gate_strip_dynamic import FIRST, SECOND, _post
-from websockets.exceptions import ConnectionClosed
-from websockets.sync.client import connect
+from test_files_tab_dynamic import _Checkout
+from test_files_tab_dynamic import _Sidecar as _FilesSidecar
+from test_gate_strip_dynamic import FIRST, SECOND, _strip
+from test_gate_strip_dynamic import _open_gate as _push_gate
 
 LONG = _patch("services/api/lockout.py", [f"old {n}" for n in range(40)], [f"new line {n}" for n in range(260)])
 SMALL = _patch("services/api/sign_in.py", ["old a"], ["new a", "new b"])
@@ -38,36 +37,18 @@ BODY = "\n".join(f"line_{n:03d} = {n}" for n in range(300)) + "\n"
 FILES = {"services/api/lockout.py": BODY, "services/api/sign_in.py": "def sign_in():\n    pass\n"}
 
 
-class _Sidecar:
+class _Sidecar(_FilesSidecar):
     def __init__(self, live, container: str) -> None:
-        self.container = container
         self.diff_reads = 0
-        self.tree_reads = 0
-        self.file_reads: list[str] = []
         self.questions: list[str] = []
         self.answers: list[tuple[str, str]] = []
-        self.socket = connect(f"ws://127.0.0.1:{live.port}/sidecar")
-        hello = {
-            "type": "hello",
-            "identity": {"container_id": container, "name": "coder-acme", "run_id": RUN, "workflow": "coder"},
-            "snapshot": {"current_node": "build", "terminal": "", "gates": []},
-        }
-        self.socket.send(json.dumps(hello))
-        self.thread = threading.Thread(target=self._serve, daemon=True)
-        self.thread.start()
+        super().__init__(live, container, _Checkout(files=dict(FILES)))
 
     def _answer(self, message: dict) -> dict:
         method = message["method"]
         if method == "getDiff":
             self.diff_reads += 1
             return {"ok": True, "data": {"diff": DIFF, "untracked": [], "failed": False}}
-        if method == "getTree":
-            self.tree_reads += 1
-            return {"ok": True, "data": {"paths": sorted(FILES), "failed": False}}
-        if method == "getFile":
-            path = message["params"]["path"]
-            self.file_reads.append(path)
-            return {"ok": True, "data": {"content": FILES[path], "failed": False}}
         if method == "getQuestions":
             return {"ok": True, "data": {"ok": True, "questions": [{"path": path, "kind": "operator"} for path in self.questions]}}
         if method == "answerGate":
@@ -115,11 +96,7 @@ def _runs(*containers: str) -> Iterator[None]:
 def _open_gate(live, path: str, question: str, container: str = CONTAINER, sidecar: _Sidecar | None = None) -> None:
     if sidecar is not None:
         sidecar.questions.append(path)
-    _post(live, "/push/blocked", {"container_id": container, "file_path": path, "question": question})
-
-
-def _strip(page):
-    return page.get_by_role("region", name="Open gates")
+    _push_gate(live, path, question, container)
 
 
 def _view(page) -> dict:
