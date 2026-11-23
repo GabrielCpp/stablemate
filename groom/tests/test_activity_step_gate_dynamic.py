@@ -36,27 +36,30 @@ def _insert_logs(node: str, at: float, lines: list[tuple[str, str]]) -> None:
 _CURRENT = [""]
 
 
-def _telemetry(run: str, node: str, *, wait: str = "") -> None:
+def _telemetry(run: str, node: str, *, wait: str = "", asked: str = ASKED) -> None:
     from groom.models import RunTelemetry
 
     now = time.time()
     state.RUNS[run] = RunTelemetry(
         run_id=run, workflow="coder", current_node=node, node_elapsed_s=900.0, wait_kind=wait,
-        wait_elapsed_s=720.0 if wait else 0.0, wait_gate_path=GATE if wait else "", wait_gate_question=ASKED if wait else "",
+        wait_elapsed_s=720.0 if wait else 0.0, wait_gate_path=GATE if wait else "", wait_gate_question=asked if wait else "",
         turn_active=False, last_heartbeat_ts=now, last_span_ts=now, first_seen_ts=now - 1000, last_telemetry_ts=now,
         gauge_ts={"workhorse.wait.elapsed_s": now, "workhorse.node.elapsed_s": now, "workhorse.turn.elapsed_s": now},
     )
 
 
 @contextmanager
-def _stepped(run: str, tmp: Path, *, gate: str = "", running: bool = False, answer: str = "Use 423, and say why in the body.") -> Iterator[str]:
+def _stepped(
+    run: str, tmp: Path, *, gate: str = "", running: bool = False, answer: str = "Use 423, and say why in the body.",
+    error: str = ERROR_TEXT, asked: str = ASKED,
+) -> Iterator[str]:
     with _run(run, tmp, turns=False) as name:
         _CURRENT[0] = name
         _seed(name)
-        failed = span("e1", "t1", "sa", "ensure_stack", "ensure_stack", BASE + 42.2, 4, {"error.class": "StackStartFailed", "status_message": ERROR_TEXT} | _attrs("sign-in"), 1, name) | {"status": "ERROR"}
+        failed = span("e1", "t1", "sa", "ensure_stack", "ensure_stack", BASE + 42.2, 4, {"error.class": "StackStartFailed", "status_message": error} | _attrs("sign-in"), 1, name) | {"status": "ERROR"}
         silent = span("e2", "t1", "sa", "run_gate", "run_gate", BASE + 60, 62, {"error.class": "GateFailed", "status_message": "2 scenarios failed: expired code, locked account"} | _attrs("sign-in"), 1, name) | {"status": "ERROR"}
         spans = [failed, silent]
-        waiting = {"workhorse.span_kind": "wait", "workhorse.wait_kind": "operator", "workhorse.gate_path": GATE, "workhorse.gate_question": ASKED, "workhorse.wait_outcome": "completed"}
+        waiting = {"workhorse.span_kind": "wait", "workhorse.wait_kind": "operator", "workhorse.gate_path": GATE, "workhorse.gate_question": asked, "workhorse.wait_outcome": "completed"}
         if gate == "answered":
             spans.append(span("w1", "t1", "sa", "qa-story", "wait:operator", BASE + 100, 540, waiting | _attrs("sign-in"), 1, name))
         store.insert_spans(spans)
@@ -65,10 +68,10 @@ def _stepped(run: str, tmp: Path, *, gate: str = "", running: bool = False, answ
         directory = tmp / "ws" / "gates"
         directory.mkdir(parents=True, exist_ok=True)
         if gate == "answered":
-            (directory / "qa-story.md").write_text(f"STATUS: ANSWERED\n\n## Questions from the agent\n\n{ASKED}\n\n{answer}\n")
+            (directory / "qa-story.md").write_text(f"STATUS: ANSWERED\n\n## Questions from the agent\n\n{asked}\n\n{answer}\n")
         elif gate == "open":
-            (directory / "qa-story.md").write_text(f"STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\n\n{ASKED}\n")
-            _telemetry(name, "qa-story", wait="operator")
+            (directory / "qa-story.md").write_text(f"STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\n\n{asked}\n")
+            _telemetry(name, "qa-story", wait="operator", asked=asked)
         if running:
             _telemetry(name, "prepare_fixtures")
             _insert_logs("prepare_fixtures", time.time() - 5, [("INFO", "copying fixtures into the stack")])
@@ -274,6 +277,7 @@ def test_answering_in_the_box_above_the_tabs_turns_the_pane_answered_and_keeps_t
         expect(pane.locator(".at-msg.user")).to_contain_text("Use 423.")
         expect(selected).to_have_attribute("data-entry", "gate:qa-story#1")
         expect(pane.locator(".rd-head .chip")).to_contain_text("answered")
+        assert "Use 423." in (tmp_path / "ws" / GATE).read_text()
 
     _with(tmp_path, "gate-answer", "gate:qa-story#1", check, gate="open")
 
@@ -362,6 +366,23 @@ def test_the_hostile_gate_answer_renders_without_markup_or_script(tmp_path):
         assert page.evaluate("() => window.__ran === undefined")
 
     _with(tmp_path, "gate-hostile", "gate:qa-story#1", check, gate="answered", answer="423 " + HOSTILE)
+
+
+def test_a_hostile_error_and_question_render_as_text_and_no_script_runs(tmp_path):
+    from playwright.sync_api import expect
+
+    def error_check(page, pane):
+        expect(pane.locator(".err-box")).to_contain_text("<script>")
+        assert pane.locator("img, script").count() == 0
+        assert page.evaluate("() => window.__ran === undefined")
+
+    def question_check(page, pane):
+        expect(pane.locator(".at-msg").nth(0)).to_contain_text("Should a locked account")
+        assert pane.locator("img, script").count() == 0
+        assert page.evaluate("() => window.__ran === undefined")
+
+    _with(tmp_path, "step-hostile-error", "failed:e1", error_check, error=ERROR_TEXT + "\n" + HOSTILE)
+    _with(tmp_path, "gate-hostile-question", "gate:qa-story#1", question_check, gate="answered", asked=ASKED + " " + HOSTILE)
 
 
 def test_the_controls_of_the_new_panes_have_a_role_a_name_keyboard_operation_and_axe_is_clean(tmp_path):
