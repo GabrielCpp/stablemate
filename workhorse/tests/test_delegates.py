@@ -7,11 +7,10 @@ import json
 import tempfile
 from contextlib import redirect_stdout
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
-from _fakes import FakeBackend, FakeClock
+from _fakes import FakeBackend, FakeClock, claude_cmd as _claude_cmd
 from workhorse._vendor.stablemate_core import config
 from workhorse._vendor.stablemate_core.profiles import PowerMapping
 from workhorse.config_run import AgentResilience
@@ -19,7 +18,6 @@ from workhorse.profile import ProfileSelection, resolve_delegates_for
 from workhorse.runner import ladder
 from workhorse.runner.backends import turn
 from workhorse.runner.backends import delegates as delegates_module
-from workhorse.runner.backends.claude import ClaudeBackend
 from workhorse.runner.backends.codex import CodexBackend
 from workhorse.runner.backends.copilot import CopilotBackend
 from workhorse.runner.backends.delegates import Delegate, delegates_for
@@ -87,21 +85,6 @@ def _stream_capturing(captured, read_files=False):
         return turn.TurnState(result_text="OK", session_id="s")
 
     return fake
-
-
-def _claude_cmd(**kwargs):
-    captured = {}
-
-    def fake_popen(cmd, *a, **k):
-        captured["cmd"] = cmd
-        raise RuntimeError("stop before spawning")
-
-    with patch("subprocess.Popen", fake_popen):
-        try:
-            ClaudeBackend().run_turn("P", "n", None, timeout=60, resilience=RESILIENCE, **kwargs)
-        except Exception:
-            pass
-    return captured["cmd"]
 
 
 def test_the_catalog_keeps_its_order_and_drops_a_role_with_no_model():

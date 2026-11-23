@@ -78,6 +78,24 @@ decision	a-params-text-is-parsed-by-the-model	decisions/a-params-text-is-parsed-
 decision	a-reply-text-is-stored-exactly	decisions/a-reply-text-is-stored-exactly.md:1	story: workhorse-book
 decision	a-reply-text-is-stored-exactly	decisions/a-reply-text-is-stored-exactly.md:3	elements: InboxReply, FileRecord
 decision	a-reply-text-is-stored-exactly	decisions/a-reply-text-is-stored-exactly.md:5	`inbox reply` stores the text as typed: no trimming, no case change (workhorse/workhorse/inbox.py::reply). The watch declares the strings `go ahead` for either message and `yes` for the second, so a reply of any other text leaves the message holding none of the declared strings. The model keeps exactly that, and does not guess a message's later `inbox read` after an undeclared text.
+decision	a-run-states-its-own-compaction-window	decisions/a-run-states-its-own-compaction-window.md:1	story: none
+decision	a-run-states-its-own-compaction-window	decisions/a-run-states-its-own-compaction-window.md:3	elements: Run
+decision	a-run-states-its-own-compaction-window	decisions/a-run-states-its-own-compaction-window.md:4	sources: workhorse/workhorse/runner/backends/claude.py, workhorse/workhorse/profile.py
+decision	a-run-states-its-own-compaction-window	decisions/a-run-states-its-own-compaction-window.md:6	A run states the compaction window of each claude turn. It does not inherit the operator's. The interactive home
+decision	a-run-states-its-own-compaction-window	decisions/a-run-states-its-own-compaction-window.md:7	configuration sets `autoCompactWindow` to 150000, and an unattended turn that reads a lot then compacts about every 13
+decision	a-run-states-its-own-compaction-window	decisions/a-run-states-its-own-compaction-window.md:8	tool calls and writes nothing. A writer turn compacted 20 times in 70 minutes. Turns that worked reached 367k to 441k
+decision	a-run-states-its-own-compaction-window	decisions/a-run-states-its-own-compaction-window.md:9	tokens with zero or one compaction. A run's configuration is not the home configuration, so the run passes
+decision	a-run-states-its-own-compaction-window	decisions/a-run-states-its-own-compaction-window.md:10	`--autocompact` on every claude turn.
+decision	a-run-states-its-own-compaction-window	decisions/a-run-states-its-own-compaction-window.md:11	
+decision	a-run-states-its-own-compaction-window	decisions/a-run-states-its-own-compaction-window.md:12	The engine default is the fixed number 400000, not `auto`. A fixed number makes two runs compact at the same point. It
+decision	a-run-states-its-own-compaction-window	decisions/a-run-states-its-own-compaction-window.md:13	bounds the cost of one turn's context. The turn that worked compacted once, at 367k.
+decision	a-run-states-its-own-compaction-window	decisions/a-run-states-its-own-compaction-window.md:14	
+decision	a-run-states-its-own-compaction-window	decisions/a-run-states-its-own-compaction-window.md:15	A power tier can name its own `compact_window`, and the profile's default fills in for a tier that names none. The value
+decision	a-run-states-its-own-compaction-window	decisions/a-run-states-its-own-compaction-window.md:16	`auto` is accepted and passes the CLI's per-model window. A value that is not `auto` or an integer of at least 100000
+decision	a-run-states-its-own-compaction-window	decisions/a-run-states-its-own-compaction-window.md:17	reads as unset. The other CLIs ignore the setting.
+decision	a-run-states-its-own-compaction-window	decisions/a-run-states-its-own-compaction-window.md:18	
+decision	a-run-states-its-own-compaction-window	decisions/a-run-states-its-own-compaction-window.md:19	An inherited `CLAUDE_CODE_AUTO_COMPACT_WINDOW` still wins over the flag, because the CLI reads the environment variable
+decision	a-run-states-its-own-compaction-window	decisions/a-run-states-its-own-compaction-window.md:20	first. The run documents this and does not strip the variable.
 decision	a-successful-replay-is-unseen	decisions/a-successful-replay-is-unseen.md:1	story: workhorse-book
 decision	a-successful-replay-is-unseen	decisions/a-successful-replay-is-unseen.md:3	elements: Replay
 decision	a-successful-replay-is-unseen	decisions/a-successful-replay-is-unseen.md:5	`replay` re-runs one recorded agent turn against a live backend. The sandbox has none, so the book plays only its refusals: a run that is not there, and a turn directory without a `turn.json`. `Service.unseen` says so for the inputs of `Replay`. Both `--run` and the turn are required by the command's parser, so the book declares both fields required and never sends the command without them.

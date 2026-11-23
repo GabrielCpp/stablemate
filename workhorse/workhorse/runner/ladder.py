@@ -13,7 +13,7 @@ from workhorse import control, otel, reload
 from workhorse.artifacts import write_unlinked
 from workhorse.config_run import AgentResilience, RunConfig
 from workhorse.context import WorkflowContext
-from workhorse.profile import ProfileSelection, profile_models, resolve_delegates_for, resolve_power_settings
+from workhorse.profile import ProfileSelection, profile_models, resolve_compact_window, resolve_delegates_for, resolve_power_settings
 from workhorse.runner.backends import AgentProfile
 from workhorse.runner.caps import cap_delay_seconds, sleep_with_notice
 from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
@@ -66,6 +66,7 @@ class TurnOptions(TypedDict, total=False):
     add_dirs: list[str] | None
     effort: str | None
     deadline: float | None
+    compact_window: int | str | None
 
 
 def _write_prompt_for_inspection(node_id: str, prompt: str, run_dir: Path | None) -> Path | None:
@@ -207,6 +208,9 @@ class AgentRunner:
             silence_budget_s=silence_budget,
             timeout_unbounded=unbounded,
             deadline_s=deadline_s,
+            compact_window=resolve_compact_window(
+                node.power, self.backend.name, self.profile.name
+            ),
         )
 
     def _run(
@@ -279,6 +283,7 @@ class AgentRunner:
                     cwd=turn.cwd, add_dirs=list(turn.add_dirs),
                     effort=turn.effort,
                     deadline=turn.deadline_s,
+                    compact_window=turn.compact_window,
                     validate=validate,
                 )
                 return rendered_prompt, outputs
@@ -497,6 +502,7 @@ class AgentRunner:
         agent: AgentProfile | None = None,
         invoke_retries: int | None = None,
         deadline: float | None = None,
+        compact_window: int | str | None = None,
     ) -> str:
         """Run one agent-CLI turn for ``prompt``, recovering from transient failures."""
         resilience = self.resilience
@@ -549,6 +555,7 @@ class AgentRunner:
                         agent=agent,
                         delegates=delegates,
                         models=models,
+                        compact_window=compact_window,
                     )
                 otel.turn_end()
                 return result

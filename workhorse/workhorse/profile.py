@@ -109,6 +109,14 @@ def resolve_power_settings(
     return model, mapped.effort or fallback.effort, scale
 
 
+def resolve_compact_window(power: str | None, backend_name: str, profile: str = "") -> int | str | None:
+    """The compaction window ``power`` names on ``backend_name``, else the profile's default, else ``None``."""
+    selected = _profile(profile, backend_name)
+    mapped = resolve_power(power, backend_name, selected)
+    fallback = resolve_backend_default(backend_name, selected)
+    return mapped.compact_window or fallback.compact_window
+
+
 def resolve_delegates_for(
     backend_name: str, profile: str = "", *, subagents: bool = True
 ) -> tuple[Delegate, ...]:

@@ -56,6 +56,7 @@ class RenderedTurn:
     silence_budget_s: float
     timeout_unbounded: bool
     deadline_s: float | None = None
+    compact_window: int | str | None = None
 
 
 def record_turn_start(

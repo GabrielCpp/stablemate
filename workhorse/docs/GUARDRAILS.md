@@ -212,6 +212,25 @@ raise in the same breath. And the `MAX_*` lap ceilings are counted in **turns**,
 scale buys no extra laps — the cost ceiling is unchanged and a slow run stays comparable
 to a fast one.
 
+### The compaction window a run states (`compact_window`)
+
+An unattended claude turn would otherwise inherit the operator's interactive `autoCompactWindow`. A turn that reads a lot
+then compacts every few tool calls and writes nothing. A run's configuration is not the home configuration, so every
+claude turn passes `--autocompact` itself. The default is 400000 tokens.
+
+A power tier overrides it, and the profile's `default` supplies it to a node that names no tier:
+
+```toml
+[profiles.claude.powers.high]
+compact_window = 500000   # tokens; at least 100000
+```
+
+The value `"auto"` passes `--autocompact auto`, the window the CLI tunes per model. Any other value that is not an integer of
+at least 100000 reads as unset, so the engine default applies. Other CLIs ignore the setting.
+
+An inherited `CLAUDE_CODE_AUTO_COMPACT_WINDOW`, whether it comes from `[cli.claude].env` or the shell, still wins over the
+flag. The run does not strip it.
+
 ### Driver-level guards (workhorse/pyflow)
 
 | Variable | Default | Description |

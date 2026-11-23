@@ -195,13 +195,13 @@ name it on every run — put `default_cli` in the shared config (see
 default_cli = "opencode"
 ```
 
-| Backend | CLI | Default model | In-place compaction |
-|---|---|---|---|
-| `claude` | `claude -p` (stream-json) | `sonnet` | yes (`/compact`) |
-| `codex` | `codex exec --json` | CLI default | no — ladder reframes on overflow |
-| `copilot` | `copilot -p --output-format json` | CLI default | no — ladder reframes on overflow |
-| `cline` | `cline --json` | — (node names it) | no — ladder reframes on overflow |
-| `opencode` | `opencode run --format json` | — (node names it) | no — ladder reframes on overflow |
+| Backend | CLI | Default model | In-place compaction | Compaction window |
+|---|---|---|---|---|
+| `claude` | `claude -p` (stream-json) | `sonnet` | yes (`/compact`) | states `--autocompact` |
+| `codex` | `codex exec --json` | CLI default | no — ladder reframes on overflow | ignored |
+| `copilot` | `copilot -p --output-format json` | CLI default | no — ladder reframes on overflow | ignored |
+| `cline` | `cline --json` | — (node names it) | no — ladder reframes on overflow | ignored |
+| `opencode` | `opencode run --format json` | — (node names it) | no — ladder reframes on overflow | ignored |
 
 Claude, codex and opencode can spawn subagents inside a turn. Cline and copilot cannot.
 A workflow reads the answer as `self.subagents`, and a dry run answers `False` unless the

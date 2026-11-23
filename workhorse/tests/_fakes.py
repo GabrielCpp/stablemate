@@ -10,15 +10,34 @@ from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 from workhorse import otel
+from workhorse.config_run import AgentResilience
 from workhorse.runner.backends import AgentBackend, TurnRequest
+from workhorse.runner.backends.claude import ClaudeBackend
 
 
 def present[T](value: T | None) -> T:
     """``value`` with its ``None`` ruled out — for a lookup the test arranged to hit."""
     assert value is not None
     return value
+
+
+def claude_cmd(**kwargs: Any) -> list[str]:
+    """The argv a claude turn built, captured by stopping the spawn."""
+    captured: dict[str, list[str]] = {}
+
+    def fake_popen(cmd, *a, **k):
+        captured["cmd"] = cmd
+        raise RuntimeError("stop before spawning")
+
+    with patch("subprocess.Popen", fake_popen):
+        try:
+            ClaudeBackend().run_turn("P", "n", None, timeout=60, resilience=AgentResilience(), **kwargs)
+        except Exception:
+            pass
+    return captured["cmd"]
 
 
 class FakeBackend(AgentBackend):

@@ -141,6 +141,7 @@ class TurnRequest:
     agent: AgentProfile | None
     delegates: tuple[Delegate, ...]
     models: tuple[str, ...]
+    compact_window: int | str | None = None
 
 
 class AgentBackend(ABC):
@@ -175,6 +176,7 @@ class AgentBackend(ABC):
         agent: AgentProfile | None = None,
         delegates: tuple[Delegate, ...] = (),
         models: tuple[str, ...] = (),
+        compact_window: int | str | None = None,
     ) -> str:
         """Run one non-interactive turn for ``prompt`` and return the final result text.
 
@@ -198,6 +200,7 @@ class AgentBackend(ABC):
                 agent=agent,
                 delegates=delegates,
                 models=models,
+                compact_window=compact_window,
             )
         )
 

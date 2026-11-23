@@ -6,9 +6,9 @@ import shlex
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
+from _fakes import claude_cmd
 from workhorse.profile import profile_models
 from workhorse.runner.backends import model_guard
-from workhorse.runner.backends.claude import ClaudeBackend
 from workhorse.config_run import AgentResilience
 
 PROFILE = ("claude-opus-5-5", "claude-sonnet-5-5", "haiku")
@@ -56,18 +56,7 @@ def test_the_hook_prints_a_denial_for_fable_and_nothing_for_opus():
 
 
 def test_the_claude_command_line_carries_the_hook_on_the_agent_tool():
-    captured = {}
-
-    def fake_popen(cmd, *a, **k):
-        captured["cmd"] = cmd
-        raise RuntimeError("stop before spawning")
-
-    with patch("subprocess.Popen", fake_popen):
-        try:
-            ClaudeBackend().run_turn("P", "n", None, timeout=60, resilience=RESILIENCE, models=PROFILE)
-        except Exception:
-            pass
-    cmd = captured["cmd"]
+    cmd = claude_cmd(models=PROFILE)
     settings = json.loads(cmd[cmd.index("--settings") + 1])
     [entry] = settings["hooks"]["PreToolUse"]
     assert entry["matcher"] == "Agent"
@@ -77,18 +66,7 @@ def test_the_claude_command_line_carries_the_hook_on_the_agent_tool():
 
 
 def test_a_turn_with_no_profile_models_carries_no_settings():
-    captured = {}
-
-    def fake_popen(cmd, *a, **k):
-        captured["cmd"] = cmd
-        raise RuntimeError("stop before spawning")
-
-    with patch("subprocess.Popen", fake_popen):
-        try:
-            ClaudeBackend().run_turn("P", "n", None, timeout=60, resilience=RESILIENCE)
-        except Exception:
-            pass
-    assert "--settings" not in captured["cmd"]
+    assert "--settings" not in claude_cmd()
 
 
 def test_profile_models_lists_default_powers_and_delegates():

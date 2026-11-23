@@ -35,6 +35,7 @@ class ClaudeBackend(AgentBackend):
 
     name = "claude"
     default_model = "sonnet"
+    default_compact_window = 400000
     supports_compaction = True
     supports_subagents = True
 
@@ -57,6 +58,7 @@ class ClaudeBackend(AgentBackend):
             cmd.extend(["--effort", turn.effort])
         if turn.agent is not None and turn.agent.steps is not None:
             cmd.extend(["--max-turns", str(turn.agent.steps)])
+        cmd.extend(["--autocompact", str(turn.compact_window or self.default_compact_window)])
         if turn.prompt_path is not None:
             cmd.extend(["--append-system-prompt", _brief_anchor(turn.prompt_path)])
         for directory in turn.add_dirs or []:
