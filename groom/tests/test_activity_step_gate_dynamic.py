@@ -415,3 +415,43 @@ def test_the_controls_of_the_new_panes_have_a_role_a_name_keyboard_operation_and
             assert len(_rows(page).all()) > 0
         finally:
             page.close()
+
+
+def test_open_that_step_and_retry_now_have_a_name_keyboard_operation_and_axe_is_clean(tmp_path):
+    from playwright.sync_api import expect
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    with _stepped("step-a11y-keys", tmp_path) as name:
+        page = _open(live)
+        failing = {"on": True}
+
+        def handle(route):
+            if failing["on"]:
+                route.fulfill(status=503, body="{}", content_type="application/json")
+            else:
+                route.continue_()
+
+        page.route(re.compile(r"/entry/"), handle)
+        try:
+            _pick(page, name)
+            _open_activity(page)
+            _reveal(page)
+            page.locator('#detail-panel .tl button[data-entry="step:a-lint"]').click()
+            alert = page.locator(".rd .act-state[role=alert]")
+            expect(alert).to_be_visible()
+            assert _scan(page) == []
+            retry = page.get_by_role("button", name="Retry now")
+            failing["on"] = False
+            retry.focus()
+            page.keyboard.press("Enter")
+            expect(alert).to_have_count(0)
+            expect(page.locator(".rd .rd-head")).to_contain_text("lint")
+            assert _scan(page) == []
+            nxt = page.get_by_role("button", name="Open that step")
+            nxt.focus()
+            page.keyboard.press("Enter")
+            expect(page.locator(".rd .rd-head")).to_contain_text("build")
+            expect(page.locator("#detail-panel .tl button[aria-current=true]")).to_have_attribute("data-entry", "step:a-build")
+        finally:
+            page.close()

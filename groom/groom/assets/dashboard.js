@@ -2494,7 +2494,7 @@ function ProblemReading({ data }) {
 function EntryPane({ runId, entry }) {
   if (entry.status === "failed") {
     return html`<div class="rd"><div class="side-state act-state" role="alert">
-      <h3>The details of this step could not be read</h3>
+      <h2>The details of this step could not be read</h2>
       The row in the timeline stays.
       <button type="button" class="btn ghost retry-entry" onClick=${() => loadEntry(runId, entry.key)}>Retry now</button>
     </div></div>`;
