@@ -18,6 +18,6 @@ class RunDetail(Screen):
                    takes="answer", holds=Wire(Str(), required=False, nullable=True))
     send = Button("#detail form.answer button[type=submit]", "Send answer", does="sends the answer to the run's gate")
     close = Button("#detail .close-detail", "Close run detail", does="closes the run's detail pane")
-    overview = Text("#tab-overview", "Overview", does="the tab of the run's cost and facts")
+    overview = Text("#tab-overview", "Overview", does="the tab of the run's cost and facts, refreshed in place when a span batch of the run commits")
     activity = Text("#tab-activity", "Activity", does="the tab of the run's turns")
     rejected = Text("#toasts", "toast", does="the notice shown when groom refuses the answer, with the reason groom gave")
