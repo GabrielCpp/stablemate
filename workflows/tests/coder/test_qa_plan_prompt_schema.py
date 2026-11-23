@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import ast
-import inspect
 import re
 from pathlib import Path
 
 import workhorse_workflows
+from loaded_code import stored_attributes, strings
 from ostler.qa.harness import ostler_qa as harness
 from ostler.qa.session import QA_DIRNAME
 from workhorse_workflows.coder.qa.flow import Qa
@@ -50,16 +50,7 @@ def test_the_example_imports_only_names_the_harness_exports():
 
 def _qa_attributes() -> set[str]:
     """Everything a scenario may reach through `qa`: the class's own methods and properties, plus the instance attributes `__init__` binds — `qa.http` and `qa.diagnostics` exist only as assignments, so `dir(Qa)` alone would call them invented."""
-    tree = ast.parse(inspect.getsource(harness.Qa).lstrip())
-    bound = {
-        node.attr
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Attribute)
-        and isinstance(node.ctx, ast.Store)
-        and isinstance(node.value, ast.Name)
-        and node.value.id == "self"
-    }
-    return bound | set(dir(harness.Qa))
+    return stored_attributes(harness.Qa) | set(dir(harness.Qa))
 
 
 def test_the_example_only_calls_qa_attributes_that_exist():
@@ -109,24 +100,9 @@ _SCALAR_ARG = re.compile(r"workhorse_var\(\s*'([a-z_]+)'\s*\)")
 _STRUCTURED_ARG = re.compile(r"{%-?\s*(?:if|for\s+\w+\s+in)\s+([a-z_]+)(?![a-z_(])")
 
 
-def _dict_keys(tree: ast.AST) -> set[str]:
-    return {
-        k.value
-        for node in ast.walk(tree)
-        if isinstance(node, ast.Dict)
-        for k in node.keys
-        if isinstance(k, ast.Constant) and isinstance(k.value, str)
-    }
-
-
 def _owner_arg_keys() -> set[str]:
-    """The literal keys of the dicts `_owner_args` and `work` hand the owner turn, read from their source."""
-    tree = ast.parse(inspect.getsource(Qa._owner_args).lstrip())
-    returns = [n for n in ast.walk(tree) if isinstance(n, ast.Return)]
-    assert len(returns) == 1, "_owner_args no longer ends in a single return"
-    assert isinstance(returns[0].value, ast.Dict), "_owner_args no longer returns a dict literal"
-    work = ast.parse(inspect.getsource(Qa.work).lstrip())
-    return _dict_keys(tree) | _dict_keys(work) | {"result_schema"}
+    """The keys `_owner_args` and `work` hand the owner turn, read from the string constants of the loaded functions."""
+    return strings(Qa._owner_args) | strings(Qa.work) | {"result_schema"}
 
 
 def test_the_qa_prompts_only_interpolate_arguments_the_flow_passes():
