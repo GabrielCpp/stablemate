@@ -29,5 +29,35 @@ class RunDetail(Screen):
         does="the words, beside the warning color, that mark a turn or step lasting longer than its node's norm",
     )
     overview = Text("#tab-overview", "Overview", does="the tab of the run's cost and facts, refreshed in place when a span batch of the run commits, with the strip of a live run above it")
+    just_started = Text(
+        "#tab-overview",
+        "No finished work yet",
+        does="the Overview of a run with no finished node: 'No finished work yet' and 'Figures appear when the first node finishes', with no tile and no problem count. The tiles take its place in the same pane, with no reload, once the first node finishes",
+    )
+    cost_tile = Text(
+        "#detail-cost-tile",
+        "Cost so far",
+        does="the cost of the run. A live run reads 'as of the last finished turn' with its age, 'N of M turns priced' and the cost per active hour, which is the cost over the active time and is left out while the run has no active time. A backend that reports no cost reads '<backend> reports no cost' with 'est $X at list price' when groom can estimate; an ended run reads 'est $X' with 'estimate: this backend reports no cost'. An estimate never appears without that label",
+    )
+    active_tile = Text(
+        "#detail-active-tile",
+        "Active time",
+        does="the active time of the run with its wall time and its session count beside it, as '<wall> wall, N sessions'. Wall time never appears without the active time. A session is a distinct resume generation, and a run never resumed has one",
+    )
+    items_tile = Text(
+        "#detail-items-tile",
+        "Work items",
+        does="the items done out of the total. The cost divided by the finished items reads '$X per finished item', and a run with no finished item reads 'none finished yet' with no per-item figure. A run with no price reads 'no cost per item without a price'",
+    )
+    turns_tile = Text(
+        "#detail-turns-tile",
+        "Agent turns",
+        does="the number of agent turns with 'N backend retries' beside it. The retries equal the sum of the Retries column of the flow tree",
+    )
+    attention_tile = Text(
+        "#detail-attention-tile",
+        "Attention",
+        does="the gates of the run, the time spent waiting on them and the problem count. The problem count is a button that opens the Activity tab with problems on. It counts failed steps, backend retries, failed gate checks and churn alerts, so it is never below the retries, and an answered gate does not count",
+    )
     activity = Text("#tab-activity", "Activity", does="the tab of the run's turns")
     rejected = Text("#toasts .toast:has(.t-title:text(\"answer not taken\"))", "toast", does="the notice shown when groom refuses the answer, with the reason groom gave")

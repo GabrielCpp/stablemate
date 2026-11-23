@@ -350,21 +350,21 @@ COST = Object(
 TILES = Object(
     "Tiles",
     **_ROW_FIGURE_FIELDS,
-    est_usd=Field(Num(), nullable=True),
-    backends=Field(List(Str())),
-    wall_s=Field(Num()),
-    sessions=Field(Int()),
+    est_usd=Field(Num(), nullable=True, does="the cost of the run at list price, from the model and tokens of each turn; null when no turn can be priced. The tile shows it labelled as an estimate"),
+    backends=Field(List(Str()), does="the backends that ran a turn, named beside 'reports no cost'"),
+    wall_s=Field(Num(), does="seconds from the first span to the last, shown beside the active time"),
+    sessions=Field(Int(), does="the distinct resume generations of the run, or 1 when it never resumed"),
 )
 
 STANDING = Object(
     "Standing",
-    gates=Field(Int()),
-    gate_wait_s=Field(Num()),
-    failed_steps=Field(Int()),
-    retries=Field(Int()),
-    failed_gate_checks=Field(Int()),
-    churn_alerts=Field(Int()),
-    problems=Field(Int()),
+    gates=Field(Int(), does="the operator waits of the run, an open wait included"),
+    gate_wait_s=Field(Num(), does="seconds spent waiting on the operator, an open wait counted up to now"),
+    failed_steps=Field(Int(), does="errored spans that are not the run itself and have no errored child"),
+    retries=Field(Int(), does="each agent turn after the first of a visit, which equals the sum of the flow tree's Retries column"),
+    failed_gate_checks=Field(Int(), does="gate check spans that ended dirty"),
+    churn_alerts=Field(Int(), does="churn alerts replayed from the stored spans by the rule groom's alerts use, so the count holds after a restart"),
+    problems=Field(Int(), does="failed steps plus retries plus failed gate checks plus churn alerts; an answered gate is not one"),
 )
 
 FACTS = Object("Facts", started_ts=Field(Num(), nullable=True), branch=Field(Str()), run_dir=Field(Str()))

@@ -2,6 +2,7 @@
 
 from ostler.book import Because, Unseen
 
+from ..model import actions as a
 from . import endpoints as e
 
 NO_TELEMETRY = "the book's groom is never sent telemetry, which its OTLP receivers take as protobuf the book cannot write"
@@ -49,7 +50,11 @@ GAPS = (
     (e.ReadLive, "200", tuple(f"[].{name}" for name in LIVE_FIELDS), NO_TELEMETRY),
 )
 
+NO_PLAY = "groom refuses every call of this action the same way, so no play has the model accept the call"
+NEVER_ACCEPTED = (a.ReadEntry, a.ReadTurn, a.ReadArchive, a.Enqueue)
+
 UNSEEN = (
+    *(Unseen(action, Because.RUNTIME, NO_PLAY) for action in NEVER_ACCEPTED),
     *(Unseen(ep, f"{status}: {field}", Because.NEVER_FILLED, why) for ep, status, fields, why in GAPS for field in fields),
     *(Unseen(ep, f"{status}: {field}", Because.RUNTIME, FRAMEWORK) for ep, status in (
         (e.ReadRecords, "400"), (e.ReadEntry, "404"), (e.ReadTurn, "404"), *((ep, "404") for ep in ARCHIVES),

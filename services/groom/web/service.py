@@ -7,6 +7,7 @@ from typing import cast
 from ostler.book import App, Because, Endpoint, Environment, Service, Unseen
 
 from .. import fixtures
+from ..model.actions import AnswerFromPage
 from ..model.state import Dashboard, DashboardOff
 from ..stack import PORT, stack
 from .health import TheDashboardShowsTheFleet
@@ -49,6 +50,7 @@ service = Service[Dashboard](
     watch=(),
     unseen=(
         Unseen(cast(type[Endpoint], AnswerTheGate), "inputs", Because.NEVER_FILLED, "groom refuses every answer of a pushed run the same way, so no answer succeeds for an input class to vary"),
+        Unseen(AnswerFromPage, Because.RUNTIME, "groom refuses every answer of a pushed run, so no play has the model accept the call"),
     ),
     words={**{i.__name__: i for i in INTERACTIONS}, **{name: getattr(fixtures, name) for name in fixtures.__all__}},
 )
