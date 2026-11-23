@@ -261,3 +261,33 @@ def test_session_mcp_must_name_servers(home: Path, library: Path) -> None:
     )
     with pytest.raises(SystemExit, match="`session_mcp` must list MCP server names"):
         install(home, library, PROFILES + BOTH)
+
+
+def write_orchestrator_tools(library: Path) -> None:
+    (library / "library/agents/lookup.md").write_text(
+        '---\ndescription: "Read-only lookup."\nread_only: true\nsession_mcp: [groom]\n'
+        "session_tools: [SendMessage, ListAgents]\n---\n\nYou answer one question.\n",
+        encoding="utf-8",
+    )
+
+
+def test_session_tools_grant_built_in_tools_on_claude(home: Path, library: Path) -> None:
+    write_orchestrator_tools(library)
+    assert install(home, library, PROFILES + BOTH) == 0
+    head = claude_head(home / ".claude/agents/lookup.md")
+    assert head["tools"] == "Read, Grep, Glob, Bash, mcp__groom__*, SendMessage, ListAgents"
+
+
+def test_session_tools_leave_codex_agents_as_they_were(home: Path, library: Path) -> None:
+    write_orchestrator_tools(library)
+    assert install(home, library, PROFILES + BOTH) == 0
+    codex = tomllib.loads((home / ".codex/agents/lookup.toml").read_text(encoding="utf-8"))
+    assert "SendMessage" not in str(codex)
+
+
+def test_session_tools_must_name_tools(home: Path, library: Path) -> None:
+    (library / "library/agents/lookup.md").write_text(
+        "---\ndescription: x\nsession_tools: SendMessage\n---\n\nprompt\n", encoding="utf-8"
+    )
+    with pytest.raises(SystemExit, match="`session_tools` must list tool names"):
+        install(home, library, PROFILES + BOTH)
