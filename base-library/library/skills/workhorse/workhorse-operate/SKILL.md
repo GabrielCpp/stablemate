@@ -42,7 +42,7 @@ groom feed --run <run_id> --every 30m            # from a shell: a digest every 
   `groom feed --run <run_id> --every 30m` prints every event and a digest every half
   hour, and never exits. The digest comes even when nothing happened, so a run that went
   quiet still wakes you. `groom wait --run <run_id>` stays silent and exits on the first
-  of `blocked`, `ended`, `stuck`, `stalled` or `gave-up`. `--until` widens the set, for
+  of `blocked`, `ended`, `stuck`, `stalled`, `gave-up` or `compact-loop`. `--until` widens the set, for
   example with `churn`, `watchdog` and `died`. Run either as a background task and let
   its output wake you. `--since` takes a timestamp in epoch seconds, as `date +%s` prints
   it, and replays the events after it.
