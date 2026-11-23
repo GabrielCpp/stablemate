@@ -17,11 +17,13 @@ from test_a11y_dynamic import (
 )
 from test_diff_tab_dynamic import (
     _container_run,
+    _dirty_checkout,
     _git,
     _patch,
     _pick,
     _RealSidecar,
     _settle,
+    _size_on_disk,
     _tab,
     _wait_for,
 )
@@ -722,32 +724,6 @@ def test_the_diff_sits_on_the_pane_background_without_a_card_border_and_tints_ch
         finally:
             page.close()
             sidecar.drop()
-
-
-def _dirty_checkout(root: Path, name: str, before: dict[str, str], after: dict[str, str | None]) -> Path:
-    repo = root / name
-    repo.mkdir()
-    _git(repo, "init", "-q", "-b", "main")
-    for path, text in before.items():
-        (repo / path).parent.mkdir(parents=True, exist_ok=True)
-        (repo / path).write_text(text)
-    _git(repo, "add", ".")
-    _git(repo, "commit", "-qm", "init")
-    for path, text in after.items():
-        if text is None:
-            (repo / path).unlink()
-        else:
-            (repo / path).write_text(text)
-    return repo
-
-
-def _size_on_disk(repo: Path) -> str:
-    added = deleted = 0
-    for line in _git(repo, "diff", "HEAD", "--numstat").splitlines():
-        plus, minus, _ = line.split("\t", 2)
-        added += int(plus)
-        deleted += int(minus)
-    return f"+{added} \u2212{deleted}"
 
 
 def _tracked_basenames(repo: Path) -> list[str]:

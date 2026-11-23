@@ -772,19 +772,37 @@ def _git(repo: Path, *args: str) -> str:
     return subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *args], cwd=repo, check=True, capture_output=True, text=True).stdout
 
 
-def _dirty_repo(root: Path, *, untracked: bool = False) -> Path:
-    repo = root / "app"
+def _dirty_checkout(root: Path, name: str, before: dict[str, str], after: dict[str, str | None]) -> Path:
+    repo = root / name
     repo.mkdir()
     _git(repo, "init", "-q", "-b", "main")
-    (repo / "alpha.txt").write_text("one\ntwo\nthree\n")
-    (repo / "beta.txt").write_text("keep\n")
+    for path, text in before.items():
+        (repo / path).parent.mkdir(parents=True, exist_ok=True)
+        (repo / path).write_text(text)
     _git(repo, "add", ".")
     _git(repo, "commit", "-qm", "init")
-    (repo / "alpha.txt").write_text("one\nTWO\nthree\nfour\n")
-    (repo / "beta.txt").unlink()
-    if untracked:
-        (repo / "notes.md").write_text("not committed\nnot staged\n")
+    for path, text in after.items():
+        if text is None:
+            (repo / path).unlink()
+        else:
+            (repo / path).write_text(text)
     return repo
+
+
+def _numstat(repo: Path) -> list[list[str]]:
+    return [line.split("\t") for line in _git(repo, "diff", "--numstat", "HEAD").splitlines()]
+
+
+def _size_on_disk(repo: Path) -> str:
+    rows = _numstat(repo)
+    return f"+{sum(int(row[0]) for row in rows)} −{sum(int(row[1]) for row in rows)}"
+
+
+def _dirty_repo(root: Path, *, untracked: bool = False) -> Path:
+    after: dict[str, str | None] = {"alpha.txt": "one\nTWO\nthree\nfour\n", "beta.txt": None}
+    if untracked:
+        after["notes.md"] = "not committed\nnot staged\n"
+    return _dirty_checkout(root, "app", {"alpha.txt": "one\ntwo\nthree\n", "beta.txt": "keep\n"}, after)
 
 
 def test_a_real_checkout_shows_the_diff_git_reports_while_the_sidecar_is_connected():
@@ -796,15 +814,13 @@ def test_a_real_checkout_shows_the_diff_git_reports_while_the_sidecar_is_connect
     with tempfile.TemporaryDirectory() as tmp, _container_run(run_id=f"run-{CONTAINER}"):
         repo = _dirty_repo(Path(tmp), untracked=True)
         expected = _git(repo, "diff", "HEAD")
-        numstat = [line.split("\t") for line in _git(repo, "diff", "--numstat", "HEAD").splitlines()]
-        added = sum(int(row[0]) for row in numstat)
-        removed = sum(int(row[1]) for row in numstat)
+        numstat = _numstat(repo)
         sidecar = _RealSidecar(live, CONTAINER, Path(tmp))
         _wait_for(lambda: sidecar_hub.get(CONTAINER) is not None, "the sidecar to register")
         page = _open(live)
         try:
             _pick(page)
-            expect(_tab(page, "Diff")).to_contain_text(f"+{added} −{removed}")
+            expect(_tab(page, "Diff")).to_contain_text(_size_on_disk(repo))
             _open_diff(page)
             tree = page.locator("#detail-panel .fd-tree")
             for plus, minus, name in numstat:
