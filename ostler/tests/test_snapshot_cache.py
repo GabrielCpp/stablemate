@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from pathlib import Path
 
 import pytest
@@ -227,25 +226,26 @@ def big_book(root: Path, milestones: int = 400, epics: int = 4, stories: int = 8
     return root
 
 
-def test_a_warm_snapshot_is_much_faster_than_the_load_it_replaces(tmp_path, index_home):
-    """A warm snapshot serves the graph at least 3x faster than the load it replaces."""
-    book = big_book(tmp_path / "book")
-    Ostler(book).graph
+def test_a_warm_snapshot_parses_no_document(tmp_path, index_home, monkeypatch):
+    """A cold load reads every document of the book, and a warm snapshot reads none."""
+    milestones, epics, stories = 400, 4, 8
+    book = big_book(tmp_path / "book", milestones=milestones, epics=epics, stories=stories)
+    reads = [0]
+    real = model.read_doc
 
-    cold, warm = [], []
-    for _ in range(5):
-        without = Ostler(book)
-        drop_snapshot(index_home, without._snapshot_key())
-        started = time.perf_counter()
-        without.graph
-        cold.append(time.perf_counter() - started)
-        assert without.snapshot_stats()["misses"] == 1
+    def counting(path):
+        reads[0] += 1
+        return real(path)
 
-        okf = Ostler(book)
-        started = time.perf_counter()
-        okf.graph
-        warm.append(time.perf_counter() - started)
-        assert okf.snapshot_stats()["hits"] == 1
-    loaded, served = min(cold), min(warm)
+    monkeypatch.setattr(model, "read_doc", counting)
 
-    assert loaded > served * 3, f"load {loaded:.4f}s vs snapshot {served:.4f}s"
+    cold = Ostler(book)
+    cold.graph
+    assert cold.snapshot_stats()["misses"] == 1
+    assert reads[0] >= milestones + epics + epics * stories
+    reads[0] = 0
+
+    warm = Ostler(book)
+    warm.graph
+    assert warm.snapshot_stats()["hits"] == 1
+    assert reads[0] == 0

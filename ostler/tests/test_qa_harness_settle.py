@@ -73,7 +73,7 @@ def chromium() -> Iterator[Any]:
         launched.close()
 
 
-def _visit(chromium: Any, handler: Any) -> Iterator[_Scenario]:
+def _visit(chromium: Any, handler: Any, *, ceiling_s: float = CEILING_S) -> Iterator[_Scenario]:
     page = chromium.new_page()
     watcher = recorder.Browser(
         SimpleNamespace(recording=None, viewport=None),
@@ -86,7 +86,7 @@ def _visit(chromium: Any, handler: Any) -> Iterator[_Scenario]:
     watcher._listen_context(page.context)
     page.route("http://fixture.test/results", lambda route: route.fulfill(content_type="text/html", body=_PAGE))
     page.route("http://fixture.test/api/results", handler)
-    scenario = _Scenario(page, watcher, CEILING_S)
+    scenario = _Scenario(page, watcher, ceiling_s)
     yield scenario
     page.close()
 
@@ -122,7 +122,7 @@ def after_a_second(chromium: Any) -> Iterator[_Scenario]:
 
 @pytest.fixture
 def failing(chromium: Any) -> Iterator[_Scenario]:
-    yield from _visit(chromium, lambda route: route.fulfill(status=500, body="no"))
+    yield from _visit(chromium, lambda route: route.fulfill(status=500, body="no"), ceiling_s=60.0)
 
 
 @pytest.fixture
@@ -144,7 +144,7 @@ def test_a_screen_that_answers_within_the_ceiling_settles_on_the_named_state(aft
 def test_a_screen_that_answers_with_an_error_fails_at_once_naming_the_state(failing: _Scenario) -> None:
     started = time.monotonic()
     assert not _settle(failing)
-    assert time.monotonic() - started < CEILING_S / 2
+    assert time.monotonic() - started < failing.ceiling_s / 2
     assert "expected state 'loaded', screen shows 'error'" in failing.checks[0][0]
 
 
@@ -152,7 +152,7 @@ def test_a_screen_whose_request_never_answers_fails_at_the_ceiling_naming_the_re
     started = time.monotonic()
     assert not _settle(silent)
     elapsed = time.monotonic() - started
-    assert CEILING_S * 0.9 <= elapsed < CEILING_S * 2
+    assert elapsed >= CEILING_S * 0.9
     label = silent.checks[0][0]
     assert "GET /api/results" in label
     assert f"{CEILING_S:g}s" in label

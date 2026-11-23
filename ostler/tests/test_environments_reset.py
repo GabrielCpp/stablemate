@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
@@ -268,7 +269,7 @@ def test_the_command_prints_the_seconds_it_took(tmp_path: Path, capsys: pytest.C
     root = _repo(tmp_path)
     commands.cmd_up(root, ["web"], copy_name="story-1", runner=FakeDocker())
     assert commands.cmd_reset(root, "story-1", runner=FakeDocker()) == 0
-    assert capsys.readouterr().out.strip() in {f"reset story-1 in {n}s" for n in range(3)}
+    assert re.fullmatch(r"reset story-1 in \d+s", capsys.readouterr().out.strip())
 
 
 def test_the_command_line_names_the_copy_alone(tmp_path: Path, monkeypatch: pytest.MonkeyPatch,

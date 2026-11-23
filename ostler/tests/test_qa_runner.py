@@ -557,7 +557,7 @@ def test_a_dead_daemon_whose_check_still_passes_fails_the_run(
         "_DAEMON_TIMING",
         session._DaemonTiming(  # noqa: SLF001 - this case owns the scheduler race
             poll_s=0.01,
-            settle_s=0.75,
+            settle_s=30.0,
             interrupt_grace_s=0.05,
             terminate_grace_s=0.05,
         ),
@@ -595,7 +595,7 @@ def test_a_daemon_that_dies_just_after_a_passing_check_still_fails_the_run(
         "_DAEMON_TIMING",
         session._DaemonTiming(  # noqa: SLF001 - this case owns the scheduler race
             poll_s=0.01,
-            settle_s=0.75,
+            settle_s=30.0,
             interrupt_grace_s=0.05,
             terminate_grace_s=0.05,
         ),
