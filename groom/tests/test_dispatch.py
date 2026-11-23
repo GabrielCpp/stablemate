@@ -21,6 +21,9 @@ from groom import discovery, dispatch, dispatch_ledger, state, store
 WAIT_S = 30.0
 
 
+_FAKES: list[_FakeProc] = []
+
+
 class _FakeProc:
     """A process that ends when the test says so, and never before."""
 
@@ -28,6 +31,7 @@ class _FakeProc:
         self.pid = pid
         self.code = code
         self.done = threading.Event()
+        _FAKES.append(self)
 
     def wait(self) -> int:
         self.done.wait(FAKE_PROC_LIFETIME_S)
@@ -69,6 +73,13 @@ def dispatching(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Con
         dispatch.reset()
 
     yield _configure
+    for _ in range(3):
+        for proc in _FAKES:
+            proc.done.set()
+        _FAKES.clear()
+        for thread in threading.enumerate():
+            if thread.name.startswith("dispatch-own-"):
+                thread.join(WAIT_S)
     store.reset()
     dispatch.reset()
 
