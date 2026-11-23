@@ -168,9 +168,9 @@ class ReadEntry(Endpoint):
     method = "GET"
     path = "/api/run/{run_id}/entry/{key}"
     params = Object("Entry", run_id=Field(RUN_ID), key=Field(Str(), does="the key of a step, gate, retry or churn alert"))
-    answers = (Answer(200, SERVED, "the step or gate, in full"), Answer(404, ERROR, "the run has no step or gate under this key"))
+    answers = (Answer(200, SERVED, "a step with its head (name, work item, flow pass, state of failed, passed or running, duration and error class), its whole error, up to 500 of its logs with time, level, node and message and whether earlier ones were cut, and what came next with the key of that row when it is one. A gate with its head, its state of open, answered or ended, its wait, its question and the answer of its own asking from the gate file, and what came next"), Answer(404, ERROR, "the run has no step or gate under this key"))
     source = (APP + "run_entry", APP + "_entry", "groom/groom/activity.py::entry")
-    does = "Reads one step, operator gate, backend retry or churn alert of the run in full."
+    does = "Reads one step, operator gate, backend retry or churn alert of the run in full. The step the run is in now and a gate still open read from the run's live state, because neither has a stored span yet."
     carries = actions.ReadEntry
 
 

@@ -9,6 +9,13 @@ class RunDetail(Screen):
         "groom/groom/assets/dashboard.js::loadOverview",
         "groom/groom/assets/dashboard.js::retryOverview",
         "groom/groom/assets/dashboard.js::TurnReading",
+        "groom/groom/assets/dashboard.js::StepReading",
+        "groom/groom/assets/dashboard.js::GateReading",
+        "groom/groom/assets/dashboard.js::EntryPane",
+        "groom/groom/assets/dashboard.js::StepLogs",
+        "groom/groom/assets/dashboard.js::StepNext",
+        "groom/groom/assets/dashboard.js::openRow",
+        "groom/groom/assets/dashboard.js::loadEntry",
         "groom/groom/assets/dashboard.js::TurnPane",
         "groom/groom/assets/dashboard.js::TurnHead",
         "groom/groom/assets/dashboard.js::PartFold",
@@ -196,17 +203,22 @@ class RunDetail(Screen):
     activity_step = Button(
         '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev.step',
         "step passed",
-        does="one passed step, shown once its fold is open. Pressing it reads the step in the pane beside the list",
+        does="one passed step, shown once its fold is open. Pressing it reads the step in full in the pane beside the list, with its logs and what came next",
     )
     activity_failed = Button(
         '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev[data-kind="failed"]',
         "failed step",
-        does="a step that failed, as its own row between two folds with the mark ✕ and the words 'failed step'. Pressing it shows its name, time and one-line result in the pane",
+        does="a step that failed, as its own row between two folds with the mark ✕ and the words 'failed step'. Pressing it reads the step in full in the pane: its head, its whole error, its logs and what came next",
     )
     activity_gate = Button(
         '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev[data-kind="gate"]',
         "operator gate",
-        does="a gate the run waited at, as its own row with the mark ? and the words 'operator gate'. Pressing it shows its name, the wait and its answer in the pane",
+        does="a gate the run waited at, as its own row with the mark ? and the words 'operator gate'. A gate that is still open is a row too, keyed as it is once answered, so the row keeps its place when the operator answers. Pressing it reads the gate in full in the pane: its question, its answer and the wait",
+    )
+    activity_doing = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev[data-kind="doing"]',
+        "step running",
+        does="the step the run is in now, as its own row with the mark ● and the word 'running'. It reads from the run's live state, because a running step has no stored span yet. Pressing it reads the step in the pane, with its logs so far and 'Nothing yet. This is still running.' in place of what came next",
     )
     activity_retry_row = Button(
         '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev[data-kind="retry"]',
@@ -231,7 +243,67 @@ class RunDetail(Screen):
     turn_head = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .rd > .rd-head',
         "turn header",
-        does="for a turn, the node, the work item, a chip that says running, finished, failed or no record, the flow and its pass, the visit, the model, the duration, the cost and the output tokens. A turn outside any flow shows no pass. A running turn shows its elapsed time, reads its cost as landing at the turn's end, and leaves out the figures it cannot know yet. For a failed step, a gate, a backend retry or a churn alert, the head holds the row's name, its work item, its flow and pass and its time, and the body holds its one-line result: the error, the question and answer, or what happened",
+        does="for a turn, the node, the work item, a chip that says running, finished, failed or no record, the flow and its pass, the visit, the model, the duration, the cost and the output tokens. A turn outside any flow shows no pass. A running turn shows its elapsed time, reads its cost as landing at the turn's end, and leaves out the figures it cannot know yet. For a backend retry or a churn alert, the head holds the row's name, its work item, its flow and pass and its time, and the body holds what happened",
+    )
+    step_head = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd.rd-step > .rd-head',
+        "step header",
+        does="for a step, its name, its work item, a chip that says failed, running or passed, its flow and pass followed by 'step', its duration (its elapsed time while it runs) and, for a failed step, 'error' with the error class",
+    )
+    step_error = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd.rd-step pre.err-box',
+        "Error",
+        does="under the mark ✕ and the word 'Error', the failed step's whole error text, as text, so markup in it shows as written and no script runs. A step that passed has none",
+    )
+    step_logs = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd [role="list"][aria-label="Logs from this step"]',
+        "Logs from this step",
+        does="the step's logs, one line each with its clock time, its level, its node and its message, set as text. They are the logs of the step's node between the span's start and end, because a log row carries no visit. An ERROR or FATAL line reads by its level word and its class as well as its colour. Past 500 lines the earliest go and 'Earlier lines of this step are not shown.' says so",
+    )
+    step_no_logs = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd.rd-step .dim:text("This step recorded no logs.")',
+        "This step recorded no logs.",
+        does="stands in place of the log list when the step's node logged nothing between the span's start and end",
+    )
+    step_next = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd .at-msg:has(.at-role:text("What came next"))',
+        "What came next",
+        does="names the row that came after this one in the run. The last row reads 'Nothing came after this.' and a step still running reads 'Nothing yet. This is still running.'. An open gate has none",
+    )
+    step_open_next = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd button.open-next',
+        "Open that step",
+        does="shown when what came next is a row of the timeline, and named 'Open that step', 'Open that turn' or 'Open that gate' after it. Pressing it opens the work item, the pass and the fold that hold the row, selects the row and keeps it in view",
+    )
+    gate_head = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd.rd-gate > .rd-head',
+        "gate header",
+        does="for an operator gate, the words 'operator gate', its work item, a chip that says 'waiting' with the wait so far for an open gate, 'answered in' with the wait for an answered one, or 'ended after' with the wait for one that ended without an answer, and its flow, pass and gate file",
+    )
+    gate_question = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd.rd-gate .at-msg:has(.at-role:text("Question"))',
+        "Question",
+        does="the gate's question as prose, through the same rendering as a message, so markup in it shows as text and no script runs. It reads 'The question could not be read.' when the gate file gave none",
+    )
+    gate_answer = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd.rd-gate .at-msg:has(.at-role:text("Your answer"))',
+        "Your answer",
+        does="the answer to this asking, read from the gate file, with the clock time the gate ended. An open gate reads 'Not answered yet. Answer in the box above the tabs.' and holds no answer box of its own, because the box above the tabs is the one place to answer. When the operator answers there, the pane turns to the answered view and the selection stays on the gate. A gate that ended with no answer in its file says so",
+    )
+    entry_reading = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd .detail-empty.loading:text("Reading this step")',
+        "Reading this step…",
+        does="shown while a step or gate is read, announced as a status, and gone when it appears",
+    )
+    entry_unreadable = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd .act-state:has(button.retry-entry)',
+        "The details of this step could not be read",
+        does="shown in the pane when the read fails, announced as an alert, with 'The row in the timeline stays.'. The row keeps its one line and stays selected",
+    )
+    entry_retry = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] button.retry-entry',
+        "Retry now",
+        does="reads the step or gate again. A read that succeeds replaces the failure with the details",
     )
     turn_body = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .rd .rd-body',
