@@ -13,6 +13,7 @@ from test_a11y_dynamic import (
     _live,
     _open,
     _scan,
+    _seconds_in,
     teardown_module,  # noqa: F401
 )
 from test_run_clock import span
@@ -263,9 +264,15 @@ def test_a_heading_stays_in_view_while_its_rows_scroll(tmp_path: Path) -> None:
         page.evaluate("document.querySelector('#detail-panel .tl').scrollTop = 120")
         box = page.evaluate("""() => {
           const tl = document.querySelector('#detail-panel .tl').getBoundingClientRect();
-          return [...document.querySelectorAll('#detail-panel .tl button.tl-group')].map((h) => [h.getBoundingClientRect().top - tl.top, h.getBoundingClientRect().bottom - tl.top]);
+          const edge = (h) => [h.getBoundingClientRect().top - tl.top, h.getBoundingClientRect().bottom - tl.top];
+          return {
+            items: [...document.querySelectorAll('#detail-panel .tl button.tl-group')].map(edge),
+            passes: [...document.querySelectorAll('#detail-panel .tl button.tl-flow')].map(edge),
+          };
         }""")
-        assert any(abs(top) < 2 for top, _ in box), box
+        pinned = [bottom for top, bottom in box["items"] if abs(top) < 2]
+        assert pinned, box
+        assert any(abs(top - pinned[0]) < 2 for top, _ in box["passes"]), box
     finally:
         page.close()
         context.__exit__(None, None, None)
