@@ -1,7 +1,7 @@
 story: none
 date: 2026-11-22
 elements: SearchBook, CheckBook, SearchUnmovedBook, MoveBook, EnvCheck
-sources: core/stablemate_core/books.py::book_home, ostler/ostler/book/index.py::book_root, core/stablemate_core/book_branch.py, ostler/ostler/book/home.py, ostler/ostler/book/move.py, core/stablemate_core/books.py::service_package, ostler/ostler/book/index.py::services_of, ostler/ostler/environments/spec.py::stack_roots, ostler/ostler/environments/spec.py::_read_secrets, ostler/ostler/environments/leases.py::books_near, ostler/ostler/environments/runtime.py::copy_owner, ostler/ostler/environments/runtime.py::copy_for, ostler/ostler/environments/runtime.py::copies, ostler/ostler/milestones.py::_book_homes
+sources: core/stablemate_core/books.py::book_home, ostler/ostler/book/index.py::book_root, core/stablemate_core/book_branch.py, ostler/ostler/book/home.py, ostler/ostler/book/move.py, core/stablemate_core/books.py::service_package, ostler/ostler/book/index.py::services_of, ostler/ostler/environments/spec.py::stack_roots, ostler/ostler/environments/spec.py::_read_secrets, ostler/ostler/environments/leases.py::books_near, ostler/ostler/environments/runtime.py::copy_owner, ostler/ostler/environments/runtime.py::copy_for, ostler/ostler/environments/runtime.py::copies, ostler/ostler/book/environment.py::code_checkout, ostler/ostler/milestones.py::_book_homes
 
 A book lives in the artifacts folder unless the repository says otherwise. `ostler book` resolves its book root through
 one function of the shared core, `book_home`, and no command walks up from the working directory looking for a
@@ -76,6 +76,7 @@ the repository runs in a workspace. A command started in the artifacts folder na
 and a book root that is not the artifacts folder keeps naming them after its own repository. `env up`, `down`, `exec`,
 `reset`, `address`, `compose`, the leases and the QA runner all take the code checkout, so a copy is torn down under the
 name it came up under, and `env ls` lists the copies of the product it is started for.
+An `Environment` whose `root` lies in the artifacts folder or a checkout of it names no code checkout, so it reads the checkout the command runs in, as with no `root`. A `root` elsewhere, such as an in-repo book's or an explicit override, is the code checkout.
 
 A milestone's books are read from the repositories the command knows. A story that names the service `api` is matched with
 the `api` book of its own repository, or of the members of its workspace, and never with another product's `api`. Started

@@ -55,6 +55,7 @@ Run every command from the repository root. `<artifacts>` is the artifacts folde
    - A stack `Fresh` `cwd`, an `ops/` `cwd` and a relative path in a stack command now resolve under the book root, which is the artifacts folder. Write the code checkout out as `repo://<name>/<path>`, where `<name>` is the repository's name. `cwd="ops"` becomes `cwd="repo://acme/ops"`.
    - `{{ repo }}` in a compose template is the book root. Write `{{ repos['<name>'] }}` for the code checkout.
    - A stack fixture that names a file of the code repository is written `repo://<repo>/<path>`. A path such as `../../../db/seed.sql`, which climbed out of the book into the repository, no longer resolves. A fixture path with no scheme still resolves beside the stack file.
+   - An `Environment` whose `root=` is derived from the book's own path, such as `Path(__file__).resolve().parents[2]`, now names the artifacts folder. Remove the `root=` and the constant that fed it. The environment then reads the stack copy of the code checkout the command runs in.
 
 6. Delete `book: {home: repo}` from the repository's `agents.yml` if it is there. Delete the `book:` table when `home` is its only key.
 

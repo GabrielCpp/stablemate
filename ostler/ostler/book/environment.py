@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Mapping
 
+from ostler._vendor.stablemate_core import books
 from ostler.book.errors import BookError
 from ostler.environments import commands, runtime
 from ostler.environments.render import COMPOSE_FILE, SHARED, Copy
@@ -25,6 +26,12 @@ OSTLER = "ostler:"
 PREFIX = "BOOK_SECRET_"
 GUARD = "BOOK_REEXEC"
 GONE = "No such container"
+
+
+def code_checkout(root: str) -> Path:
+    if root and not books.namespaced(Path(root)):
+        return Path(root)
+    return Path.cwd()
 
 
 @dataclass
@@ -114,13 +121,14 @@ class Environment:
             runtime.touch_used(copy.directory)
 
     def _code(self) -> Path:
-        return Path(self.root or Path.cwd())
+        return code_checkout(self.root)
 
     def _stack_root(self) -> Path:
-        start = self.root or str(Path.cwd())
-        if start not in self._roots:
-            self._roots[start] = commands.env_root(Path(start))
-        return self._roots[start]
+        start = code_checkout(self.root)
+        key = str(start)
+        if key not in self._roots:
+            self._roots[key] = commands.env_root(start)
+        return self._roots[key]
 
     def copy(self) -> str:
         """The stack copy this environment reaches, or nothing when no host is one ostler runs."""

@@ -2224,6 +2224,54 @@ def test_a_copy_of_a_workspace_run_is_named_after_the_workspace(
     assert runtime.copy_for(root, "story-1", member).project == "shop-story-1"
 
 
+def _environment_copy(root: str) -> str:
+    from ostler.book.environment import Environment
+
+    environment = Environment("local", {"api": "ostler:"}, root=root)
+    return runtime.copy_for(environment._stack_root(), "story-1", environment._code()).project
+
+
+@pytest.mark.parametrize("inside", ["services/acme", "services"])
+def test_a_root_inside_the_artifacts_folder_reads_the_code_checkout_of_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, inside: str
+) -> None:
+    from ostler.book.environment import Environment
+
+    root, code = _two_products(tmp_path, monkeypatch)
+    monkeypatch.chdir(code)
+    environment = Environment("local", {"api": "ostler:"}, root=str(root / inside))
+    assert environment._code() == Path.cwd()
+    assert environment._stack_root() == root
+    assert _environment_copy(str(root / inside)) == "acme-story-1"
+
+
+def test_a_root_that_is_the_code_checkout_is_used_as_it_is(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ostler.book.environment import Environment
+
+    root, code = _two_products(tmp_path, monkeypatch)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    assert Environment("local", {"api": "ostler:"}, root=str(code))._code() == code
+    assert _environment_copy(str(code)) == "acme-story-1"
+
+
+def test_a_root_derived_from_a_book_kept_in_its_repository_is_used_as_it_is(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ostler.book.environment import Environment
+
+    root, code = _two_products(tmp_path, monkeypatch)
+    inrepo = _real_repo(tmp_path / "code" / "initech")
+    book = inrepo / "services" / "api"
+    book.mkdir(parents=True)
+    monkeypatch.chdir(code)
+    derived = str(book.parents[1])
+    assert Environment("local", {"api": "ostler:"}, root=derived)._code() == inrepo
+
+
 def test_a_root_that_is_not_namespaced_names_its_copy_as_before(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     other = tmp_path / "other"

@@ -357,6 +357,8 @@ A host written `ostler:` in an environment is a copy of the stack that `ostler e
 runner's to name: `--copy NAME`, else the lease the run holds, else the name the book wrote after `ostler:`,
 else `shared`. Write no copy name the book cannot keep for every runner.
 
+A book in the artifacts folder states no `root` on its `Environment`. The environment reads the stack copy of the code checkout the command runs in. `root` is only for a book kept inside its repository, or for pointing a play at another checkout, and a root derived from the book's own `__file__` lies in the artifacts folder and names no code checkout.
+
 `ostler env up` takes the book's name as its `ops/stack.yml` declares it, the folder under
 `services/<repo>/` in the artifacts folder, or under `services/` beside the code, such as `api`, and never the module name. A repository's stack root is the book named `<repo>`. One service of a book is
 `book:service`. A wrong name is refused with the list of the books that have a stack file.
