@@ -109,6 +109,7 @@ body {
 .row .mini { margin-left:auto; font-family:var(--mono); font-size:10.5px; color:var(--text-2); white-space:nowrap; flex:none; }
 .row .line3 { display:flex; gap:10px; font-family:var(--mono); font-size:10.5px; color:var(--text-1); }
 .row .line3 .dim { color:var(--text-2); }
+.row .line3 .warn { color:#d08e3f; }
 .row .q { display:block; font-size:11.5px; color:var(--text-1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 
 /* liveness chip: whether the process behind the row is still breathing.
