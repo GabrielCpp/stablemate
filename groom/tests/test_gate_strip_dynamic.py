@@ -429,6 +429,31 @@ def test_an_unsafe_question_is_sanitized_before_it_reaches_the_strip():
             page.close()
 
 
+def test_the_collapsed_strip_survives_a_tab_trip_and_opens_again_after_the_run_is_closed():
+    from playwright.sync_api import expect
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    with _gated() as tmp:
+        _open_gate(live, _gate_file(tmp, "1-one.md", FIRST), FIRST)
+        page = _open(live)
+        try:
+            _pick_run(page, RUN)
+            strip = _strip(page)
+            strip.get_by_role("button", name="Collapse").click()
+            expect(strip.get_by_role("textbox")).to_have_count(0)
+            page.get_by_role("tab", name="Activity").click()
+            page.get_by_role("tab", name="Overview").click()
+            expect(strip.get_by_role("textbox")).to_have_count(0)
+            expect(strip.get_by_role("button", name="Answer", exact=True)).to_have_attribute("aria-expanded", "false")
+            page.get_by_role("button", name="Close run detail").click()
+            _pick_run(page, RUN)
+            expect(_strip(page).get_by_role("textbox", name="Your answer")).to_have_count(1)
+            expect(_strip(page).get_by_role("button", name="Collapse")).to_have_attribute("aria-expanded", "true")
+        finally:
+            page.close()
+
+
 def _badge(page):
     return page.locator("#activitybar .act-btn[data-mode='runs'] .rail-badge")
 
@@ -473,10 +498,15 @@ def test_the_runs_button_carries_a_counted_badge_while_another_pane_is_open_and_
             _open_gate(live, _gate_file(tmp, "1-one.md", FIRST), FIRST)
             expect(_badge(page)).to_have_text(str(blocked + 1))
             expect(page.get_by_role("button", name=f"Runs, {blocked + 1} blocked runs")).to_have_count(1)
+            _open_gate(live, _gate_file(tmp, "2-two.md", SECOND), SECOND)
             page.click(".act-btn[data-mode='runs']")
             expect(_badge(page)).to_be_hidden()
+            _pick_run(page, RUN)
+            expect(_strip(page).get_by_role("textbox", name="Your answer")).to_have_count(2)
             page.click(".act-btn[data-mode='settings']")
             expect(_badge(page)).to_be_visible()
+            expect(_badge(page)).to_have_text(str(blocked + 1))
+            expect(page.get_by_role("button", name=f"Runs, {blocked + 1} blocked runs")).to_have_count(1)
             from groom import state
 
             for cid in list(state.WORKFLOWS):
