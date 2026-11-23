@@ -44,6 +44,7 @@ OVERVIEW_SOURCE = (
 ACTIVITY_SOURCE = (
     "groom/groom/activity.py",
     "groom/groom/churn.py",
+    "groom/groom/flows.py",
     "groom/groom/live_history.py",
     "groom/groom/live_transcript.py",
     "groom/groom/transcript_parse.py",
@@ -125,9 +126,9 @@ class ReadActivity(Endpoint):
     path = "/api/run/{run_id}/activity"
     params = PICK
     query = Object(logs=Field(Int(), required=False, does="1 adds the run's info logs at their place in the timeline"))
-    answers = (Answer(200, ACTIVITY, "the run's turns, oldest first"),)
+    answers = (Answer(200, ACTIVITY, "the run's turns oldest first in rows, and the same turns grouped by work item, flow pass and visit in items"),)
     source = (APP + "run_activity", APP + "_timeline", APP + "_live_turns", APP + "_standing", *ACTIVITY_SOURCE)
-    does = "Reads one run's agent turns, oldest first; logs=1 adds its info logs at their place."
+    does = "Reads one run's agent turns oldest first in rows, and the same turns in items, grouped by work item, flow pass and visit with the steps, gates, retries and churn alerts around them; logs=1 adds its info logs at their place."
     carries = actions.ReadActivity
 
 

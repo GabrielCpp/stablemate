@@ -163,17 +163,62 @@ class RunDetail(Screen):
     activity_list = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .tl[role="log"]',
         "Run activity",
-        does="the run's agent turns, oldest first, as a log a screen reader can follow. A finished run's turn that the timeline still holds as running reads as ended with no record",
+        does="the run's moments, oldest first within each group, as a log a screen reader can follow. The list groups them by work item, then by flow pass, then by visit, so an operator finds a moment by where it sits in the run. A run with no work items groups its passes directly under the top level. A finished run's turn that the timeline still holds as running reads as ended with no record",
+    )
+    activity_item = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] .tl button.tl-group',
+        "Work item",
+        does="the heading of one work item. It names the item, its state in words (running, in progress, done, not counted or count unknown), its active time and its cost, and the same figures stand in the Overview's work item row, written the same way. The time counts agent turns only, which the heading's hint says. It stays in view while the item scrolls. Pressing it, by mouse or by keyboard, opens or closes the item and sets aria-expanded. A finished item starts closed and the item in progress starts open, and the item that holds the selected row stays open",
+    )
+    activity_pass = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] .tl button.tl-flow',
+        "Flow pass",
+        does="the heading of one pass through a flow, such as 'qa · 1st pass'. It gives the pass's state in words, its time and its cost, and the passes of one flow add up to the flow's row in the Overview, written the same way. It stays in view under its item's heading. Pressing it opens or closes the pass. A finished pass starts closed and the pass holding the running turn starts open",
+    )
+    activity_fold = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev.steps',
+        "steps fold",
+        does="a run of passed steps folded into one row that reads 'N steps · time · all passed'. Pressing it shows each step and pressing it again hides them, and aria-expanded follows. A failed step never sits inside a fold",
+    )
+    activity_step = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev.step',
+        "step passed",
+        does="one passed step, shown once its fold is open. Pressing it reads the step in the pane beside the list",
+    )
+    activity_failed = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev[data-kind="failed"]',
+        "failed step",
+        does="a step that failed, as its own row between two folds with the mark ✕ and the words 'failed step'. Pressing it shows its name, time and one-line result in the pane",
+    )
+    activity_gate = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev[data-kind="gate"]',
+        "operator gate",
+        does="a gate the run waited at, as its own row with the mark ? and the words 'operator gate'. Pressing it shows its name, the wait and its answer in the pane",
+    )
+    activity_retry_row = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev[data-kind="retry"]',
+        "backend retry",
+        does="a backend retry, as its own row with the mark ! and the words 'backend retry'. It names the node, the attempt and the delay. The row appears once the node's own span is stored, because the retry note sits on that span. Pressing it shows its name, time and one-line result in the pane",
+    )
+    activity_churn = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev[data-kind="churn"]',
+        "churn alert",
+        does="a churn alert, as its own row with the mark ! and the words 'churn alert'. It is the same alert the Overview's attention tile counts, replayed from the stored spans, so it comes back after groom restarts. Pressing it shows its name, time and one-line result in the pane",
+    )
+    activity_running = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev.live',
+        "running turn",
+        does="the turn running now, with the mark ● and the word 'running', as the last row of its pass. Pressing it opens the turn in the pane like any other turn",
     )
     activity_turn = Button(
         '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev',
         "turn",
-        does="one agent turn: its start time, its node, its one-line result, its duration and its cost. Its accessible name says the node, the state in words (running, finished, failed or ended with no record), when it started, the figures and the result. Pressing it, by mouse or by keyboard, opens the turn in the reading pane beside the list and marks the row with aria-current",
+        does="one agent turn: its start time, its node, its one-line result, its duration and its cost. Its accessible name says the node, the state in words (running, finished, failed or ended with no record), when it started, the figures and the result. Pressing it, by mouse or by keyboard, opens the turn in the reading pane beside the list and marks the row with aria-current. The turn reads as it did before the list was grouped",
     )
     turn_head = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .rd > .rd-head',
         "turn header",
-        does="the node, the work item, a chip that says running, finished, failed or no record, the flow and its pass, the visit, the model, the duration, the cost and the output tokens. A turn outside any flow shows no pass. A running turn shows its elapsed time, reads its cost as landing at the turn's end, and leaves out the figures it cannot know yet",
+        does="for a turn, the node, the work item, a chip that says running, finished, failed or no record, the flow and its pass, the visit, the model, the duration, the cost and the output tokens. A turn outside any flow shows no pass. A running turn shows its elapsed time, reads its cost as landing at the turn's end, and leaves out the figures it cannot know yet. For a failed step, a gate, a backend retry or a churn alert, the head holds the row's name, its time and its one-line result",
     )
     turn_body = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .rd .rd-body',
@@ -218,7 +263,7 @@ class RunDetail(Screen):
     activity_empty = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .empty-big[role="status"]',
         "No activity yet",
-        does="shown when the timeline holds no turn: 'No activity yet. The first agent turn appears here when it starts.', then 'The run is alive: last beat <time> ago.' for a live run or 'The run has finished.' for an ended one. A run that reported no telemetry says so in its place",
+        does="shown when the timeline holds no turn and no group: 'No activity yet. The first agent turn appears here when it starts.', then 'The run is alive: last beat <time> ago.' for a live run or 'The run has finished.' for an ended one. A run that reported no telemetry says so in its place",
     )
     files_tab = Text(
         "#tab-files",
