@@ -1894,3 +1894,39 @@ if __name__ == "__main__":
             print(f"FAIL  {fn.__name__}: {type(e).__name__}: {e}")
     print(f"\n{len(fns) - failed}/{len(fns)} passed")
     raise SystemExit(1 if failed else 0)
+
+
+async def _wait_for_the_history_lock_behind_a_holder() -> None:
+    async def hold() -> None:
+        async with state.HISTORY_LOCK:
+            await asyncio.sleep(0.05)
+
+    holder = asyncio.create_task(hold())
+    await asyncio.sleep(0)
+    async with state.HISTORY_LOCK:
+        pass
+    await holder
+
+
+def test_a_lock_another_loop_left_bound_does_not_break_the_loop_that_serves_the_app():
+    state.HISTORY_LOCK = asyncio.Lock()
+    asyncio.run(_wait_for_the_history_lock_behind_a_holder())
+
+    with pytest.raises(RuntimeError, match="different event loop"):
+        asyncio.run(_wait_for_the_history_lock_behind_a_holder())
+
+    async def serve() -> None:
+        await groom_app._bind_history_lock()
+        await _wait_for_the_history_lock_behind_a_holder()
+
+    asyncio.run(serve())
+
+
+def test_the_app_binds_a_fresh_history_lock_when_it_starts():
+    app = groom_app.create_app()
+    before = state.HISTORY_LOCK
+
+    assert groom_app._bind_history_lock in list(app.on_startup)
+    asyncio.run(groom_app._bind_history_lock())
+
+    assert state.HISTORY_LOCK is not before

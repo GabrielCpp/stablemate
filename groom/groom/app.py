@@ -1858,6 +1858,11 @@ async def _stop_heartbeat() -> None:
         _heartbeat_task.cancel()
 
 
+async def _bind_history_lock() -> None:
+    """on_startup hook: give the loop that serves this app a history lock of its own, because a lock binds to the first loop that waits on it."""
+    state.HISTORY_LOCK = asyncio.Lock()
+
+
 async def _archive_loop() -> None:
     """Write expired runs out to disk on a slow clock, forever."""
     last = time.monotonic() - ARCHIVE_EVERY_S
@@ -2058,6 +2063,7 @@ def create_app() -> Litestar:
             create_static_files_router(path="/assets", directories=[ASSETS_DIR]),
         ],
         on_startup=[
+            _bind_history_lock,
             _spawn_scan,
             _spawn_rules,
             _bind_live,
