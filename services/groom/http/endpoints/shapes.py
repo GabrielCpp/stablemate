@@ -303,7 +303,7 @@ TREE = Object(
     paths=Field(List(Str()), does="the repo-relative paths of the checkout"),
     failed=Field(Bool(), does="true when the checkout is missing or the walk could not enter a folder, so a partial or absent listing never reads as a checkout without files"),
     reported=Field(Bool(), does="true when the source says whether it failed"),
-    served=Field(Enum(("sidecar", "volume")), does="which reader answered"),
+    served=Field(Enum(("sidecar", "volume")), does="which reader answered: `sidecar` for the run's sidecar, `volume` for every fallback reader, so a client can tell a live answer from a stand-in"),
     repos=Field(List(Str()), required=False, does="the checkouts a sidecar names, when it names them"),
 )
 
@@ -314,7 +314,7 @@ FILE_TEXT = Object(
     lang=Field(Str(), does="the highlight.js language the file name implies, empty for a name with no grammar"),
     failed=Field(Bool(), does="true when the file could not be read, so a failed read is never an empty file"),
     reported=Field(Bool(), does="false when the sidecar sent no `failed`, so an empty answer from it cannot be confirmed"),
-    served=Field(Enum(("sidecar", "volume")), does="which reader answered"),
+    served=Field(Enum(("sidecar", "volume")), does="which reader answered: `sidecar` for the run's sidecar, `volume` for every fallback reader, so a client can tell a live answer from a stand-in"),
 )
 
 DIFF = Object(
@@ -323,7 +323,7 @@ DIFF = Object(
     untracked=Field(List(Str()), does="the paths git does not track yet, which `git diff` leaves out"),
     failed=Field(Bool(), does="true when either git command failed or timed out, or no checkout could be read, so a failed read is never an empty diff"),
     reported=Field(Bool(), does="false when the sidecar sent no `failed`, so an empty diff from a sidecar too old to report failure cannot be confirmed"),
-    served=Field(Enum(("sidecar", "volume"))),
+    served=Field(Enum(("sidecar", "volume")), does="which reader answered: `sidecar` for the run's sidecar, `volume` for every fallback reader, so a client can tell a live answer from a stand-in"),
     repos=Field(List(Str()), required=False, does="the checkouts a sidecar names, when it names them"),
     based=Field(Bool(), required=False, does="whether a sidecar reported where the branch started, on a branch view"),
     base=Field(Str(), required=False, does="the merge base of the checkout's `HEAD` and its default branch; empty when there is none to compare against"),

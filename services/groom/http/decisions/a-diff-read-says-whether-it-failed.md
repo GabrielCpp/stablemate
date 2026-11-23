@@ -8,3 +8,5 @@ A caller that reads a run's diff must tell a clean checkout from a read that did
 The sidecar's `getDiff` keeps its `diff` field and adds `untracked` and `failed` beside it, so a consumer that reads only `diff` keeps working. The `/diff/` reply adds `reported`, which is false when the sidecar sent no `failed`. An empty diff with `reported` false comes from a sidecar too old to report failure, so it cannot confirm there are no changes.
 
 This extends `a-pushed-run-has-no-workspace`: a read with no volume and no sidecar answers as a failed read with an empty body.
+
+The `/diff/` reply also carries `served`, `sidecar` or `volume`, like the tree and file reads of `a-tree-or-file-read-says-whether-it-failed`. A page that keeps a diff from the sidecar uses it to refuse a volume reply as a stand-in (story SM-01M6CP8HF9R9DWZPT3MR7FFZS3).

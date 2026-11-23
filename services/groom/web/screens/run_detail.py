@@ -209,7 +209,7 @@ class RunDetail(Screen):
     files_stale = Text(
         "#detail-files-stale",
         "The sidecar stopped answering",
-        does="shown on Files when the sidecar drops while the page holds a diff for the run, with 'The run may still be working.' The tab stays and shows no tree or file: it drops its tree, its selected file and its collapsed folders, and reads the tree again when the sidecar returns, with no file selected. With no diff held the tab goes",
+        does="shown on Files when the sidecar drops while the page holds a diff for the run, with 'The run may still be working.' The tab stays and shows no tree or file: it drops its tree, its selected file and its collapsed folders, and reads the tree again when the sidecar returns, with no file selected. With no diff held the tab goes. After a retry that finds no sidecar it adds 'The sidecar is still not answering.'",
     )
     checkout = Select(
         "#detail-checkout",
@@ -225,7 +225,27 @@ class RunDetail(Screen):
     diff_tab = Text(
         "#tab-diff",
         "Diff",
-        does="the tab of a live container run whose row says a sidecar is connected, after Overview, Activity and Files. A native run, an ended run and a container run with no connected sidecar have no Diff tab. It appears within five seconds of the sidecar connecting, with no reload. Selecting the run reads the diff once and a sidecar that connects while its run is selected reads it once more. A run that is not selected costs no read. When the run ends while Diff is open the tab goes and Overview shows. When the sidecar drops the tab stays and reads 'stale', with the last diff kept. With more than one checkout, the tab reads the checkout the selector shows. The tab reads the view the Diff view switch shows.",
+        does="the tab of a live container run whose row says a sidecar is connected, after Overview, Activity and Files. A native run, an ended run and a container run with no connected sidecar have no Diff tab. It appears within five seconds of the sidecar connecting, with no reload. Selecting the run reads the diff once and a sidecar that connects while its run is selected reads it once more. A run that is not selected costs no read. When the run ends while Diff is open the tab goes and Overview shows. When the sidecar drops the tab stays, marked stale, while the page holds a diff for the run, including a run selected on this page before any diff was read. A run first selected after its sidecar dropped, and any run after a page reload during the drop, has no Diff tab until the sidecar returns, because the kept diff lives in the page. The kept diff is held per checkout and per view, and selecting another run and coming back shows the same kept diff, checkout, time and mark. When the sidecar reconnects the tab reads the diff again and keeps the selected file when it is still in the diff. With more than one checkout, the tab reads the checkout the selector shows. The tab reads the view the Diff view switch shows.",
+    )
+    diff_stale = Text(
+        "#detail-diff-stale",
+        "stale",
+        does="the word 'stale' on the Diff tab in place of the size while the run's sidecar is dropped and the page holds a diff for the run. The tab's name reads 'Diff, stale', so the mark reads without colour. It clears when the sidecar reconnects",
+    )
+    stale_strip = Text(
+        "#detail-stale-strip",
+        "The sidecar stopped answering",
+        does="a group named 'Sidecar not answering' above the kept diff. It says 'The sidecar stopped answering <age> ago.', with the age ticking on the page's shared second clock and no live region, then 'The run may still be working. This is the diff from <HH:MM:SS>.' After a retry that finds no sidecar it leads with 'The sidecar is still not answering.' and 'It stopped answering <age> ago.', announced once as a status. The kept diff below it keeps its tree, its selected file and its scroll position. It clears when the sidecar reconnects and the diff is read again",
+    )
+    stale_retry = Button(
+        "#detail-stale-strip button",
+        "Retry now",
+        does="tries the sidecar again, and is disabled while a try is under way. It takes the place of the refresh and the read time while the mark shows. A reply served by the volume reader never replaces the kept diff, its time or its selected file, and never clears the mark. A reply served by the sidecar is a reconnect",
+    )
+    diff_unread = Text(
+        "#detail-diff-unread",
+        "was not read",
+        does="shown in place of a diff while the mark shows and the page holds no diff for the shown checkout and view. A run with no diff read in the page says 'The sidecar stopped answering before a diff was read'. A checkout or view not read before the drop, in a run where another one was, says 'This view was not read before the sidecar stopped answering'. Each says 'The run may still be working.' and offers Retry now",
     )
     diff_view = Text(
         "#detail-diff-view-switch",
@@ -255,17 +275,17 @@ class RunDetail(Screen):
     diff_size = Text(
         "#detail-diff-count",
         "+N −M",
-        does="the lines added and removed by the tracked change, shown on the tab before it is opened. A file git does not track yet adds nothing. A clean checkout, a checkout with only untracked files and an unreadable read show no count. The tab's name carries the size as words, 'Diff, N lines added, M lines removed', so it reads without color. It is the size of the view being read",
+        does="the lines added and removed by the tracked change, shown on the tab before it is opened. A file git does not track yet adds nothing. A clean checkout, a checkout with only untracked files and an unreadable read show no count. The tab's name carries the size as words, 'Diff, N lines added, M lines removed', so it reads without color. It is the size of the view being read. It gives way to the stale mark while the sidecar is dropped",
     )
     diff_read = Text(
         "#detail-diff-read",
         "read",
-        does="when the diff was read, as a clock time and an age that ticks each second, and 'reading…' while a refresh is under way. It is hidden, with the refresh, while Since branch start has no start to compare against",
+        does="when the diff was read, as a clock time and an age that ticks each second, and 'reading…' while a refresh is under way. It is hidden, with the refresh, while Since branch start has no start to compare against, and while the stale mark shows, when the strip gives the read time",
     )
     diff_refresh = Button(
         "#detail button[aria-label=\"Read the diff again\"]",
         "Read the diff again",
-        does="reads the diff again and updates the counts. The old content stays on screen while it reads, and the selected file stays selected by its path",
+        does="reads the diff again and updates the counts. The old content stays on screen while it reads, and the selected file stays selected by its path. It is replaced by the strip's Retry now while the stale mark shows",
     )
     diff_tree = Text(
         "#detail-panel .fd-tree",
