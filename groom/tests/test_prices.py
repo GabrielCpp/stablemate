@@ -143,6 +143,13 @@ def test_an_estimate_is_stamped_at_ingest_beside_the_reported_cost():
         assert row["total_cost_usd"] == 12.34 and row["est_cost_usd"] == 24.30
 
 
+def test_a_run_turn_span_carries_its_token_estimate():
+    with _env():
+        store.insert_spans([_turn("a" * 16, "claude-sonnet-5", _TOKENS, cost=12.34)])
+        spans = store.run_turn_spans("R1")
+        assert [span["est_cost_usd"] for span in spans] == [24.30]
+
+
 def test_reprice_fills_in_turns_that_predate_the_column():
     with _env():
         store.insert_spans([_turn("b" * 16, "claude-sonnet-5", _TOKENS)])

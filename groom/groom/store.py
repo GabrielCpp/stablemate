@@ -1339,7 +1339,8 @@ def _run_spans(run: str) -> list[dict[str, Any]]:
             f" {_charge} AS profile_cost_usd, {_output} AS profile_output_tokens,"
             f" {_input} AS profile_input_tokens, {_cache_read} AS profile_cache_read_tokens,"
             f" {_cache_write} AS profile_cache_write_tokens,"
-            " spans.rowid AS row_id, resume_generation FROM spans LEFT JOIN charges USING (span_id)"
+            " est_cost_usd, spans.rowid AS row_id, resume_generation"
+            " FROM spans LEFT JOIN charges USING (span_id)"
             " WHERE run_id = ? ORDER BY start_ts",
             (run, run),
         )
