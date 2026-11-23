@@ -128,7 +128,7 @@ class RunDetail(Screen):
     wall_clock = Text(
         "#detail-wall-clock",
         "Where the wall clock went",
-        does="a bar of six segments with a legend that names each one with its duration: Agent turns, Deterministic, Infra, Waits, Unclassified and Stopped between sessions. The segments add up to the wall time, from the first span to the last, and Agent turns, Deterministic and Infra add up to the active time of the Active time tile. An instant that more than one kind covers counts once, in this order: stopped between sessions, a wait, agent, infra, deterministic, unclassified. The bar is an image whose accessible name lists every segment with its duration, so the section reads without color",
+        does="a bar of six segments with a legend that names each one with its duration: Agent turns, Deterministic, Infra, Waits, Unclassified and Stopped between sessions. The segments add up to the wall time, from the first record of the run (a span or a metric) to the last, and Agent turns, Deterministic and Infra add up to the active time of the Active time tile. An instant that more than one kind covers counts once, in this order: stopped between sessions, a wait, agent, infra, deterministic, unclassified. The bar is an image whose accessible name lists every segment with its duration, so the section reads without color",
     )
     models_table = Text(
         "table[aria-label=\"Models\"]",

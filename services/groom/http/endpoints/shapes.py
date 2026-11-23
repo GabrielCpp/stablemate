@@ -369,7 +369,7 @@ STANDING = Object(
 
 FACTS = Object(
     "Facts",
-    started_ts=Field(Num(), nullable=True, does="when the run's first span began; null when the run has no span"),
+    started_ts=Field(Num(), nullable=True, does="when the run was first observed, from its earliest span or metric; null when the run has neither"),
     branch=Field(Str(), does="the branch of the run's latest span that names one; empty when none does"),
     run_dir=Field(Str(), does="the run directory of the run's latest span that names one; empty when none does"),
 )
