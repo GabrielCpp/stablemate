@@ -34,14 +34,14 @@ class RunDetail(Screen):
     answer = Field(
         "#detail form.answer textarea",
         "Your answer",
-        does="the text sent back to that gate. Letters typed in it never trigger a page shortcut, and what was typed survives a live push, a fold of the strip and a send of another gate until it is sent",
+        does="the text sent back to that gate. Letters typed in it never trigger a page shortcut, and what was typed survives a live push, a fold of the strip, a send of another gate and a trip to another run and back. The page holds it per run and per gate until it is sent or the gate closes, and a reload drops it. J and k typed in it do not move the run selection",
         takes="answer",
         holds=Wire(Str(), required=False, nullable=True),
     )
     send = Button(
         "#detail form.answer button[type=submit]",
         "Send answer",
-        does="sends that gate's answer. When groom takes it, the gate leaves the strip and the tab and its scroll place stay. When groom refuses it, the typed answer stays in the box and the notice says why",
+        does="sends that gate's answer. When groom takes it, the gate leaves the strip and the tab and its scroll place stay. When groom refuses it, the typed answer stays in the box and the notice says why. The answer is sent the same way on every tab",
     )
     collapse = Button(
         "#detail .gate-strip .gate-fold",
@@ -154,7 +154,7 @@ class RunDetail(Screen):
     files_tab = Text(
         "#tab-files",
         "Files",
-        does="the tab of a live container run whose row says a sidecar is connected, directly before Diff, so the tabs read Overview, Activity, Files and Diff. A native run and an ended run have no Files tab. A container run whose sidecar dropped keeps it, stale, while the page holds a diff for the run, and loses it with no diff held. Selecting a run reads no tree. The first open of Files for a selection reads the tree once. Another tab of the same run and back keeps the tree, the selected file and the collapsed folders, with no new read. Selecting another run resets them. When the run ends while Files is open the tab goes and Overview shows. A gate leaves the tab alone. With more than one checkout, the tab reads the checkout the selector shows.",
+        does="the tab of a live container run whose row says a sidecar is connected, directly before Diff, so the tabs read Overview, Activity, Files and Diff. A native run and an ended run have no Files tab. A container run whose sidecar dropped keeps it, stale, while the page holds a diff for the run, and loses it with no diff held. Selecting a run reads no tree. The first open of Files for a selection reads the tree once. Another tab of the same run and back keeps the tree, the selected file and the collapsed folders, with no new read. Selecting another run resets them. When the run ends while Files is open the tab goes and Overview shows. A gate that opens or is answered while Files is open leaves Files selected, keeps its selected file and its scroll position, and reads no tree again. With more than one checkout, the tab reads the checkout the selector shows.",
     )
     files_tree = Text(
         '#detail-panel[aria-labelledby="tab-files"] .fd-tree',
@@ -225,7 +225,7 @@ class RunDetail(Screen):
     diff_tab = Text(
         "#tab-diff",
         "Diff",
-        does="the tab of a live container run whose row says a sidecar is connected, after Overview, Activity and Files. A native run, an ended run and a container run with no connected sidecar have no Diff tab. It appears within five seconds of the sidecar connecting, with no reload. Selecting the run reads the diff once and a sidecar that connects while its run is selected reads it once more. A run that is not selected costs no read. When the run ends while Diff is open the tab goes and Overview shows. When the sidecar drops the tab stays, marked stale, while the page holds a diff for the run, including a run selected on this page before any diff was read. A run first selected after its sidecar dropped, and any run after a page reload during the drop, has no Diff tab until the sidecar returns, because the kept diff lives in the page. The kept diff is held per checkout and per view, and selecting another run and coming back shows the same kept diff, checkout, time and mark. When the sidecar reconnects the tab reads the diff again and keeps the selected file when it is still in the diff. With more than one checkout, the tab reads the checkout the selector shows. The tab reads the view the Diff view switch shows.",
+        does="the tab of a live container run whose row says a sidecar is connected, after Overview, Activity and Files. A native run, an ended run and a container run with no connected sidecar have no Diff tab. It appears within five seconds of the sidecar connecting, with no reload. Selecting the run reads the diff once and a sidecar that connects while its run is selected reads it once more. A run that is not selected costs no read. When the run ends while Diff is open the tab goes and Overview shows. When the sidecar drops the tab stays, marked stale, while the page holds a diff for the run, including a run selected on this page before any diff was read. A run first selected after its sidecar dropped, and any run after a page reload during the drop, has no Diff tab until the sidecar returns, because the kept diff lives in the page. The kept diff is held per checkout and per view, and selecting another run and coming back shows the same kept diff, checkout, time and mark. When the sidecar reconnects the tab reads the diff again and keeps the selected file when it is still in the diff. With more than one checkout, the tab reads the checkout the selector shows. The tab reads the view the Diff view switch shows. A gate that opens or is answered while Diff is open leaves Diff selected, keeps its selected file and its scroll position, and reads no diff again.",
     )
     diff_stale = Text(
         "#detail-diff-stale",
