@@ -261,18 +261,21 @@ def test_a_heading_stays_in_view_while_its_rows_scroll(tmp_path: Path) -> None:
     try:
         _open_all(page)
         page.evaluate("document.querySelector('#detail-panel .tl').style.maxHeight = '170px'")
-        page.evaluate("document.querySelector('#detail-panel .tl').scrollTop = 120")
-        box = page.evaluate("""() => {
-          const tl = document.querySelector('#detail-panel .tl').getBoundingClientRect();
-          const edge = (h) => [h.getBoundingClientRect().top - tl.top, h.getBoundingClientRect().bottom - tl.top];
-          return {
-            items: [...document.querySelectorAll('#detail-panel .tl button.tl-group')].map(edge),
-            passes: [...document.querySelectorAll('#detail-panel .tl button.tl-flow')].map(edge),
-          };
+        stacked = page.evaluate("""() => {
+          const list = document.querySelector('#detail-panel .tl');
+          const edge = (h, box) => [h.getBoundingClientRect().top - box.top, h.getBoundingClientRect().bottom - box.top];
+          let stacked = 0;
+          for (let at = 0; at <= list.scrollHeight; at += 10) {
+            list.scrollTop = at;
+            const box = list.getBoundingClientRect();
+            const items = [...list.querySelectorAll('button.tl-group')].map((h) => edge(h, box));
+            const passes = [...list.querySelectorAll('button.tl-flow')].map((h) => edge(h, box));
+            const pinned = items.filter(([top]) => Math.abs(top) < 2).map(([, bottom]) => bottom);
+            if (pinned.length && passes.some(([top]) => Math.abs(top - pinned[0]) < 2)) stacked += 1;
+          }
+          return stacked;
         }""")
-        pinned = [bottom for top, bottom in box["items"] if abs(top) < 2]
-        assert pinned, box
-        assert any(abs(top - pinned[0]) < 2 for top, _ in box["passes"]), box
+        assert stacked >= 3, stacked
     finally:
         page.close()
         context.__exit__(None, None, None)
