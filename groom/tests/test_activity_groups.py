@@ -33,8 +33,8 @@ def _pass(tag: str, flow: str, at: float, work_id: str, steps: list[tuple[str, f
         cursor += seconds + 1
     if turn is not None:
         seconds, cost = turn
-        node = span(f"{tag}-agent", "t1", f"s{tag}", "qa-story", "qa-story", cursor, seconds + 5, {"workhorse.depth": 2} | _attrs(work_id), 1)
-        agent = span(f"{tag}-turn", "t1", f"{tag}-agent", "qa-story", "agent_turn", cursor + 1, seconds, _attrs(work_id, model="m", total_cost_usd=cost, duration_ms=seconds * 1000, **({"events": events} if events else {}), **({"workhorse.visit.slug": slug} if slug else {}), **({"session.id": session} if session else {})), 1)
+        node = span(f"{tag}-agent", "t1", f"s{tag}", "qa-story", "qa-story", cursor, seconds + 5, {"workhorse.depth": 2} | _attrs(work_id) | ({"events": events} if events else {}), 1)
+        agent = span(f"{tag}-turn", "t1", f"{tag}-agent", "qa-story", "agent_turn", cursor + 1, seconds, _attrs(work_id, model="m", total_cost_usd=cost, duration_ms=seconds * 1000, **({"workhorse.visit.slug": slug} if slug else {}), **({"session.id": session} if session else {})), 1)
         agent["profile_cost_usd"] = cost
         spans += [node, agent]
     return spans

@@ -66,12 +66,12 @@ def test_each_work_item_gets_a_heading_with_state_time_and_cost_and_only_the_one
         expect(heads).to_have_count(2)
         first, second = heads.nth(0), heads.nth(1)
         assert "sign-in" in first.inner_text() and "count unknown" in first.inner_text()
-        assert "3m" in first.inner_text() and "$3.00" in first.inner_text()
+        assert "2m 30s" in first.inner_text() and "$3.00" in first.inner_text()
         assert "reset" in second.inner_text() and "in progress" in second.inner_text() and "$3.00" in second.inner_text()
         expect(first).to_have_attribute("aria-expanded", "false")
         expect(second).to_have_attribute("aria-expanded", "true")
         label = first.get_attribute("aria-label") or ""
-        assert label.startswith("Work item sign-in, count unknown, 3m, $3.00"), label
+        assert label.startswith("Work item sign-in, count unknown, 2m 30s, $3.00"), label
     finally:
         page.close()
         context.__exit__(None, None, None)
@@ -83,10 +83,10 @@ def test_inside_a_work_item_each_flow_pass_gets_a_heading_with_state_time_and_co
         _heads(page, "tl-group").nth(0).click()
         heads = _heads(page, "tl-flow")
         texts = [heads.nth(number).inner_text().lower() for number in range(heads.count())]
-        assert "qa · 1st pass" in texts[0] and "2m" in texts[0] and "$2.00" in texts[0], texts
+        assert "qa · 1st pass" in texts[0] and "2m 6s" in texts[0] and "$2.00" in texts[0], texts
         assert "qa · 2nd pass" in texts[1] and "$1.00" in texts[1], texts
         label = heads.nth(0).get_attribute("aria-label") or ""
-        assert label.startswith("qa · 1st pass, passed, 2m, $2.00"), label
+        assert label.startswith("qa · 1st pass, passed, 2m 6s, $2.00"), label
     finally:
         page.close()
         context.__exit__(None, None, None)

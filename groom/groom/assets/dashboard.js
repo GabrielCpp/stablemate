@@ -2181,7 +2181,7 @@ function groupSpan(seconds) {
 }
 
 function groupFigures(group) {
-  return groupSpan(group.time_s) + (group.cost_usd === null ? "" : " · " + fmtUsd(group.cost_usd));
+  return fmtSpan(Math.round(group.time_s || 0)) + (group.cost_usd === null ? "" : " · " + fmtUsd(group.cost_usd));
 }
 
 function itemState(item, alive) {
