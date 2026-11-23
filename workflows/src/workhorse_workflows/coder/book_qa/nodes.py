@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 from typing import Any, Literal, cast
 
+from ostler.book import index as book_index
 from ostler.book.index import cache_path
 from ostler.book.index import parse as parse_index
 from ostler.book.sources import story_commits
@@ -717,12 +718,22 @@ def _run_argv(
     return argv + ["--copy", copy, "--out", out_dir]
 
 
+def _index_argv(module: str) -> list[str]:
+    return [sys.executable, "-m", "ostler.book", "index", module]
+
+
 def _calls_by_module(root: Path, modules: tuple[str, ...]) -> dict[str, frozenset[str]]:
     held: dict[str, frozenset[str]] = {}
     for module in modules:
-        index = Path(cache_path(str(root / Path(*module.split(".")))))
-        text = index.read_text(encoding="utf-8") if index.is_file() else ""
-        held[module] = frozenset(entry.name for entry in parse_index(text) if entry.kind in ("endpoint", "interaction"))
+        folder = str(root / Path(*module.split(".")))
+        if book_index.stale(folder):
+            done = run_tool(_index_argv(module), cwd=root, env=BOOK_ENV)
+            if done.returncode != 0:
+                raise RuntimeError(f"ostler book index {module} exited {done.returncode}: {_tail(done.stdout + done.stderr)}")
+        index = Path(cache_path(folder))
+        if not index.is_file():
+            raise RuntimeError(f"ostler book index {module} wrote no index at {index}")
+        held[module] = frozenset(entry.name for entry in parse_index(index.read_text(encoding="utf-8")) if entry.kind in ("endpoint", "interaction"))
     return held
 
 

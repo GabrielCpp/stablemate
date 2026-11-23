@@ -155,7 +155,7 @@ class _Book:
         self.hangs = hangs
         self.on_run = on_run
         self.timeouts: list[float | None] = []
-        self.argv: dict[str, list[list[str]]] = {"check": [], "run": [], "verified": [], "stale": [], "affected": []}
+        self.argv: dict[str, list[list[str]]] = {"check": [], "run": [], "verified": [], "stale": [], "affected": [], "index": []}
         self.cwds: list[Any] = []
         self.run_cwds: list[Any] = []
         self.changed = changed or {}
@@ -178,6 +178,10 @@ class _Book:
         self.cwds.append(cwd)
         if verb == "stale":
             return self._stale(argv)
+        if verb == "index":
+            kept = Path(cache_path(str(Path(cwd) / Path(*argv[argv.index("index") + 1].split(".")))))
+            kept.touch()
+            return subprocess.CompletedProcess(argv, 0, f"{kept}: unchanged\n", "")
         if verb == "run":
             self.run_cwds.append(cwd)
             self.timeouts.append(timeout)
