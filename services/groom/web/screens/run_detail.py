@@ -82,7 +82,7 @@ class RunDetail(Screen):
     item_table = Text(
         "table[aria-label=\"Time and cost per work item\"]",
         "Time and cost per work item",
-        does="By work item: one row per item with its passes, agent time, cost and outcome, the item touched last on a live run marked 'open'. An 'outside any work item' row and a Total make the rows add up to the run's time and cost. The outcome reads done or not counted from the run's progress count, and is blank when no count was reported",
+        does="By work item: one row per item with its passes, agent time, cost and outcome. Passes are the most turns any one node took for the item, the laps `groom loops` counts, and agent time and cost cover all the item's turns. The item touched last on a live run is marked 'open'. An 'outside any work item' row and a Total make the rows add up to the run's time and cost. The outcome reads done or not counted from the run's progress count, and is blank when no count was reported",
     )
     activity = Text("#tab-activity", "Activity", does="the tab of the run's turns")
     rejected = Text("#toasts .toast:has(.t-title:text(\"answer not taken\"))", "toast", does="the notice shown when groom refuses the answer, with the reason groom gave")

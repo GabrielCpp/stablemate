@@ -19,9 +19,10 @@ needs five of them, as `the-strip-compares-a-turn-with-its-nodes-norm` settled. 
 and the heading names the count and "under five". On a live run a mean 20% or more above the median reads "longer" in
 words beside the warning color.
 
-Passes are the agent turns that carry the item, the same laps `groom loops` counts. Time is those turns' agent time. An
-"outside any work item" row and a Total make the rows add up to the tree. The open item is the item touched last while
-the run is live.
+Passes are the most turns any one node took for the item, the per-node laps `groom loops` counts, so an item that went
+through build once and review once shows one pass. A short label beside the count names the node with the most laps. Time
+is the agent time of all the item's turns across its nodes. An "outside any work item" row and a Total make the rows add
+up to the tree. The open item is the item touched last while the run is live.
 
 An item's outcome is derived from the run's progress count. It reads done when the count moved past the item's count,
 and not counted otherwise. It is blank when no count was reported. This is a guess, because telemetry carries no
