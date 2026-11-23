@@ -12,6 +12,7 @@ from unittest.mock import patch
 import pytest
 import _tui_support as support
 from _native_support import node_active_export
+from _settle import settled, until
 
 from groom import alerts, live, otlp, projection, sidecar_hub, state, store
 from groom import app as groom_app
@@ -85,7 +86,7 @@ def test_one_metric_batch_sends_one_run_frame_for_its_run(dirs):
         queue = _tab()
         live.snapshot()
         await _ingest("run-a", dirs, node="deploy")
-        await asyncio.sleep(0.2)
+        await settled()
         return _drain(queue)
 
     frames = asyncio.run(drive())
@@ -118,9 +119,9 @@ def test_two_batches_a_window_apart_send_one_run_frame_in_total(dirs):
         queue = _tab()
         live.snapshot()
         await _ingest("run-a", dirs)
-        await asyncio.sleep(0.2)
+        await settled()
         await _ingest("run-a", dirs)
-        await asyncio.sleep(0.2)
+        await settled()
         return _drain(queue)
 
     runs = [f for f in asyncio.run(drive()) if f["type"] == "run"]
@@ -149,7 +150,7 @@ def test_a_store_write_alone_sends_no_fleet_meta(monkeypatch):
         live.snapshot()
         _health(monkeypatch, last_ok_ts=2.0, last_write_ts=2.0, last_prune_ts=2.0, wal_bytes=99)
         live.mark_fleet()
-        await asyncio.sleep(0.2)
+        await settled()
         return _drain(queue)
 
     assert asyncio.run(drive()) == []
@@ -164,7 +165,7 @@ def test_a_change_to_store_ok_sends_fleet_meta_with_the_whole_store(monkeypatch)
         live.snapshot()
         _health(monkeypatch, ok=False, wal_bytes=99)
         live.mark_fleet()
-        await asyncio.sleep(0.2)
+        await settled()
         return _drain(queue)
 
     frames = asyncio.run(drive())
@@ -208,7 +209,7 @@ def test_removing_a_workflow_sends_run_removed():
         live.snapshot()
         state.WORKFLOWS.pop("abc")
         live.mark_fleet()
-        await asyncio.sleep(0.2)
+        await settled()
         return _drain(queue)
 
     frames = asyncio.run(drive())
@@ -224,10 +225,10 @@ def test_versions_only_go_up():
         live.snapshot()
         state.WORKFLOWS["abc"].current_node = "build"
         live.mark_fleet()
-        await asyncio.sleep(0.1)
+        await settled()
         state.WORKFLOWS.pop("abc")
         live.mark_fleet()
-        await asyncio.sleep(0.1)
+        await settled()
         return _drain(queue)
 
     versions = [f["v"] for f in asyncio.run(drive())]
@@ -274,7 +275,7 @@ def test_a_mark_from_another_thread_produces_a_fleet_meta_frame():
         worker = threading.Thread(target=live.mark_fleet_threadsafe)
         worker.start()
         worker.join()
-        await asyncio.sleep(0.2)
+        await settled()
         return _drain(queue)
 
     frames = asyncio.run(drive())
@@ -304,7 +305,7 @@ def test_the_gate_backfill_retries_on_failure_and_marks_the_fleet_on_success(dir
         live.snapshot()
         groom_app._ensure_gate_backfill(run)
         await asyncio.wait_for(groom_app._BACKFILLS["run-g"], timeout=3.0)
-        await asyncio.sleep(0.2)
+        await settled()
         return _drain(queue)
 
     with patch.object(groom_app, "GATE_BACKFILL_RETRY_S", (0.02, 0.02, 0.02)), \
@@ -388,7 +389,7 @@ def test_one_log_batch_raises_activity_rev_by_one_and_sends_one_detail():
         opened = _details(_drain(queue))[0]["detail"]["activity_rev"]
         live.snapshot()
         await _log("run-w", "one")
-        await asyncio.sleep(0.2)
+        await settled()
         return opened, _details(_drain(queue))
 
     opened, sent = asyncio.run(drive())
@@ -439,7 +440,7 @@ def test_a_tab_that_just_opened_a_run_does_not_make_the_others_repeat_it():
         _drain(first)
         second = _tab()
         await groom_app._handle_command({"cmd": "watch", "run_id": "run-w"}, second)
-        await asyncio.sleep(0.2)
+        await settled()
         return _drain(first), _drain(second)
 
     first, second = asyncio.run(drive())
@@ -458,7 +459,7 @@ def test_a_flush_sends_the_fleet_frames_before_the_details(dirs):
         await _log("run-a", "one")
         state.WORKFLOWS["run-a"].current_node = "build"
         live.mark_fleet()
-        await asyncio.sleep(0.3)
+        await settled()
         return [f["type"] for f in _drain(queue)]
 
     assert asyncio.run(drive()) == ["run", "detail"]
@@ -507,7 +508,7 @@ def test_releasing_the_last_watcher_cancels_the_transcript_task(tmp_path):
         queue = await _open()
         task = state.TRANSCRIPT_TASKS["run-w"]
         state.remove_client(queue)
-        await asyncio.sleep(0.1)
+        await until(task.done, "the transcript task ending")
         return task, dict(state.TRANSCRIPT_TASKS)
 
     task, tasks = asyncio.run(drive())
@@ -566,7 +567,7 @@ def test_a_dispatch_enqueue_sends_one_fleet_meta_with_the_dispatch_revision_one_
         queue = _tab()
         before = live.snapshot()["revs"]["dispatch"]
         await asyncio.to_thread(dispatch.enqueue, "q")
-        await asyncio.sleep(0.2)
+        await settled()
         return before, _drain(queue)
 
     before, frames = asyncio.run(drive())
@@ -583,10 +584,12 @@ def test_a_dispatch_finish_from_a_thread_sends_a_fleet_meta_with_a_higher_revisi
         live.bind(asyncio.get_running_loop())
         queue = _tab()
         item = await asyncio.to_thread(dispatch.enqueue, "q")
-        await asyncio.sleep(0.2)
+        await until(lambda: not queue.empty(), "the dispatch start reaching the tab")
+        await settled()
         started = _metas(_drain(queue))[-1]["revs"]["dispatch"]
         proc.done.set()
-        await asyncio.sleep(0.3)
+        await until(lambda: ledger.dispatch_get(item["item_id"])["status"] == ledger.DISPATCH_DONE, "the dispatch finishing")
+        await settled()
         return item, started, _drain(queue)
 
     item, started, frames = asyncio.run(drive())
@@ -601,7 +604,7 @@ def test_a_written_summary_sends_a_fleet_meta_with_a_higher_history_revision():
         before = live.snapshot()["revs"]["history"]
         with patch.object(groom_app.history, "compute", lambda run_id: None):
             await groom_app._write_summary("run-s")
-        await asyncio.sleep(0.2)
+        await settled()
         return before, _drain(queue)
 
     before, frames = asyncio.run(drive())
@@ -622,7 +625,7 @@ def test_a_summary_pass_that_archives_a_run_sends_a_higher_history_revision_and_
             patch.object(groom_app, "SUMMARY_PAUSE_S", 0),
         ):
             await groom_app._summary_pass()
-        await asyncio.sleep(0.2)
+        await settled()
         return before, _drain(queue)
 
     before, frames = asyncio.run(drive(["run-a"]))

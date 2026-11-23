@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 import pytest
 from litestar.testing import TestClient
+from _settle import settled, until
 
 from groom import app as groom_app
 from groom import discovery, live, sidecar_hub, state, store
@@ -45,7 +46,7 @@ def _reset() -> None:
 
 
 async def _settle() -> None:
-    await asyncio.sleep(0.15)
+    await settled()
 
 
 async def _next_detail(queue: asyncio.Queue) -> dict:
@@ -443,8 +444,7 @@ _LIVE_FILE = "transcripts/live/001-00001-implement.jsonl"
 
 
 async def _quiet() -> None:
-    while groom_app._TAILS:
-        await asyncio.sleep(0.01)
+    await until(lambda: not groom_app._TAILS, "the transcript tails ending")
 
 
 def _container_run() -> _TranscriptConn:

@@ -63,6 +63,15 @@ def reset() -> None:
         state.REVS[name] = 0
 
 
+def pending() -> bool:
+    """A flush is scheduled, or a marked run's detail is not sent yet."""
+    if _flush_handle is not None and not _flush_handle.cancelled():
+        return True
+    if _dirty_runs or _backlog:
+        return True
+    return _detail_task is not None and not _detail_task.done()
+
+
 def bind(loop: asyncio.AbstractEventLoop) -> None:
     global _loop
     _loop = loop
