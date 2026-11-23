@@ -55,6 +55,19 @@ EXITED = Object(
     repo_branch=Field(Str(classes={"a plain branch": "main", "a branch with a slash": "feat/login"}), required=False),
 )
 
+_ROW_FIGURE_FIELDS = dict(
+    finished=Field(Bool()),
+    reports_cost=Field(Bool()),
+    cost_usd=Field(Num(), nullable=True),
+    turns=Field(Int()),
+    priced_turns=Field(Int()),
+    active_s=Field(Num()),
+    items_done=Field(Int(), nullable=True),
+    items_total=Field(Int(), nullable=True),
+)
+
+ROW_FIGURES = Object("RowFigures", **_ROW_FIGURE_FIELDS)
+
 ROW = Object(
     "Row",
     id=Field(RUN_ID, does="the run's container id"),
@@ -89,7 +102,11 @@ ROW = Object(
     pid=Field(Int(), nullable=True),
     native=Field(Bool()),
     sidecar=Field(Bool()),
-    figures=Field(Map(Str()), nullable=True),
+    figures=Field(
+        ROW_FIGURES,
+        nullable=True,
+        does="cost with priced and total turns, active time and items done, cached from the run's telemetry; null until groom hears from the run",
+    ),
     ended=Field(Map(Str()), nullable=True),
     rank=Field(Int(), does="blocked 0, running 2, finished 3; the fleet is ordered by rank, then name"),
 )
@@ -323,14 +340,7 @@ COST = Object(
 
 TILES = Object(
     "Tiles",
-    finished=Field(Bool()),
-    reports_cost=Field(Bool()),
-    cost_usd=Field(Num(), nullable=True),
-    turns=Field(Int()),
-    priced_turns=Field(Int()),
-    active_s=Field(Num()),
-    items_done=Field(Int(), nullable=True),
-    items_total=Field(Int(), nullable=True),
+    **_ROW_FIGURE_FIELDS,
     est_usd=Field(Num(), nullable=True),
     backends=Field(List(Str())),
     wall_s=Field(Num()),

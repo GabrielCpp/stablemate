@@ -13,7 +13,7 @@ class Runs(Screen):
     heading = Heading("#runs-pane h2", "Runs", does="the pane's title")
     filter = Field("#runs-pane input[name=q]", "Filter runs", does="narrows the list to the runs whose name, repo, node, task or id holds the text typed",
                 takes="q", holds=Wire(Str(), required=False, nullable=True))
-    run = Button("#runs-list button.row", "run", does="one run: its state, repo and branch, short id, what it is doing", per_row=True)
+    run = Button("#runs-list button.row", "run", does="one run: its state, repo and branch, short id, what it is doing, and once groom hears from the run its cost with priced and total turns, active time and items done", per_row=True)
     state = Text("#runs-list button.row .dot", "state", does="the run's state, on the row's data-state", per_row=True)
     repo = Text("#runs-list button.row .repo-branch", "repo", does="the repo and branch the run works on, or a dash when it did not say", per_row=True)
     short_id = Text("#runs-list button.row .wid", "short id", does="# and the first four characters of the run's id", per_row=True)

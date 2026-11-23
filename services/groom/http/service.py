@@ -67,6 +67,9 @@ UNSEEN = (
         for field in (
             "runs[].type", "runs[].wait_kind", "runs[].turn_active", "runs[].mini", "runs[].clock", "runs[].activity",
             "runs[].question", "runs[].pid", "runs[].figures", "runs[].ended", "attention[].terminal",
+            *(f"runs[].figures.{name}" for name in (
+                "finished", "reports_cost", "cost_usd", "turns", "priced_turns", "active_s", "items_done", "items_total",
+            )),
         )
     ),
     Unseen(ReadFleet, "200: store.last_error", Because.NEVER_FILLED, "the book's database never fails"),
