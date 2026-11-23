@@ -8,6 +8,7 @@ class RunDetail(Screen):
         "groom/groom/assets/dashboard.js",
         "groom/groom/assets/dashboard.js::loadOverview",
         "groom/groom/assets/dashboard.js::retryOverview",
+        "groom/groom/assets/dashboard.js::TurnReading",
     )
     route = "/"
     name = "Run detail"
@@ -223,12 +224,47 @@ class RunDetail(Screen):
     turn_body = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .rd .rd-body',
         "Turn",
-        does="the turn's messages and tool calls in order, named 'Turn <node>' and scrollable from the keyboard. A message reads as prose: its markdown is formatted, raw HTML in it is shown as text, an image becomes its alt text, and the result goes through DOMPurify, so no script runs. A turn whose record could not be matched says its messages and tool calls are not shown. A running turn whose start the live history dropped says its earlier output is not shown",
+        does="the turn's parts in order, named 'Turn <node>' and scrollable from the keyboard: the notes, then the prompt, the thinking and the note that a backend recorded neither, then the messages, tool lines and folds as the turn ran. The turn opens with the prompt, the thinking and every fold closed, and selecting another turn closes them again. A message reads as prose: its markdown is formatted, raw HTML in it is shown as text, an image becomes its alt text, and the result goes through DOMPurify, so no script runs. A turn whose record could not be matched says its messages and tool calls are not shown. A running turn whose start the live history dropped says its earlier output is not shown",
     )
     turn_tool = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .rd .at-tool-head',
         "tool call",
-        does="one tool call on one line, its name and a short summary set as text, so markup in either shows as written. A failed call says failed in words and shows its output below the line",
+        does="one tool call on one line, its name and a short summary set as text, so markup in either shows as written. A failed call is read by the failed tool call and its output",
+    )
+    turn_prompt = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd details.prompt > summary',
+        "Prompt",
+        does="the prompt the agent was given, closed and labelled 'Prompt · N words' with its size. Pressing it, by mouse or by Enter or Space, shows the prompt as prose, and pressing it again hides it. Its open state is exposed as expanded. It is absent when the turn recorded no prompt and when the turn's record could not be matched. It goes through the same rendering as a message, so a script in it does not run",
+    )
+    turn_thinking = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd details.thought > summary',
+        "Thinking",
+        does="the agent's thinking, closed and labelled 'Thinking'. Pressing it shows the thinking as prose, and pressing it again hides it. Its open state is exposed as expanded. It is absent when the turn recorded no thinking",
+    )
+    turn_not_recorded = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd .at-note:text("did not record")',
+        "This backend did not record the prompt or the thinking for this turn.",
+        does="sits where the prompt and the thinking would, and names only the part the backend left out: the prompt, the thinking, or both. A running turn, a turn that ended with no record and a turn whose start the live history dropped show no such note",
+    )
+    turn_tool_run = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd button.tool-run',
+        "tool calls fold",
+        does="three or more successful tool calls in a row folded to one line that counts them by tool, most used first, and gives their summed time, as '2 Read · 1 Grep · 1 Bash · 10s'. One or two successful calls stay as lines. Pressing it shows one line per call and pressing it again folds them, and aria-expanded follows",
+    )
+    turn_tool_failed = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd .at-tool-head.failed',
+        "failed tool call",
+        does="a failed call as its own line, never inside a fold. It is marked in red and in words, with the mark ✕ and the word 'failed'",
+    )
+    turn_tool_output = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd pre.at-tool-body',
+        "Output of <tool>",
+        does="the output of a failed call in full, up to 1,000,000 characters, set as text so markup in it shows as written and no script runs. It is named 'Output of <tool>' and scrolls inside its own box from the mouse and the keyboard, and the turn around it stays in place",
+    )
+    turn_output = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd .at-msg.output',
+        "Output",
+        does="the last assistant message of a finished turn, under the role 'Output' and set apart from the turn's other messages by its colour bar. A running turn has none",
     )
     turn_reading = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .rd .detail-empty.loading',
