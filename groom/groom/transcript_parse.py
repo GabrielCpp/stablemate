@@ -163,6 +163,8 @@ def _claude(path: Path, window: Window | None) -> list[dict[str, Any]]:
     pending: dict[str, dict[str, Any]] = {}
     called: dict[int, float | None] = {}
     for record in _records(path):
+        if record.get("type") not in ("user", "assistant"):
+            continue
         stamp = _epoch(record.get("timestamp"))
         if not _within(stamp, window):
             continue

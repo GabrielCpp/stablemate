@@ -49,6 +49,22 @@ def test_a_claude_record_keeps_the_messages_and_pairs_each_tool_with_its_result(
     assert tool["summary"] == "plan.md" and tool["result"] == "ten lines" and tool["failed"] is True
 
 
+CAPTURED = Path(__file__).parent / "fixtures" / "claude_turn_record"
+CAPTURED_SHAPE = [("message", "user"), ("tool", "Read"), ("tool", "Grep"), ("message", "assistant")]
+
+
+def test_a_captured_claude_record_reads_the_same_from_its_claude_file_and_its_acp_file() -> None:
+    for name in ("transcript.acp.jsonl", "transcript.jsonl"):
+        entries = transcript_parse.read_files({name: CAPTURED / name})
+        assert entries is not None, name
+        assert [(entry["kind"], entry.get("role") or entry.get("name")) for entry in entries] == CAPTURED_SHAPE, name
+        assert entries[3]["text"].startswith("The removed field (`markers: list[str] = []`) belongs to `TargetClassification`"), name
+        assert entries[1]["summary"].startswith("/home/user/Documents/worktrees/stablemate-okf-backfill/workflows/src/workhorse_workflows/coder/shared/schemas/genesis"), name
+    claude = transcript_parse.read_files({"transcript.jsonl": CAPTURED / "transcript.jsonl"}) or []
+    for tool in claude[1:3]:
+        assert tool["result"] and tool["failed"] is False
+
+
 def test_a_resumed_session_record_is_cut_to_the_turns_own_window(tmp_path: Path) -> None:
     path = _write(tmp_path / "t.jsonl", [
         _claude(1, "assistant", "earlier turn"),

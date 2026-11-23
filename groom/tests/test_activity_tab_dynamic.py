@@ -37,6 +37,22 @@ def _record(at: float, role: str, content: object) -> str:
     return json.dumps({"timestamp": _iso(at), "type": role, "message": {"role": role, "content": content}}) + "\n"
 
 
+CAPTURED = Path(__file__).parent / "fixtures" / "claude_turn_record"
+
+
+def _place_captured(root: Path, start: float, files: str) -> None:
+    lines = (CAPTURED / "transcript.jsonl").read_text().splitlines()
+    shifted = []
+    for number, line in enumerate(lines):
+        record = json.loads(line)
+        if "timestamp" in record:
+            record["timestamp"] = _iso(start + 1 + number * 0.01)
+        shifted.append(json.dumps(record))
+    (root / "transcript.jsonl").write_text("\n".join(shifted) + "\n")
+    if files == "both":
+        (root / "transcript.acp.jsonl").write_text((CAPTURED / "transcript.acp.jsonl").read_text())
+
+
 def _turn_attrs(slug: str, activity: str, cost: float, tokens: int) -> dict:
     return {
         "workhorse.visit.slug": slug, "session.id": f"{SESSION}-{slug[:9]}", "work_id": "sign-in-with-a-code",
@@ -84,9 +100,12 @@ def _run(run: str, tmp: Path, *, native: bool = True, turns: bool = True, runnin
             root = turn_archive.transcripts_root() / run / f"{slug}__{session}"
             root.mkdir(parents=True, exist_ok=True)
             tool = {"type": "tool_use", "id": "c1", "name": "Bash", "input": {"command": HTML_TEXT if hostile else "make up"}}
-            (root / "transcript.jsonl").write_text(
-                _record(start + 1, "assistant", message) + _record(start + 2, "assistant", [tool])
-            )
+            if captured and slug == SECOND:
+                _place_captured(root, start, captured)
+            else:
+                (root / "transcript.jsonl").write_text(
+                    _record(start + 1, "assistant", message) + _record(start + 2, "assistant", [tool])
+                )
             archived.append({
                 "run_id": run, "node": slug.split("-", 2)[2], "session_id": session, "generation": 1, "seq": seq,
                 "ts": start, "path": f"{run}/{slug}__{session}",
@@ -221,6 +240,25 @@ def test_the_pane_shows_messages_as_prose_and_each_tool_call_as_one_line(tmp_pat
             assert tool.inner_text().split() == ["Bash", "make", "up"]
         finally:
             page.close()
+
+
+def test_a_captured_claude_turn_reads_as_prose_with_one_line_per_tool_call(tmp_path):
+    from playwright.sync_api import expect
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    for files in ("both", "claude"):
+        with _run(f"act-real-{files}", tmp_path / files, captured=files) as run:
+            page = _open(live)
+            try:
+                _pick(page, run)
+                _open_activity(page)
+                expect(page.locator(".rd .at-msg").filter(has_text="The removed field")).to_have_count(1)
+                names = page.locator(".rd .at-tool-name")
+                expect(names).to_have_count(2)
+                assert names.all_inner_texts() == ["Read", "Grep"], files
+            finally:
+                page.close()
 
 
 def test_a_running_turn_reads_running_in_its_row_and_pane_with_elapsed_time_and_no_cost_yet(tmp_path):
