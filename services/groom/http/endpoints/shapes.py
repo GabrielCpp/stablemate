@@ -101,7 +101,7 @@ ROW = Object(
     exit_hint=Field(Str(), does="'exited N' once the run is finished and reported a code"),
     pid=Field(Int(), nullable=True),
     native=Field(Bool()),
-    sidecar=Field(Bool()),
+    sidecar=Field(Bool(), does="true while a sidecar of this container is connected to groom, read from the sidecar hub when the row is projected, and false for a native run"),
     figures=Field(
         ROW_FIGURES,
         nullable=True,
@@ -319,10 +319,10 @@ FILE_TEXT = Object(
 
 DIFF = Object(
     "Diff",
-    diff=Field(Str()),
-    untracked=Field(List(Str())),
-    failed=Field(Bool()),
-    reported=Field(Bool()),
+    diff=Field(Str(), does="the `git diff HEAD` text of the checkout"),
+    untracked=Field(List(Str()), does="the paths git does not track yet, which `git diff` leaves out"),
+    failed=Field(Bool(), does="true when either git command failed or timed out, or no checkout could be read, so a failed read is never an empty diff"),
+    reported=Field(Bool(), does="false when the sidecar sent no `failed`, so an empty diff from a sidecar too old to report failure cannot be confirmed"),
     served=Field(Enum(("sidecar", "volume"))),
     repos=Field(List(Str()), required=False),
     based=Field(Bool(), required=False, does="whether a sidecar reported where the branch started, on a branch view"),

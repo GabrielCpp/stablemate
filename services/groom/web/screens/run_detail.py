@@ -151,4 +151,65 @@ class RunDetail(Screen):
         does="one row per session, the same count as the Active time tile. Each row gives when the session started, its active time, how long the run stayed stopped before the next session and how the session stopped. The ending reads finished, interrupted, reloaded, failed or crashed, with the recorded message or error class after a colon. A session whose root span recorded no ending reads 'no recorded ending'. The last session of a running or blocked run reads 'running', with 'still running' in place of the gap",
     )
     activity = Text("#tab-activity", "Activity", does="the tab of the run's turns")
+    sidecar_chip = Text(
+        "#run-sidecar-chip",
+        "docker · sidecar",
+        does="the chip in the header of a container run, 'docker · sidecar' while a connected sidecar backs the run and 'docker' alone without one",
+    )
+    diff_tab = Text(
+        "#tab-diff",
+        "Diff",
+        does="the tab of a live container run whose row says a sidecar is connected, after Overview, Activity and Files. A native run, an ended run and a container run with no connected sidecar have no Diff tab. It appears within five seconds of the sidecar connecting, with no reload. Selecting the run reads the diff once and a sidecar that connects while its run is selected reads it once more. A run that is not selected costs no read. When the run ends while Diff is open the tab goes and Overview shows. When the sidecar drops the tab stays and reads 'stale', with the last diff kept",
+    )
+    diff_size = Text(
+        "#detail-diff-count",
+        "+N −M",
+        does="the lines added and removed by the tracked change, shown on the tab before it is opened. A file git does not track yet adds nothing. A clean checkout, a checkout with only untracked files and an unreadable read show no count. The tab's name carries the size as words, 'Diff, N lines added, M lines removed', so it reads without color",
+    )
+    diff_read = Text(
+        "#detail-diff-read",
+        "read",
+        does="when the diff was read, as a clock time and an age that ticks each second, and 'reading…' while a refresh is under way",
+    )
+    diff_refresh = Button(
+        "#detail button[aria-label=\"Read the diff again\"]",
+        "Read the diff again",
+        does="reads the diff again and updates the counts. The old content stays on screen while it reads, and the selected file stays selected by its path",
+    )
+    diff_tree = Text(
+        "#detail-panel .fd-tree",
+        "changed files",
+        does="the changed files in a folder tree, each with its lines added and removed. A chain of single-child folders is one row. Files git does not track yet sit in their own group, 'Not tracked by git yet', with no counts. The lines equal what `git diff HEAD` reports for the checkout",
+    )
+    diff_file = Button(
+        "#detail-panel .fd-tree .tree-file",
+        "changed file",
+        does="shows that file's diff and marks it as the current file. The first file of the tree shows when Diff opens. An untracked file says '<path> has no diff because git does not track it yet.'",
+    )
+    diff_file_head = Text(
+        "#detail-diff-file-head",
+        "file header",
+        does="the path of the shown file, its lines added and removed, the word 'uncommitted', and 'new file', 'deleted file' or 'renamed from <old path>' in words",
+    )
+    diff_changes = Text(
+        "#detail-panel .fd-view[role=\"region\"]",
+        "Changes",
+        does="the shown file's changed lines, rendered by diff2html, which escapes the file's content, so a diff cannot inject markup. The region is named 'Changes in <path>' and scrolls from the keyboard",
+    )
+    diff_reading = Text(
+        "#detail-panel .detail-empty.loading",
+        "Reading the diff…",
+        does="shown while the first read is under way, announced as a status, and gone when the diff arrives",
+    )
+    diff_unreadable = Text(
+        "#detail-diff-unreadable",
+        "This diff could not be read",
+        does="shown for a read git failed, a sidecar error or text diff2html cannot parse, with 'This does not mean there are no changes.' It never reads as no changes, and it clears when a read succeeds",
+    )
+    diff_retry = Button("#detail-diff-unreadable button", "Retry now", does="reads the diff again")
+    diff_empty = Text(
+        "#detail-panel .fd-view .detail-empty",
+        "There are no uncommitted changes in this checkout.",
+        does="the words of a clean checkout. A checkout with only untracked files lists them and says 'No tracked file has changed in this checkout.' An empty diff from a sidecar too old to report a failed read says 'This sidecar is too old to report a failed read, so it cannot confirm there are no changes.'",
+    )
     rejected = Text("#toasts .toast:has(.t-title:text(\"answer not taken\"))", "toast", does="the notice shown when groom refuses the answer, with the reason groom gave")
