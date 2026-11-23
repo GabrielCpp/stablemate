@@ -141,10 +141,14 @@ def commit_paths(path: str | Path, message: str, *pathspecs: str, verify: bool =
 
 
 def stage_paths(repo: Repo, *pathspecs: str) -> None:
-    """Stage the files ``pathspecs`` name that git can stage."""
+    """Stage the files ``pathspecs`` name that git can stage. A tracked file is staged even under an ignored folder, which a plain add refuses."""
     present = [spec for spec in pathspecs if _matches(repo, spec)]
-    if present:
-        repo.git.add("--", *present)
+    tracked = [spec for spec in present if repo.git.ls_files("--cached", "--", spec).strip()]
+    untracked = [spec for spec in present if spec not in tracked]
+    if tracked:
+        repo.git.add("--force", "--", *tracked)
+    if untracked:
+        repo.git.add("--", *untracked)
 
 
 def _matches(repo: Repo, spec: str) -> bool:

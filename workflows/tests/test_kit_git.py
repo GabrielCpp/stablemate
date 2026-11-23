@@ -71,6 +71,18 @@ def test_commit_paths_takes_a_deletion_an_agent_already_staged(tmp_path: Path) -
     assert listed.stdout.split() == ["docs/kept.md", "docs/new.md"]
 
 
+def test_commit_paths_takes_a_tracked_file_under_an_ignored_folder(tmp_path: Path) -> None:
+    root = make_git_repo(tmp_path / "acme")
+    _write(root, ".gitignore", "epics/\n")
+    _write(root, "epics/one/story.md", "status: started\n")
+    subprocess.run(["git", "add", "-f", "--", ".gitignore", "epics/one/story.md"], cwd=str(root), check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "track the story"], cwd=str(root), check=True)
+    _write(root, "epics/one/story.md", "status: QA passed\n")
+
+    assert commit_paths(root, "docs: mark it passed", "epics/one/story.md") is True
+    assert _tracked(root) == {"epics/one/story.md"}
+
+
 def test_commit_paths_with_no_pathspecs_commits_nothing(tmp_path: Path) -> None:
     """The regression this file exists for."""
     root = make_git_repo(tmp_path / "acme")
