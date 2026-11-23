@@ -3,7 +3,12 @@ from ostler.book.screen import Button, Field, Screen, Select, Text
 
 
 class RunDetail(Screen):
-    source = ("groom/groom/templates/dashboard.html", "groom/groom/assets/dashboard.js")
+    source = (
+        "groom/groom/templates/dashboard.html",
+        "groom/groom/assets/dashboard.js",
+        "groom/groom/assets/dashboard.js::loadOverview",
+        "groom/groom/assets/dashboard.js::retryOverview",
+    )
     route = "/"
     name = "Run detail"
     api = "/api"
