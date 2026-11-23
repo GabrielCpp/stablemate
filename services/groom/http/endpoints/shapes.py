@@ -301,7 +301,7 @@ INBOX = Object("Inbox", messages=Field(List(Str()), does="the run's outstanding 
 TREE = Object(
     "Tree",
     paths=Field(List(Str()), does="the repo-relative paths of the checkout"),
-    failed=Field(Bool(), does="true when the read did not happen"),
+    failed=Field(Bool(), does="true when the checkout is missing or the walk could not enter a folder, so a partial or absent listing never reads as a checkout without files"),
     reported=Field(Bool(), does="true when the source says whether it failed"),
     served=Field(Enum(("sidecar", "volume")), does="which reader answered"),
     repos=Field(List(Str()), required=False, does="the checkouts a sidecar names, when it names them"),
@@ -310,11 +310,11 @@ TREE = Object(
 FILE_TEXT = Object(
     "FileText",
     path=Field(Str(), does="the path asked for, as sent"),
-    content=Field(Str()),
+    content=Field(Str(), does="the file's text, empty for an empty file and for a failed read, which `failed` tells apart"),
     lang=Field(Str(), does="the highlight.js language the file name implies, empty for a name with no grammar"),
-    failed=Field(Bool()),
-    reported=Field(Bool()),
-    served=Field(Enum(("sidecar", "volume"))),
+    failed=Field(Bool(), does="true when the file could not be read, so a failed read is never an empty file"),
+    reported=Field(Bool(), does="false when the sidecar sent no `failed`, so an empty answer from it cannot be confirmed"),
+    served=Field(Enum(("sidecar", "volume")), does="which reader answered"),
 )
 
 DIFF = Object(

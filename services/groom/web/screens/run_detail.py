@@ -151,6 +151,66 @@ class RunDetail(Screen):
         does="one row per session, the same count as the Active time tile. Each row gives when the session started, its active time, how long the run stayed stopped before the next session and how the session stopped. The ending reads finished, interrupted, reloaded, failed or crashed, with the recorded message or error class after a colon. A session whose root span recorded no ending reads 'no recorded ending'. The last session of a running or blocked run reads 'running', with 'still running' in place of the gap",
     )
     activity = Text("#tab-activity", "Activity", does="the tab of the run's turns")
+    files_tab = Text(
+        "#tab-files",
+        "Files",
+        does="the tab of a live container run whose row says a sidecar is connected, directly before Diff, so the tabs read Overview, Activity, Files and Diff. A native run, an ended run and a container run with no connected sidecar have no Files tab. Selecting a run reads no tree. The first open of Files for a selection reads the tree once. Another tab of the same run and back keeps the tree, the selected file and the collapsed folders, with no new read. Selecting another run resets them. When the run ends while Files is open the tab goes and Overview shows. A gate leaves the tab alone",
+    )
+    files_tree = Text(
+        '#detail-panel[aria-labelledby="tab-files"] .fd-tree',
+        "checkout files",
+        does="the checkout's files in a folder tree, read from the run's sidecar, and the volume when the sidecar errors. A chain of single-child folders is one row. The folders .git, node_modules, __pycache__ and .venv are left out",
+    )
+    files_folder = Button(
+        '#detail-panel[aria-labelledby="tab-files"] .fd-tree .tree-dir-head',
+        "folder",
+        does="collapses and expands its folder and exposes the state as aria-expanded. A folder the operator collapsed stays collapsed across the tabs of the same run and opens again on another run",
+    )
+    files_file = Button(
+        '#detail-panel[aria-labelledby="tab-files"] .fd-tree .tree-file',
+        "file",
+        does="reads that file and marks it as the current file. The selected file stays selected across the tabs of the same run",
+    )
+    files_view = Text(
+        '#detail-panel[aria-labelledby="tab-files"] .fd-view[role="region"]',
+        "File contents",
+        does="the region of the shown file, which scrolls from the keyboard. It is named 'Contents of <path>', and 'File contents' before a file is chosen, when it reads 'Select a file to read it.'",
+    )
+    files_file_head = Text(
+        "#detail-files-file-head",
+        "file header",
+        does="the path of the shown file, its line count and the language its name implies, as '<path> · N lines · <language>'",
+    )
+    files_code = Text(
+        '#detail-panel[aria-labelledby="tab-files"] .file-pre',
+        "file text",
+        does="the file's text with syntax coloring, beside a gutter of line numbers that screen readers skip, on a band darker than the pane. The text goes through the page's one highlighting path, so a file or a path cannot inject markup. An empty file reads 'This file is empty.' An empty answer from a sidecar too old to report a failed read says it cannot confirm the file is empty",
+    )
+    files_reading = Text(
+        '#detail-panel[aria-labelledby="tab-files"] .detail-empty.loading',
+        "Reading the checkout…",
+        does="shown while the tree is read, and 'Reading <path>…' while a file is read, each announced as a status and gone when the reply arrives",
+    )
+    files_unreadable = Text(
+        "#detail-files-unreadable",
+        "This checkout could not be read",
+        does="shown for a tree the sidecar reported as failed, a sidecar error or a volume read that failed. It never reads as a checkout with no files, and it clears when a read succeeds. A checkout with no files reads 'This checkout has no files.', and an empty answer from a sidecar too old to report a failed read says it cannot confirm that",
+    )
+    file_unreadable = Text(
+        "#detail-file-unreadable",
+        "could not be read",
+        does="'<path> could not be read' with 'This does not mean the file is empty.', shown for a failed file read. It never reads as an empty file, and it clears when a read succeeds",
+    )
+    files_retry = Button(
+        '#detail-panel[aria-labelledby="tab-files"] .side-state button',
+        "Retry now",
+        does="reads the tree or the file again. It shows only beside a failed read or a stale tab. No control on the tab edits, saves, deletes or refreshes a file",
+    )
+    files_stale = Text(
+        "#detail-files-stale",
+        "The sidecar stopped answering",
+        does="shown on Files when the sidecar drops while the page holds a diff for the run, with 'The run may still be working.' The tab stays, keeps its tree and file, and reads the tree again when the sidecar returns. With no diff held the tab goes",
+    )
     sidecar_chip = Text(
         "#run-sidecar-chip",
         "docker · sidecar",
