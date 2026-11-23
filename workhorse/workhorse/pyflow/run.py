@@ -6,13 +6,16 @@ import importlib
 import inspect
 import os
 import shutil
+import signal
 import sys
+import threading
 import sysconfig
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from collections.abc import Callable
 
 from pydantic import ValidationError
 
@@ -208,6 +211,22 @@ def _stop_resumable(writer: ArtifactWriter, name: str, exc: Exception) -> int:
     return 1
 
 
+def _terminated(signum: int, frame: object) -> None:
+    raise KeyboardInterrupt(f"signal {signum}")
+
+
+def _interrupt_on_terminate() -> Callable[[], None]:
+    """Make SIGTERM stop the run the way Ctrl-C does, so it records its ending and stays resumable. Returns what puts the previous handler back."""
+    if threading.current_thread() is not threading.main_thread():
+        return lambda: None
+    previous = signal.signal(signal.SIGTERM, _terminated)
+
+    def restore() -> None:
+        signal.signal(signal.SIGTERM, signal.SIG_DFL if previous is None else previous)
+
+    return restore
+
+
 def _keep_worktree(writer: ArtifactWriter, ending: str) -> None:
     """On any ending but success, keep the run's worktree so a resume or a person can pick it up."""
     if not writer.worktrees:
@@ -364,6 +383,7 @@ def run_pyflow(invocation: RunInvocation) -> int:
     core_reload = False
     core_reload_cli = ""
     core_reload_profile = ""
+    restore_terminate = _interrupt_on_terminate()
     try:
         try:
             _drive_reloadable(wf, env, resume, registry=registry, writer=writer)
@@ -421,6 +441,7 @@ def run_pyflow(invocation: RunInvocation) -> int:
         otel.end_run("terminal")
     finally:
         otel.end_run("aborted", error="run aborted before finalize")
+        restore_terminate()
         control.arm(None)
         channel.close()
 

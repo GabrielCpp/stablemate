@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -152,3 +153,52 @@ def test_socket_stop_reaps_the_streaming_child_and_preserves_resume(tmp_path: Pa
         assert control.armed().fileno() is None
     finally:
         otel.install(previous)
+
+
+_TERMINATED_RUN = """
+import os, signal, sys
+from pathlib import Path
+from workhorse import otel
+from workhorse.pyflow.registry import Registry
+from workhorse.pyflow.run import RunInvocation, run_pyflow
+from workhorse.pyflow.transitions import Done, Transition
+from workhorse.pyflow.workflow import Workflow
+
+endings = []
+
+class Host(otel.TelemetryHost):
+    def end_run(self, status, error=None, error_class="", error_kind=""):
+        endings.append(status)
+
+class Terminated(Workflow):
+    def start(self) -> Transition:
+        os.kill(os.getpid(), signal.SIGTERM)
+        return Done(None)
+
+class Here(Registry):
+    def directory(self) -> Path:
+        return Path(sys.argv[1])
+
+registry = Here("terminated")
+registry.add_flows(main=Terminated)
+registry.entry = Terminated
+try:
+    run_pyflow(RunInvocation(registry=registry, runs_dir=Path(sys.argv[1]), run_id="t", telemetry=Host()))
+finally:
+    print("ENDINGS", endings, flush=True)
+"""
+
+
+def test_a_terminated_run_ends_interrupted_and_stays_resumable(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    done = subprocess.run(
+        [sys.executable, "-c", _TERMINATED_RUN, str(runs)],
+        capture_output=True, text=True, timeout=60, cwd=tmp_path,
+    )
+    assert done.returncode == 130, done.stdout + done.stderr
+    assert "ENDINGS ['interrupted'" in done.stdout
+    run_dir = runs / "terminated-t"
+    record = parse_run_record((run_dir / "run.json").read_text())
+    assert record.interrupted_at
+    assert find_latest_resumable(runs) == run_dir
