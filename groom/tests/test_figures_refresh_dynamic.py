@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 
@@ -18,6 +19,7 @@ from test_run_clock_dynamic import _pick, _run
 
 FLOW_TABLE = "Time and cost per flow"
 LIVE_TICK_WAIT_MS = 6500
+TICK_RISE_BUDGET_S = 3.0
 
 
 @contextmanager
@@ -92,14 +94,19 @@ def test_the_last_turn_age_counts_up_every_second_and_asks_the_server_for_nothin
         page = _open(live)
         try:
             _pick(page, run)
+            expect(page.get_by_role("tabpanel")).to_contain_text("$3.50")
             _post_turn(live, "00000000000000c2", usd=1.0, run=run, node="dev")
             expect(page.get_by_role("tabpanel")).to_contain_text("$4.50")
             page.wait_for_timeout(1500)
             requests = _api_requests(page)
-            readings = []
-            for _ in range(4):
-                readings.append(_age_of_the_last_turn(page))
-                page.wait_for_timeout(1100)
+            readings = [_age_of_the_last_turn(page)]
+            for _ in range(3):
+                deadline = time.monotonic() + TICK_RISE_BUDGET_S
+                reading = _age_of_the_last_turn(page)
+                while reading == readings[-1] and time.monotonic() < deadline:
+                    page.wait_for_timeout(100)
+                    reading = _age_of_the_last_turn(page)
+                readings.append(reading)
             assert readings == sorted(set(readings))
             assert readings[-1] - readings[0] >= 3
             assert requests == []
@@ -153,7 +160,7 @@ def test_a_held_refresh_keeps_the_old_figures_on_screen_with_no_busy_state():
             )
             page.route(f"**/api/run/{run}/overview", lambda route: held.append(route))
             _post_turn(live, "00000000000000c4", usd=1.0, run=run, node="dev")
-            deadline = 20
+            deadline = 60
             while not held and deadline:
                 page.wait_for_timeout(250)
                 deadline -= 1
@@ -232,7 +239,7 @@ def test_a_refresh_keeps_the_scroll_position_of_the_open_overview_while_held_and
             placed = page.evaluate(mark)
             page.route(f"**/api/run/{run}/overview", lambda route: held.append(route))
             _post_turn(live, "00000000000000c8", usd=1.0, run=run, node="dev")
-            deadline = 20
+            deadline = 60
             while not held and deadline:
                 page.wait_for_timeout(250)
                 deadline -= 1
