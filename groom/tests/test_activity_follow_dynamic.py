@@ -407,10 +407,13 @@ def test_on_reconnect_the_timeline_fills_the_gap_and_the_mark_clears(tmp_path):
 def test_when_the_run_ends_the_follow_control_and_the_pill_go_and_the_running_row_shows_how_the_turn_ended(tmp_path):
     from playwright.sync_api import expect
 
-    with _following(tmp_path, "fol-done", filler=0, running=True) as (live, page, name):
+    with _following(tmp_path, "fol-done", running=True) as (live, page, name):
         row = page.locator(f'#detail-panel .tl button[data-slug="{RUNNING}"]')
         assert ", running," in (row.get_attribute("aria-label") or "")
-        _wheel_up(page, 50)
+        _wheel_up(page)
+        expect(page.locator(CONTROL)).to_have_text("Paused")
+        _arrive(live, name, 2)
+        expect(page.locator(PILL)).to_contain_text("2 new")
         _send(live, name, usd=2.0, slug=RUNNING, attrs=_turn_attrs(RUNNING, "Locked account returns 423.", 2.0, 1800))
         _end(live, name)
         expect(page.locator(CONTROL)).to_have_count(0, timeout=30000)
