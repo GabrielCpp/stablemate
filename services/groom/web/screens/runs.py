@@ -3,7 +3,7 @@ from ostler.book.screen import Button, Field, Heading, Screen, Text
 
 
 class Runs(Screen):
-    source = ("groom/groom/templates/dashboard.html", "groom/groom/assets/dashboard.js")
+    source = ("groom/groom/templates/dashboard.html", "groom/groom/assets/dashboard.js", "groom/groom/assets/dashboard.js::ConnectionChip")
     route = "/"
     name = "Runs"
     first = True
@@ -21,4 +21,5 @@ class Runs(Screen):
     ended = Text("#runs-list button.row .pulse", "ended", does="the word ended on a run that exited", per_row=True)
     empty = Text("#runs-list .empty", does="the line shown when the list or the filter holds no run")
     statusbar = Text("#statusbar", does="the count of runs per state and of repos and workers")
+    connection = Text("#statusbar .stat.conn", "Connection", does="the chip in the status bar, its own polite status named 'Connection: <word>'. The word reads live, stale, reconnecting or 'not connected', and the dot beside it is decoration, so the state reads without colour. A socket that closed reads reconnecting for its first minute and 'not connected' after, counted from the moment the open socket closed, so a run of failed reconnects does not reset the clock")
     settings = Button("#activitybar .act-btn[data-mode=settings]", "Settings", does="opens the settings pane")

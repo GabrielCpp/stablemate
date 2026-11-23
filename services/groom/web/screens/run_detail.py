@@ -28,6 +28,13 @@ class RunDetail(Screen):
         "groom/groom/assets/dashboard.js::wordCount",
         "groom/groom/assets/dashboard.js::flip",
         "groom/groom/assets/dashboard.js::flush",
+        "groom/groom/assets/dashboard.js::ActivityTab",
+        "groom/groom/assets/dashboard.js::FollowControl",
+        "groom/groom/assets/dashboard.js::pauseFollow",
+        "groom/groom/assets/dashboard.js::resumeFollow",
+        "groom/groom/assets/dashboard.js::arrivals",
+        "groom/groom/assets/dashboard.js::newestKey",
+        "groom/groom/assets/dashboard.js::keepInView",
     )
     route = "/"
     name = "Run detail"
@@ -183,7 +190,7 @@ class RunDetail(Screen):
     activity_list = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .tl[role="log"]',
         "Run activity",
-        does="the run's moments, oldest first within each group, as a log a screen reader can follow. The list groups them by work item, then by flow pass, then by visit, so an operator finds a moment by where it sits in the run. A run with no work items groups its passes directly under the top level. A finished run's turn that the timeline still holds as running reads as ended with no record",
+        does="the run's moments, oldest first within each group, as a log a screen reader can follow. The list groups them by work item, then by flow pass, then by visit, so an operator finds a moment by where it sits in the run. A run with no work items groups its passes directly under the top level. On a live run it follows: a row that arrives lands at its place and the newest row stays in view, the selected row stays selected and the pane keeps it. An upward scroll pauses the follow, and while paused the rows in view stay where they are and a group that finishes stays open. Scrolling back to the end resumes following and leaves the selection alone, and a scroll that moved nothing does not. After a reconnect the timeline reads the run again and fills the gap. A finished run's turn that the timeline still holds as running reads as ended with no record",
     )
     activity_item = Button(
         '#detail-panel[aria-labelledby="tab-activity"] .tl button.tl-group',
@@ -233,7 +240,17 @@ class RunDetail(Screen):
     activity_running = Button(
         '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev.live',
         "running turn",
-        does="the turn running now, with the mark ● and the word 'running', as the last row of its pass. Pressing it opens the turn in the pane like any other turn",
+        does="the turn running now, with the mark ● and the word 'running', as the last row of its pass. Pressing it opens the turn in the pane like any other turn. Its row and the open pane show new messages and tool calls as they arrive. When the run ends the row reads how the turn ended, and its pass and item headings and the run row take its cost"
+    )
+    activity_follow = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] .feedbar button.follow',
+        "Following",
+        does="on a live run with rows, the control at the right of the timeline's bar. It reads 'Following' with a dot and aria-pressed true while the timeline follows, and 'Paused' with aria-pressed false once the operator scrolls up. Pressing it, by mouse or by keyboard, switches between the two and leaves the selected row alone. While the page's connection is reconnecting or offline it reads 'Not connected' and is disabled. An ended run has no such control, and a run that ends while open loses it",
+    )
+    activity_pill = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] .tl .newpill button.newpill-go',
+        "new, back to live",
+        does="while paused, the count of rows that arrived since the pause, as 'N new · back to live', or 'N new problems' while Problems narrows the timeline. Its region announces the count politely. Pressing it selects the newest row, opens it in the pane, scrolls it into view, clears the pill, resumes following and puts the focus on the follow control. It goes when the run ends",
     )
     activity_turn = Button(
         '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev',
