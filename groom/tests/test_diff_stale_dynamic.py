@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 from _page_settle import advance_until, settle
@@ -10,6 +11,7 @@ from test_a11y_dynamic import (
     _UNAVAILABLE,
     _live,
     _open,
+    _workspace,
     teardown_module,  # noqa: F401
 )
 from test_diff_since_branch_dynamic import (
@@ -47,6 +49,24 @@ def _drop_and_wait(sidecar) -> None:
 
     sidecar.drop()
     _wait_for(lambda: sidecar_hub.get(sidecar.container) is None, "the hub to forget the sidecar")
+
+
+@contextmanager
+def _volume_run(volume: Path):
+    from unittest.mock import patch
+
+    from groom import app as app_module
+    from groom import localfs, state
+
+    with _run(), patch.object(app_module.docker_io, "read_diff", localfs.read_diff), patch.object(app_module.docker_io, "read_tree", localfs.read_tree):
+        state.WORKFLOWS[CONTAINER].workspace_volume = str(volume)
+        yield
+
+
+def _replies(page, route: str) -> list:
+    seen: list = []
+    page.on("response", lambda response: seen.append(response) if f"/{route}/" in response.url else None)
+    return seen
 
 
 def _diff_reads(page) -> list[str]:
@@ -438,6 +458,73 @@ def test_a_volume_reply_never_replaces_the_kept_diff():
                 expect(page.locator(f"{STRIP} b")).to_have_text("The sidecar is still not answering.")
             assert page.locator("#detail-panel .fd-tree").inner_text() == before
             expect(page.locator("#detail-panel .fd-view")).to_contain_text(view)
+        finally:
+            page.close()
+
+
+def test_a_volume_reply_carrying_a_real_diff_never_replaces_the_kept_diff():
+    from playwright.sync_api import expect
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    with tempfile.TemporaryDirectory() as tmp, _volume_run(_workspace(Path(tmp))):
+        sidecar = _connect(live, names=["acme"])
+        page = _open(live)
+        try:
+            _pick(page)
+            _open_diff(page)
+            tree = page.locator("#detail-panel .fd-tree")
+            expect(tree).to_contain_text("lockout.py")
+            lockout = page.get_by_role("button", name=re.compile("lockout.py"))
+            lockout.click()
+            _drop_and_wait(sidecar)
+            expect(page.locator(STRIP)).to_be_visible(timeout=5000)
+            found = CLOCK.search(page.locator(STRIP).inner_text())
+            assert found is not None
+            clock = found.group(0)
+            before = tree.inner_text()
+            replies = _replies(page, "diff")
+            _retry(page).click()
+            expect(page.locator(f"{STRIP} b")).to_have_text("The sidecar is still not answering.")
+            body = replies[-1].json()
+            assert body["served"] == "volume"
+            assert "src/app.py" in body["diff"]
+            assert tree.inner_text() == before
+            assert "app.py" not in before
+            expect(lockout).to_have_attribute("aria-current", "true")
+            expect(page.locator(STRIP)).to_contain_text(clock)
+            expect(page.locator(STALE)).to_have_text("stale")
+        finally:
+            page.close()
+
+
+def test_a_volume_reply_carrying_a_real_tree_never_replaces_the_stale_files_notice():
+    from playwright.sync_api import expect
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    paths = ["services/api/lockout.py", "services/api/kept.py"]
+    with tempfile.TemporaryDirectory() as tmp, _volume_run(_workspace(Path(tmp))):
+        sidecar = _connect(live, names=["acme"])
+        sidecar.tree = paths
+        page = _open(live)
+        try:
+            _pick(page)
+            _open_diff(page)
+            _tab(page, "Files").click()
+            expect(page.locator("#detail-panel .fd-tree")).to_contain_text("kept.py")
+            _drop_and_wait(sidecar)
+            stale = page.locator("#detail-files-stale")
+            expect(stale).to_be_visible(timeout=5000)
+            replies = _replies(page, "files")
+            _retry(page).click()
+            expect(stale).to_contain_text("The sidecar is still not answering.")
+            body = replies[-1].json()
+            assert body["served"] == "volume"
+            assert "src/app.py" in body["paths"]
+            expect(page.locator("#detail-panel .fd-tree")).to_have_count(0)
+            expect(page.locator("#detail-panel")).not_to_contain_text("app.py")
+            expect(page.get_by_role("tab", selected=True)).to_have_text("Files")
         finally:
             page.close()
 

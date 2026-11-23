@@ -61,6 +61,7 @@ class _Sidecar:
         self.container = container
         self.replies = replies
         self.names = names or []
+        self.tree: list[str] = []
         self.lock = threading.Lock()
         self.params: list[dict] = []
         self.fail = False
@@ -83,7 +84,7 @@ class _Sidecar:
     def _answer(self, message: dict) -> dict:
         params = message["params"]
         if message["method"] != "getDiff":
-            return {"ok": True, "data": {"paths": [], "failed": False, "repos": self.names}}
+            return {"ok": True, "data": {"paths": self.tree, "failed": False, "repos": self.names}}
         with self.lock:
             self.params.append(dict(params))
         self.hold.wait(10)
