@@ -266,34 +266,6 @@ def node_breakdown(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(merged.values(), key=lambda row: (-row["time_s"], row["node"]))
 
 
-def turn_passes(spans: list[dict[str, Any]]) -> dict[str, tuple[str, int]]:
-    """Each agent turn's flow and which pass of that flow it belongs to, by span id.
-
-    A pass is one run of the flow's node span, counted from one in the order they started. A turn outside any flow node is absent.
-    """
-    by_id = {span["span_id"]: span for span in spans}
-    containers = _containers(spans)
-    started = sorted(
-        (span for span in spans if _is_node(span) and span["span_id"] in containers),
-        key=lambda span: span["start_ts"],
-    )
-    ordinals: dict[str, int] = {}
-    seen: dict[str, int] = {}
-    for span in started:
-        seen[span["node"]] = seen.get(span["node"], 0) + 1
-        ordinals[span["span_id"]] = seen[span["node"]]
-    found: dict[str, tuple[str, int]] = {}
-    for turn in spans:
-        if not _is_turn(turn):
-            continue
-        item = _standin(turn, by_id, containers)
-        chain = _ancestry(item, by_id)
-        flow = _flow_above(chain)
-        if flow is not None and flow["span_id"] in ordinals:
-            found[turn["span_id"]] = (flow["node"], ordinals[flow["span_id"]])
-    return found
-
-
 def _work_of(span: dict[str, Any]) -> str:
     return str(span["attrs"].get("work_id") or span["attrs"].get("wf.work_id") or "")
 
