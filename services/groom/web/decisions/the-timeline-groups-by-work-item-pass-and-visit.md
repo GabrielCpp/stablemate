@@ -9,7 +9,7 @@ A heading's time and cost equal the Overview's figures for the same work item or
 
 Passed steps fold into one row, "N steps · time · all passed", and a failed step stands as its own row between folds. A failed step, a gate, a backend retry and a churn alert each get a row whose mark differs by more than color: ✕, ?, ! and ! with the kind's name in words. Retry and churn share the mark and differ by name, because both mean the run is spending effort on a problem and the name says which.
 
-Churn rows replay from the stored spans through the same counting the attention tile uses, as `the-attention-tile-counts-problems-by-one-definition` says, so they come back after groom restarts. A backend retry is a note on the node's span, because workhorse ends the turn before it records the retry. The row shows once the node's span is stored.
+Churn rows replay from the stored spans through the same counting the attention tile uses, as `the-attention-tile-counts-problems-by-one-definition` says, so they come back after groom restarts. A backend retry is a note on the node's span, because workhorse ends the turn before it records the retry. The row shows as soon as the retried turn's span is stored, and its attempt and delay fill in once the node's span is stored.
 
 Finished groups start folded and the group in progress starts open. The group that holds the selected row stays open whatever its fold state, so a selection is never hidden. Selecting a turn reads as it did before grouping, under `a-turn-reads-from-its-own-record`.
 

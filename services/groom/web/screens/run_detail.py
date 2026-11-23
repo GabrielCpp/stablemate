@@ -198,7 +198,7 @@ class RunDetail(Screen):
     activity_retry_row = Button(
         '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev[data-kind="retry"]',
         "backend retry",
-        does="a backend retry, as its own row with the mark ! and the words 'backend retry'. It names the node, the attempt and the delay. The row appears once the node's own span is stored, because the retry note sits on that span. Pressing it shows its name, time and one-line result in the pane",
+        does="a backend retry, as its own row with the mark ! and the words 'backend retry'. It names the node and, once the node's own span is stored, the attempt and the delay, because the retry note sits on that span. The row itself appears as soon as the retried turn's span is stored, and reads 'turn started again' until then. Pressing it shows its name, time and one-line result in the pane",
     )
     activity_churn = Button(
         '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev[data-kind="churn"]',
@@ -218,7 +218,7 @@ class RunDetail(Screen):
     turn_head = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .rd > .rd-head',
         "turn header",
-        does="for a turn, the node, the work item, a chip that says running, finished, failed or no record, the flow and its pass, the visit, the model, the duration, the cost and the output tokens. A turn outside any flow shows no pass. A running turn shows its elapsed time, reads its cost as landing at the turn's end, and leaves out the figures it cannot know yet. For a failed step, a gate, a backend retry or a churn alert, the head holds the row's name, its time and its one-line result",
+        does="for a turn, the node, the work item, a chip that says running, finished, failed or no record, the flow and its pass, the visit, the model, the duration, the cost and the output tokens. A turn outside any flow shows no pass. A running turn shows its elapsed time, reads its cost as landing at the turn's end, and leaves out the figures it cannot know yet. For a failed step, a gate, a backend retry or a churn alert, the head holds the row's name, its work item, its flow and pass and its time, and the body holds its one-line result: the error, the question and answer, or what happened",
     )
     turn_body = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .rd .rd-body',
