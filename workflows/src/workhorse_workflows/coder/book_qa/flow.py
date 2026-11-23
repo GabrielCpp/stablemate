@@ -8,6 +8,7 @@ from pydantic import PositiveInt
 from workhorse._vendor.stablemate_core import books
 from workhorse.pyflow import AgentTimeout, Await, Continue, Done
 
+from workhorse_workflows.coder.book_qa.apps import service_app
 from workhorse_workflows.coder.book_qa.nodes import (
     BOOK_OUT,
     PLAN_FILE,
@@ -93,7 +94,12 @@ class BookQa(QaOwner):
             self.logger.info("no service of %s has an executable book", self.ctx.story_slug)
             return Done(QaFlowResult(status="passed"))
         self.call(resolve_impl_context, self.ctx.spec_dir)
-        self.call(story_base_of, story_slug=self.ctx.story_slug, story_id=self.ctx.story_id)
+        self.call(
+            story_base_of,
+            story_slug=self.ctx.story_slug,
+            story_id=self.ctx.story_id,
+            services=covered.services,
+        )
         lease = copy_lease(self.ctx.story_id or self.ctx.story_slug, self.run_id)
         target = self.call(stack_target, self.ctx.story_slug, lease, services=list(covered.services))
         stack = self.call(ensure_stack, near=target.near, lease=target.lease)
@@ -131,7 +137,18 @@ class BookQa(QaOwner):
             "target_env": self.target_env,
             "services": self.output(covered_services).services,
             "story_base": self.output(story_base_of).base,
+            "service_apps": self._service_apps(),
         }
+
+    def _service_apps(self) -> list[dict[str, str]]:
+        """The module, code checkout and story base of each covered service."""
+        bases = self.output(story_base_of).bases
+        found: list[dict[str, str]] = []
+        for name in self.output(covered_services).services:
+            sa = service_app(self.repo_dir, self.workspace, name)
+            if sa is not None:
+                found.append({"name": name, "module": f"{sa.package}.{name}", "app": str(sa.app), "base": bases.get(name, "")})
+        return found
 
     def work(
         self,
@@ -183,7 +200,6 @@ class BookQa(QaOwner):
     ) -> Continue | Await | Done:
         """Check each covered service's book, let `ostler book affected` select what to play from the story's diff, play it, and send what failed to the seat, the operator or the developer, then hand a green pass to the end review. `calls` is read by no check: an old checkpoint may still carry it."""
         services = self.output(covered_services).services
-        package = find_book_package(self.repo_dir)
         target = self.output(stack_target)
         self.call(hold_copy, lease=target.lease)
         out_dir = str(Path(self.ctx.spec_dir) / BOOK_OUT)
@@ -191,6 +207,8 @@ class BookQa(QaOwner):
         exits: dict[str, int] = {}
         played = False
         for name in services:
+            sa = service_app(self.repo_dir, self.workspace, name)
+            package = sa.package if sa is not None else find_book_package(self.repo_dir)
             checked = self.call(book_check, name)
             if checked.exit_code:
                 return self._lap(checked, [_gate(f"ostler book check {package}.{name}", checked.output)], laps, blocks)

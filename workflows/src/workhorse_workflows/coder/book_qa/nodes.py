@@ -6,6 +6,7 @@ import logging
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -14,6 +15,7 @@ from ostler.book.index import cache_path
 from ostler.book.index import parse as parse_index
 from ostler.book.sources import story_commits
 from workhorse._vendor.stablemate_core import books
+from workhorse_workflows.coder.book_qa.apps import ServiceApp, book_dir, book_modules, booked_services, service_app
 from workhorse_workflows.coder.book_qa.review import by_criterion
 from workhorse_workflows.coder.shared import commits, paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
@@ -79,18 +81,15 @@ PLAN_STRENGTH = ("none", "empty", "partial", "whole")
 OUTSIDE_SYSTEM = "describes an outside system"
 
 
-def book_dir(package: str, service: str) -> str:
-    """The folder a service's executable book lives in, relative to the book root."""
-    return f"{books.package_folder(package)}/{service}"
+NO_HOLDER = (
+    "no code repository holds service `{name}`: declare it under `services:` in the repo's agents.yml, "
+    "or run `ostler book move {name} --repo <repo>`"
+)
 
 
-def book_modules(root: Path, package: str, service: str) -> tuple[str, ...]:
-    """The modules of a service's book: its package when one surface reaches it, one per surface when several do."""
-    folder = root / book_dir(package, service)
-    base = f"{package}.{service}"
-    if (folder / "service.py").is_file():
-        return (base,)
-    return tuple(sorted(f"{base}.{found.parent.name}" for found in folder.glob("*/service.py")))
+def _package(repo_dir: str, workspace: str, service: str) -> str:
+    found = service_app(repo_dir, workspace, service)
+    return found.package if found is not None else find_book_package(repo_dir)
 
 
 def _now() -> float:
@@ -163,28 +162,34 @@ def _entries(report: str) -> set[str]:
     return {entry for _, entry in _bullets(report)}
 
 
-def _booked_services(root: Path, package: str) -> list[str]:
-    folder = root / books.package_folder(package)
-    if not folder.is_dir():
-        return []
-    return [found.name for found in sorted(folder.iterdir()) if found.is_dir() and book_modules(root, package, found.name)]
-
-
-@blueprint.node
-def touched_services(logger: logging.Logger, base: str, repo_dir: str = "", story: str = "") -> CoveredServices:
-    """Every service with a book under the book root whose app source the commits since `base` changed, or added a file no element names."""
+def _touched(
+    logger: logging.Logger, repo_dir: str, workspace: str, since: Callable[[ServiceApp], tuple[str, str]]
+) -> list[str]:
     root = find_book_root(repo_dir)
-    app = str(find_repo_root(repo_dir))
-    package = find_book_package(repo_dir)
     touched: list[str] = []
-    for name in _booked_services(root, package):
-        for module in book_modules(root, package, name):
-            done = run_tool(_stale_argv(module, app, base, story), cwd=root, env=BOOK_ENV)
+    for name in booked_services(repo_dir, workspace):
+        sa = service_app(repo_dir, workspace, name)
+        if sa is None:
+            continue
+        base, story = since(sa)
+        if not base:
+            continue
+        for module in book_modules(root, sa.package, name):
+            done = run_tool(_stale_argv(module, str(sa.app), base, story), cwd=sa.cwd, env=BOOK_ENV)
             if done.returncode == STALE_EXIT and _names_a_change(done.stdout):
                 touched.append(name)
                 break
             if done.returncode not in (0, STALE_EXIT, 2):
                 logger.warning("book stale of %s exited %d: %s", module, done.returncode, _tail(done.stdout + done.stderr))
+    return touched
+
+
+@blueprint.node
+def touched_services(
+    logger: logging.Logger, base: str, repo_dir: str = "", story: str = "", workspace: str = ""
+) -> CoveredServices:
+    """Every service with a book under the book root whose app source the commits since `base` changed, or added a file no element names."""
+    touched = _touched(logger, repo_dir, workspace, lambda _: (base, story))
     if story:
         logger.info("the commits of story %s reach the book of %d service(s): %s", story, len(touched), ", ".join(touched))
     else:
@@ -192,13 +197,13 @@ def touched_services(logger: logging.Logger, base: str, repo_dir: str = "", stor
     return CoveredServices(services=touched)
 
 
-def _story_base(logger: logging.Logger, repo_dir: str, story_slug: str, story_id: str) -> str:
+def _story_base(logger: logging.Logger, app: Path, story_slug: str, story_id: str) -> str:
     refs = tuple(dict.fromkeys(ref for ref in (story_id, story_slug) if ref))
     if not refs:
         logger.info("no story reference to find a base from")
         return ""
     try:
-        return story_base(find_repo_root(repo_dir), refs)
+        return story_base(app, refs)
     except (GitError, ValueError) as exc:
         logger.info("no story base: %s", exc)
         return ""
@@ -218,16 +223,21 @@ def covered_services(
     repo_dir: str = "",
     story_slug: str = "",
     story_id: str = "",
+    workspace: str = "",
 ) -> CoveredServices:
     """The story's services that have an executable book under the book root, then every other service with a book whose app source the story's commits changed."""
-    root = find_book_root(repo_dir)
-    package = find_book_package(repo_dir)
-    covered = [name for name in services or [] if book_modules(root, package, name)]
+    booked = booked_services(repo_dir, workspace)
+    covered = [name for name in services or [] if name in booked]
     declared = len(covered)
-    base = _story_base(logger, repo_dir, story_slug, story_id)
-    if base:
-        story = _story_with_commits(logger, str(find_repo_root(repo_dir)), story_id or story_slug, base)
-        covered += [name for name in touched_services(logger, base, repo_dir, story).services if name not in covered]
+    seen: dict[Path, tuple[str, str]] = {}
+
+    def since(sa: ServiceApp) -> tuple[str, str]:
+        if sa.app not in seen:
+            base = _story_base(logger, sa.app, story_slug, story_id)
+            seen[sa.app] = (base, _story_with_commits(logger, str(sa.app), story_id or story_slug, base) if base else "")
+        return seen[sa.app]
+
+    covered += [name for name in _touched(logger, repo_dir, workspace, since) if name not in covered]
     logger.info(
         "%d of %d story service(s) have an executable book, %d more reached by the diff",
         declared, len(services or []), len(covered) - declared,
@@ -236,14 +246,15 @@ def covered_services(
 
 
 @blueprint.node
-def book_check(logger: logging.Logger, service: str, repo_dir: str = "") -> BookPlay:
+def book_check(logger: logging.Logger, service: str, repo_dir: str = "", workspace: str = "") -> BookPlay:
     """Build everything each module of the service's book declares, with no stack, and return the first red exit code and output tail."""
     root = find_book_root(repo_dir)
-    app = str(find_repo_root(repo_dir))
-    package = find_book_package(repo_dir)
+    sa = service_app(repo_dir, workspace, service)
+    if sa is None:
+        return BookPlay(exit_code=2, output=NO_HOLDER.format(name=service))
     play = BookPlay(exit_code=0, output="")
-    for module in book_modules(root, package, service):
-        play = _play(_check_argv(module, app), root)
+    for module in book_modules(root, sa.package, service):
+        play = _play(_check_argv(module, str(sa.app)), sa.cwd)
         logger.info("book check of %s exited %d", module, play.exit_code)
         if play.exit_code != 0:
             return BookPlay(exit_code=play.exit_code, output=f"{module}:\n{play.output}")
@@ -257,22 +268,34 @@ def stamp_books_verified(
     story_slug: str = "",
     story_id: str = "",
     repo_dir: str = "",
+    workspace: str = "",
 ) -> BookPlay:
     """Record the app's HEAD as the verified commit of each covered service's book that was current when the story started. A book already current, a book with no verified commit and a book behind before the story are left alone. The first refusal comes back with its output."""
     root = find_book_root(repo_dir)
-    app = str(find_repo_root(repo_dir))
-    package = find_book_package(repo_dir)
-    base = _story_base(logger, repo_dir, story_slug, story_id)
-    story = story_id or story_slug
-    commits = _commits_of(logger, app, story, base)
-    if commits:
-        logger.info("the stamp reads the %d commit(s) of story %s", len(commits), story)
-    else:
-        story = ""
-        logger.info("no commit carries 'Story: %s'; the stamp reads the range since the verified commit", story_id or story_slug)
+    reads: dict[Path, tuple[str, str]] = {}
+
+    def read(app: Path) -> tuple[str, str]:
+        if app not in reads:
+            base = _story_base(logger, app, story_slug, story_id)
+            story = story_id or story_slug
+            commits = _commits_of(logger, str(app), story, base)
+            if commits:
+                logger.info("the stamp reads the %d commit(s) of story %s", len(commits), story)
+            else:
+                story = ""
+                logger.info("no commit carries 'Story: %s'; the stamp reads the range since the verified commit", story_id or story_slug)
+            reads[app] = (base, story)
+        return reads[app]
+
     for name in services:
-        for module in book_modules(root, package, name):
-            pending = run_tool(_stale_argv(module, app), cwd=root, env=BOOK_ENV)
+        sa = service_app(repo_dir, workspace, name)
+        if sa is None:
+            logger.info("%s", NO_HOLDER.format(name=name))
+            continue
+        app = str(sa.app)
+        base, story = read(sa.app)
+        for module in book_modules(root, sa.package, name):
+            pending = run_tool(_stale_argv(module, app), cwd=sa.cwd, env=BOOK_ENV)
             if pending.returncode == 0:
                 if OUTSIDE_SYSTEM in pending.stdout:
                     logger.info("the book of %s describes an outside system, nothing to stamp", module)
@@ -287,11 +310,11 @@ def stamp_books_verified(
             if not base:
                 logger.info("the book of %s is not stamped: no story base to tell the story's commits from older ones", module)
                 continue
-            since = run_tool(_stale_argv(module, app, base), cwd=root, env=BOOK_ENV)
+            since = run_tool(_stale_argv(module, app, base), cwd=sa.cwd, env=BOOK_ENV)
             if since.returncode not in (0, STALE_EXIT) or not _entries(pending.stdout) <= _entries(since.stdout):
                 logger.info("the book of %s was behind before the story and is left to the catch-up flow", module)
                 continue
-            play = _play(_verified_argv(module, app, story), root)
+            play = _play(_verified_argv(module, app, story), sa.cwd)
             logger.info("book verified of %s exited %d", module, play.exit_code)
             if play.exit_code == 0 and play.output.startswith("not stamped"):
                 logger.info("the book of %s is not stamped: %s", module, play.output.splitlines()[0])
@@ -307,19 +330,23 @@ def verify_book_spec(
     services: list[str],
     author_status: str = "blocked",
     repo_dir: str = "",
+    workspace: str = "",
 ) -> DocumentationGate:
     """Gate the spec pass of covered services: it ends when `ostler book check` exits 0 for each. A claim red against the app is expected before the build and is not read here."""
     root = find_book_root(repo_dir)
-    app = str(find_repo_root(repo_dir))
-    package = find_book_package(repo_dir)
     problems: list[str] = []
     failures: list[str] = []
     if author_status not in {"documented", "not_required"}:
         problems.append(f"the spec turn's status is {author_status!r}")
         failures.append("S:author-status")
     for name in services:
-        for module in book_modules(root, package, name):
-            play = _play(_check_argv(module, app), root)
+        sa = service_app(repo_dir, workspace, name)
+        if sa is None:
+            problems.append(NO_HOLDER.format(name=name))
+            failures.append(f"B:{name}")
+            continue
+        for module in book_modules(root, sa.package, name):
+            play = _play(_check_argv(module, str(sa.app)), sa.cwd)
             logger.info("book check of %s exited %d", module, play.exit_code)
             if play.exit_code != 0:
                 problems.append(f"`ostler book check {module}` exited {play.exit_code}:\n{play.output}")
@@ -338,12 +365,12 @@ def changed_book_paths(
     services: list[str],
     preexisting: list[str] | None = None,
     repo_dir: str = "",
+    workspace: str = "",
 ) -> BookPaths:
     """The uncommitted paths under each covered service's book folder, less what was dirty before the story."""
     root = find_book_root(repo_dir)
     excused = untouched_since(root, tuple(preexisting or ()))
-    package = find_book_package(repo_dir)
-    prefixes = tuple(book_dir(package, name) + "/" for name in services)
+    prefixes = tuple(book_dir(_package(repo_dir, workspace, name), name) + "/" for name in services)
     found = [
         rel for rel in uncommitted_paths(root) if rel.startswith(prefixes) and rel not in excused
     ]
@@ -399,11 +426,12 @@ def book_scope(
     service: str,
     preexisting: list[str] | None = None,
     repo_dir: str = "",
+    workspace: str = "",
 ) -> BookScope:
     """Decide whether the play of a service's book is the whole book: it is when this pass changed a shared part of it."""
     root = find_book_root(repo_dir)
     excused = untouched_since(root, tuple(preexisting or ()))
-    package = find_book_package(repo_dir)
+    package = _package(repo_dir, workspace, service)
     folder = book_dir(package, service)
     prefix = folder + "/"
     changed = {
@@ -422,9 +450,23 @@ def book_scope(
 
 
 @blueprint.node
-def story_base_of(logger: logging.Logger, story_slug: str = "", story_id: str = "", repo_dir: str = "") -> StoryBase:
-    """The commit the story's own work started from, or an empty base when none is found."""
-    return StoryBase(base=_story_base(logger, repo_dir, story_slug, story_id))
+def story_base_of(
+    logger: logging.Logger,
+    story_slug: str = "",
+    story_id: str = "",
+    repo_dir: str = "",
+    workspace: str = "",
+    services: list[str] | None = None,
+) -> StoryBase:
+    """The commit the story's own work started from in the code repository of the first covered service, or an empty base when none is found, with the base of each service's repository."""
+    names = services if services is not None else booked_services(repo_dir, workspace)
+    bases: dict[str, str] = {}
+    for name in names:
+        sa = service_app(repo_dir, workspace, name)
+        if sa is not None:
+            bases[name] = _story_base(logger, sa.app, story_slug, story_id)
+    base = next(iter(bases.values()), "") if bases else _story_base(logger, find_repo_root(repo_dir), story_slug, story_id)
+    return StoryBase(base=base, bases=bases)
 
 
 def _affected_argv(module: str, app: str, since: str, out: str, story: str = "") -> list[str]:
@@ -471,11 +513,15 @@ def book_plan(
     story_slug: str = "",
     story_id: str = "",
     repo_dir: str = "",
+    workspace: str = "",
 ) -> BookPlan:
     """Select what to play for one service from the story's diff of the code and of the book with `ostler book affected`, merged over the modules of the book. Nothing needs a running app."""
     root = find_book_root(repo_dir)
-    app = str(find_repo_root(repo_dir))
-    since = _story_base(logger, repo_dir, story_slug, story_id)
+    sa = service_app(repo_dir, workspace, service)
+    if sa is None:
+        return BookPlan(service=service, exit_code=2, output=NO_HOLDER.format(name=service))
+    app = str(sa.app)
+    since = _story_base(logger, sa.app, story_slug, story_id)
     story = story_id or story_slug
     commits = _commits_of(logger, app, story, since)
     if commits:
@@ -486,7 +532,7 @@ def book_plan(
             "no commit carries 'Story: %s'; the selection of %s reads the range since %s",
             story_id or story_slug, service, since or "the verified commit",
         )
-    package = find_book_package(repo_dir)
+    package = sa.package
     modules = book_modules(root, package, service) or (f"{package}.{service}",)
     multi = len(modules) > 1
     out = Path(spec_dir) / BOOK_OUT
@@ -509,7 +555,7 @@ def book_plan(
         folder = out / module if multi else out
         for stale in folder.glob("*-affected.json") if multi else [folder / f"{service}-affected.json"]:
             stale.unlink(missing_ok=True)
-        play = _play(_affected_argv(module, app, since, str(folder), story), root)
+        play = _play(_affected_argv(module, app, since, str(folder), story), sa.cwd)
         logger.info("book affected of %s exited %d", module, play.exit_code)
         outputs.append(f"{module}:\n{play.output}" if multi else play.output)
         if play.exit_code == 2:
@@ -641,10 +687,15 @@ def book_run(
     fresh: bool = False,
     repo_dir: str = "",
     direct: bool = False,
+    workspace: str = "",
 ) -> BookPlay:
     """Play the named calls of the service's book against the run's copy of the stack. Named journeys are a separate play, because `--only` and `--journey` combine as AND in one run: after the calls, or before them when `direct`. One budget of `limit_minutes` minutes covers every play of the service, and a play still running when it is spent is killed and exits 3. The first play of the service reloads the data when `fresh`. A direct calls play cut at the limit after green journeys comes back green with the cut in `owed`."""
     root = find_book_root(repo_dir)
-    package = find_book_package(repo_dir)
+    sa = service_app(repo_dir, workspace, service)
+    if sa is None:
+        return BookPlay(exit_code=2, output=NO_HOLDER.format(name=service))
+    package = sa.package
+    where = sa.cwd if books.namespaced(find_repo_root(repo_dir)) else sa.app
     modules = book_modules(root, package, service) or (f"{package}.{service}",)
     wanted = list(journeys or [])
     if not only and not wanted:
@@ -679,7 +730,7 @@ def book_run(
                 play = BookPlay(exit_code=TIMEOUT_EXIT, output=limit_text, timed_out=True)
             else:
                 began = _now()
-                play = _play(argv, find_repo_root(repo_dir), left, stack_env(root, lease=copy, repo_dir=repo_dir), limit_text)
+                play = _play(argv, where, left, stack_env(root, lease=copy, repo_dir=str(sa.app)), limit_text)
                 spent += _now() - began
             what = f"{len(named)} call(s)" if named else f"{len(titles)} journey(s)"
             logger.info("book run of %s over %s exited %d", module, what, play.exit_code)
@@ -815,18 +866,20 @@ def commit_service_book(
     epic: str = "",
     preexisting: list[str] | None = None,
     repo_dir: str = "",
+    workspace: str = "",
 ) -> StoryCommitted:
     """Commit the changed paths under each covered service's book. A product path the seat changed outside those folders is returned in `refused`, and nothing is committed."""
     slug = story_slug or "story"
     book = find_book_root(repo_dir)
-    code = find_repo_root(repo_dir)
-    package = find_book_package(repo_dir)
-    folders = [(book / book_dir(package, name)).resolve() for name in services]
-    imported = {path for name in services for path in outside_paths(book, f"{package}.{name}")}
+    held = {name: service_app(repo_dir, workspace, name) for name in services}
+    packages = {name: sa.package if sa is not None else find_book_package(repo_dir) for name, sa in held.items()}
+    code = [sa.app for sa in held.values() if sa is not None] or [find_repo_root(repo_dir)]
+    folders = [(book / book_dir(packages[name], name)).resolve() for name in services]
+    imported = {path for name in services for path in outside_paths(book, f"{packages[name]}.{name}")}
     excluded = not_product_roots(repo_dir)
     inside: list[str] = []
     stray: list[str] = []
-    for root in dict.fromkeys((book, code)):
+    for root in dict.fromkeys((book, *code)):
         excused = untouched_since(root, tuple(preexisting or ()))
         for rel in uncommitted_paths(root):
             if rel in excused or paths.is_gate_context(rel) or is_compiled(rel):
@@ -840,7 +893,7 @@ def commit_service_book(
         return StoryCommitted(
             refused=(
                 "These paths changed outside the covered services' books, and the book pass may "
-                f"edit only under {', '.join(book_dir(package, n) + '/' for n in services)}:\n\n{listing}\n\n"
+                f"edit only under {', '.join(book_dir(packages[n], n) + '/' for n in services)}:\n\n{listing}\n\n"
                 "Restore each one."
             )
         )

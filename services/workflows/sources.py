@@ -130,6 +130,7 @@ AUTHOR = (
 )
 
 CODER = (
+    "workflows/src/workhorse_workflows/coder/book_qa/apps.py",
     "workflows/src/workhorse_workflows/coder/book_qa/flow.py",
     "workflows/src/workhorse_workflows/coder/book_qa/nodes.py",
     "workflows/src/workhorse_workflows/coder/book_qa/prompts/qa-book.md",

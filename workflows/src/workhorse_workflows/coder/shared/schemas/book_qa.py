@@ -166,6 +166,7 @@ class StoryBase(CoderResult):
     """`story_base_of`: the commit the story's own work started from, or empty when none is found."""
 
     base: str = ""
+    bases: dict[str, str] = {}
 
 
 class UnreachedClaims(CoderResult):
