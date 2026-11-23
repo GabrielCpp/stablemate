@@ -70,6 +70,21 @@ def _long_turn(start: float, *, thinking: str | None = THINKING, text: str = "Po
     ]
 
 
+def _failure_between_runs(start: float) -> list[str]:
+    before = [
+        entry
+        for at, name in enumerate(("Read", "Read", "Grep"))
+        for entry in (_call(start + 1 + at * 2, name, {"file_path": f"a{at}.md"}, f"p{at}"), _answer(start + 2 + at * 2, f"p{at}", "ok"))
+    ]
+    after = [
+        entry
+        for at, name in enumerate(("Edit", "Edit", "Bash"))
+        for entry in (_call(start + 20 + at * 2, name, {"file_path": f"b{at}.md"}, f"q{at}"), _answer(start + 21 + at * 2, f"q{at}", "ok"))
+    ]
+    failure = [_call(start + 10, "Bash", {"command": "run_qa_plan"}, "f1"), _answer(start + 12, "f1", "E  expected 410", True)]
+    return [*before, *failure, *after, _record(start + 40, "assistant", FINAL)]
+
+
 def _enter(page, run: str) -> None:
     _pick(page, run)
     _open_activity(page)
@@ -225,6 +240,24 @@ def test_a_failed_tool_call_stands_outside_any_fold(tmp_path):
             fold_at = next(at for at, item in enumerate(order) if item.startswith("tool-run"))
             failed_at = next(at for at, item in enumerate(order) if item.endswith(":failed"))
             assert fold_at < failed_at
+        finally:
+            page.close()
+
+
+def test_a_failed_tool_call_between_two_runs_of_passing_calls_stands_between_two_folds(tmp_path):
+    from playwright.sync_api import expect
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    with _run("rd-between", tmp_path) as run:
+        _write_turn(run, SECOND, _failure_between_runs)
+        page = _open(live)
+        try:
+            _enter(page, run)
+            expect(_fold(page)).to_have_count(2)
+            expect(page.locator(".rd .at-tool-head.failed")).to_have_count(1)
+            order = page.evaluate("""() => [...document.querySelectorAll('.rd .rd-body > *')].map((el) => el.classList.contains('tool-run') ? 'fold' : el.querySelector('.at-tool-head.failed') ? 'failed' : 'other')""")
+            assert [item for item in order if item != "other"] == ["fold", "failed", "fold"]
         finally:
             page.close()
 
