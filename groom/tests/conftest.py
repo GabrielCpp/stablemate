@@ -9,6 +9,9 @@ from collections.abc import Iterator
 
 import pytest
 
+for _name in [name for name in os.environ if name.startswith("GROOM_")]:
+    del os.environ[_name]
+
 
 @pytest.fixture(autouse=True)
 def _logging_handlers_do_not_outlive_the_test() -> Iterator[None]:
