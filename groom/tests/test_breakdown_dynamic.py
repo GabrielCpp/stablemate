@@ -11,6 +11,7 @@ from test_a11y_dynamic import (
     _ingest_aged,
     _live,
     _open,
+    _overview_payload,
     _post_turn,
     _scan,
     _seconds_in,
@@ -49,7 +50,7 @@ def _history(ok: int, failed: int) -> list[str]:
     return runs
 
 
-def _items_run(items: tuple[str, ...]) -> None:
+def _items_run(items: tuple[str, ...], retry: bool = False) -> None:
     from groom import store
 
     now = time.time()
@@ -62,17 +63,22 @@ def _items_run(items: tuple[str, ...]) -> None:
             spans.append(_span(node_id, RUN, "it-state", node, node, at, seconds, {"workhorse.depth": 1, **tag}))
             turn = {"backend": "claude", "duration_ms": seconds * 1000, "total_cost_usd": cost, **tag}
             spans.append(_span(f"{node_id}-t", RUN, node_id, node, "agent_turn", at, seconds, turn))
+            if retry and position == len(items) - 1 and node == "review":
+                again = {"backend": "claude", "duration_ms": 10000.0, "total_cost_usd": 0.0, **tag}
+                spans.append(_span(f"{node_id}-retry", RUN, node_id, node, "agent_turn", at + 10, 10.0, again))
             at += seconds + 5
     store.insert_spans(spans)
 
 
 @contextmanager
-def _seeded(*, ok: int = 5, failed: int = 6, items: tuple[str, ...] = ("alpha", "beta"), running: float = 0.0) -> Iterator[None]:
+def _seeded(
+    *, ok: int = 5, failed: int = 6, items: tuple[str, ...] = ("alpha", "beta"), running: float = 0.0, retry: bool = False
+) -> Iterator[None]:
     from groom import norms, state, store
     from groom.models import WorkflowState
 
     runs = _history(ok, failed)
-    _items_run(items)
+    _items_run(items, retry)
     norms.reset()
     state.upsert_workflow(
         CONTAINER, name="builder-acme", workflow_type=WORKFLOW, repo_name="acme", repo_branch="main",
@@ -180,6 +186,68 @@ def test_the_view_and_sort_survive_a_tab_round_trip_and_a_live_refresh_and_reset
             page.close()
 
 
+def test_the_node_view_lists_each_nodes_figures_as_the_overview_reads_them():
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    with _seeded(retry=True):
+        page = _open(live)
+        try:
+            _pick_run(page, RUN)
+            _view(page, "By node").click()
+            table = page.get_by_role("table", name="Time and cost per node")
+            table.wait_for()
+            heads = table.locator("thead th").evaluate_all("cells => cells.map((cell) => cell.textContent.trim())")
+            assert heads == ["Node", "Kind", "Visits", "Time", "Mean", "vs median of 5", "Longest", "Cost", "Cost %", "Retries"], heads
+            payload = _overview_payload(live, RUN)
+            rows = _node_rows(page)
+            assert set(rows) == {row["node"] for row in payload["nodes"]} == {"build", "review"}, rows
+            for node in payload["nodes"]:
+                cells = rows[node["node"]]
+                assert cells[1] == node["kind"], cells
+                assert cells[2] == str(node["visits"]), cells
+                assert _seconds_in(cells[3]) == round(node["time_s"]), cells
+                assert abs(_seconds_in(cells[4]) - round(node["time_s"] / node["samples"])) <= 1, cells
+                assert _seconds_in(cells[6]) == round(node["longest_s"]), cells
+                assert cells[7] == f"${node['cost_usd']:.2f}", cells
+                assert cells[8] == f"{node['cost_usd'] / payload['cost']['usd'] * 100:.1f}%", cells
+                assert cells[9] == str(node["retries"]), cells
+            assert rows["review"][9] == "1" and rows["build"][9] == "0", rows
+            assert not _scan(page)
+        finally:
+            page.close()
+
+
+def test_sorting_the_flow_tree_by_time_or_cost_reorders_its_rows_without_a_fetch():
+    from playwright.sync_api import expect
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    with _seeded():
+        page = _open(live)
+        try:
+            _pick_run(page, RUN)
+            flow = page.get_by_role("table", name="Time and cost per flow")
+            flow.get_by_role("button", name="Expand work", exact=True).click()
+
+            def order() -> list[str]:
+                names = [row[0].lstrip("▾▸ ").strip() for row in _rows(page, "Time and cost per flow")]
+                return [name for name in names if name in ("build", "review")]
+
+            expect(flow.get_by_role("button", name="Collapse work", exact=True)).to_have_count(1)
+            assert order() == ["build", "review"]
+            requests: list[str] = []
+            page.on("request", lambda request: requests.append(request.url))
+            _sort(page, "Cost").click()
+            expect(_sort(page, "Cost")).to_have_attribute("aria-pressed", "true")
+            assert order() == ["review", "build"]
+            _sort(page, "Time").click()
+            expect(_sort(page, "Time")).to_have_attribute("aria-pressed", "true")
+            assert order() == ["build", "review"]
+            assert not [url for url in requests if "/api/" in url], requests
+        finally:
+            page.close()
+
+
 def test_sorting_by_time_or_cost_reorders_the_node_rows_without_a_fetch():
     from playwright.sync_api import expect
 
@@ -222,7 +290,13 @@ def test_the_work_item_view_exists_only_for_a_run_with_items_and_marks_the_open_
             rows = {row[0]: row for row in _rows(page, "Time and cost per work item")}
             assert "OPEN" in rows["beta"][4].upper(), rows
             assert "DONE" in rows["alpha"][4].upper(), rows
-            assert rows["alpha"][1].startswith("1 "), rows
+            payload = {row["work_id"]: row for row in _overview_payload(live, RUN)["items"]["rows"]}
+            assert set(payload) == {"alpha", "beta"}, payload
+            for work_id, row in payload.items():
+                cells = rows[work_id]
+                assert cells[1].startswith(f"{row['passes']} "), (work_id, cells)
+                assert abs(_seconds_in(cells[2]) - round(row["seconds"])) <= 1, (work_id, cells)
+                assert cells[3] == f"${row['cost_usd']:.2f}", (work_id, cells)
             assert rows["Total"][3] == "$10.20", rows
             _view(page, "By flow").click()
             flow = page.get_by_role("table", name="Time and cost per flow")

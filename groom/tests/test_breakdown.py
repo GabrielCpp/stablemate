@@ -255,3 +255,25 @@ def test_an_item_with_no_reported_count_has_an_unknown_outcome():
         store.insert_spans(spans)
         rows = overview.run_overview("bare")["items"]["rows"]
         assert [row["outcome"] for row in rows] == ["unknown", "unknown"]
+
+
+def _leaf_seconds(rows: list[dict]) -> dict[str, float]:
+    found: dict[str, float] = {}
+    for row in rows:
+        if row["kind"] == "node":
+            found[row["node"]] = found.get(row["node"], 0.0) + row["time_s"]
+        for node, seconds in _leaf_seconds(row["children"]).items():
+            found[node] = found.get(node, 0.0) + seconds
+    return found
+
+
+def test_each_nodes_time_equals_the_leaves_groom_profile_prints():
+    with _DB():
+        _live()
+        profile = store.run_profile(RUN)
+        assert profile is not None
+        printed = _leaf_seconds(profile["flows"])
+        shown = {row["node"]: row["time_s"] for row in overview.run_overview(RUN)["nodes"]}
+        assert printed and set(printed) == set(shown)
+        for node, seconds in printed.items():
+            assert shown[node] == pytest.approx(seconds), node
