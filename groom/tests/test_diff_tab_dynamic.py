@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
+import tempfile
 import threading
 import time
 import urllib.request
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 from unittest.mock import patch
 
 from _page_settle import settle
@@ -718,6 +721,106 @@ def test_diff_tab_controls_have_roles_names_and_keyboard_operation_and_pass_axe(
             first.focus()
             assert first.evaluate("(el) => el.tagName") == "BUTTON"
             assert not _scan(page)
+        finally:
+            page.close()
+            sidecar.drop()
+
+
+class _RealSidecar:
+    """A sidecar over a real socket that answers every call with the real sidecar handlers against a real git checkout."""
+
+    def __init__(self, live, container: str, workspace: Path) -> None:
+        from groom import sidecar
+
+        self.container = container
+        self.workspace = workspace
+        self.handlers = sidecar._RPC_METHODS
+        self.socket = connect(f"ws://127.0.0.1:{live.port}/sidecar")
+        hello = {
+            "type": "hello",
+            "identity": {"container_id": container, "name": "coder-acme", "run_id": f"run-{container}", "workflow": "coder"},
+            "snapshot": {"current_node": "build", "terminal": "", "gates": []},
+        }
+        self.socket.send(json.dumps(hello))
+        self.thread = threading.Thread(target=self._serve, daemon=True)
+        self.thread.start()
+
+    def _serve(self) -> None:
+        from groom import sidecar
+
+        try:
+            for raw in self.socket:
+                message = json.loads(raw)
+                if message.get("type") != "rpc":
+                    continue
+                try:
+                    with patch.object(sidecar, "WORKSPACE_DIR", self.workspace):
+                        data = self.handlers[message["method"]](message.get("params") or {})
+                    reply = {"ok": True, "data": data}
+                except Exception as exc:  # noqa: BLE001
+                    reply = {"ok": False, "error": str(exc)}
+                self.socket.send(json.dumps({"type": "rpc_result", "id": message["id"], **reply}))
+        except ConnectionClosed:
+            pass
+
+    def drop(self) -> None:
+        self.socket.close()
+        self.thread.join(timeout=5)
+
+
+def _git(repo: Path, *args: str) -> str:
+    return subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *args], cwd=repo, check=True, capture_output=True, text=True).stdout
+
+
+def _dirty_repo(root: Path, *, untracked: bool = False) -> Path:
+    repo = root / "app"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    (repo / "alpha.txt").write_text("one\ntwo\nthree\n")
+    (repo / "beta.txt").write_text("keep\n")
+    _git(repo, "add", ".")
+    _git(repo, "commit", "-qm", "init")
+    (repo / "alpha.txt").write_text("one\nTWO\nthree\nfour\n")
+    (repo / "beta.txt").unlink()
+    if untracked:
+        (repo / "notes.md").write_text("not committed\nnot staged\n")
+    return repo
+
+
+def test_a_real_checkout_shows_the_diff_git_reports_while_the_sidecar_is_connected():
+    from groom import sidecar_hub
+    from playwright.sync_api import expect
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    with tempfile.TemporaryDirectory() as tmp, _container_run(run_id=f"run-{CONTAINER}"):
+        repo = _dirty_repo(Path(tmp), untracked=True)
+        expected = _git(repo, "diff", "HEAD")
+        numstat = [line.split("\t") for line in _git(repo, "diff", "--numstat", "HEAD").splitlines()]
+        added = sum(int(row[0]) for row in numstat)
+        removed = sum(int(row[1]) for row in numstat)
+        sidecar = _RealSidecar(live, CONTAINER, Path(tmp))
+        _wait_for(lambda: sidecar_hub.get(CONTAINER) is not None, "the sidecar to register")
+        page = _open(live)
+        try:
+            _pick(page)
+            expect(_tab(page, "Diff")).to_contain_text(f"+{added} −{removed}")
+            _open_diff(page)
+            tree = page.locator("#detail-panel .fd-tree")
+            for plus, minus, name in numstat:
+                row = tree.get_by_role("button", name=re.compile(re.escape(name)))
+                expect(row).to_contain_text(f"+{plus} −{minus}")
+            for block in expected.split("diff --git ")[1:]:
+                name = block.split(" b/")[0].removeprefix("a/")
+                tree.get_by_role("button", name=re.compile(re.escape(name))).click()
+                for line in block.splitlines():
+                    if line[:1] in "+-" and line[:3] not in ("+++", "---"):
+                        expect(page.locator("#detail-panel .fd-view")).to_contain_text(line[1:])
+            group = tree.locator(".tree-dir", has_text="Not tracked by git yet")
+            expect(group.locator(".tree-file")).to_have_text([re.compile("notes.md")])
+            group.get_by_role("button", name=re.compile("notes.md")).click()
+            expect(page.locator("#detail-panel .fd-view")).to_have_text("notes.md has no diff because git does not track it yet.")
+            assert sidecar_hub.get(CONTAINER) is not None
         finally:
             page.close()
             sidecar.drop()

@@ -1,13 +1,9 @@
 """The Diff and Files tabs of a container run whose sidecar dropped, measured on the page the operator gets against a real sidecar socket."""
 from __future__ import annotations
 
-import json
 import re
-import subprocess
 import tempfile
-import threading
 from pathlib import Path
-from unittest.mock import patch
 
 from _page_settle import advance_until, settle
 from test_a11y_dynamic import (
@@ -30,14 +26,15 @@ from test_diff_since_branch_dynamic import (
 from test_diff_tab_dynamic import (
     DIFF,
     SIZE,
+    _dirty_repo,
+    _git,
     _open_diff,
     _patch,
     _push_exited,
+    _RealSidecar,
     _tab,
     _wait_for,
 )
-from websockets.exceptions import ConnectionClosed
-from websockets.sync.client import connect
 
 STRIP = "#detail-stale-strip"
 STALE = "#detail-diff-stale"
@@ -520,15 +517,7 @@ def test_the_kept_diff_after_a_real_drop_is_the_diff_git_reports_for_the_checkou
     live = _live()
     assert live is not None, _UNAVAILABLE
     with tempfile.TemporaryDirectory() as tmp, _run():
-        repo = Path(tmp) / "app"
-        repo.mkdir()
-        _git(repo, "init", "-q", "-b", "main")
-        (repo / "alpha.txt").write_text("one\ntwo\nthree\n")
-        (repo / "beta.txt").write_text("keep\n")
-        _git(repo, "add", ".")
-        _git(repo, "commit", "-qm", "init")
-        (repo / "alpha.txt").write_text("one\nTWO\nthree\nfour\n")
-        (repo / "beta.txt").unlink()
+        repo = _dirty_repo(Path(tmp))
         expected = _git(repo, "diff", "HEAD")
         sidecar = _RealSidecar(live, CONTAINER, Path(tmp))
         _wait_for(lambda: sidecar_hub.get(CONTAINER) is not None, "the sidecar to register")
