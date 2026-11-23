@@ -13,6 +13,8 @@ The final output is the last assistant message of a finished turn. A running tur
 
 A backend that recorded no prompt or thinking says so where they would sit, and names only the missing part. A running turn, a turn that ended with no record and a turn whose start the live history dropped show no such note, because the part may exist and not be shown.
 
+A finished turn of a native run with no record in any source answers 200 as unmatched, and the pane says no record of it could be found. It offers no retry, because the record will not appear. Only a container run whose records are still to be pulled answers 503 and stays retryable. This supersedes the failure and retry that `a-turn-reads-from-its-own-record` gave a turn with no record.
+
 The open state lives in the turn's reading, keyed by the turn's slug, so selecting another turn opens it closed. Prompt, thinking and tool output go through the rules a message does, so a script in them does not run.
 
 The turn endpoint carries these parts as `prompt`, `thinking`, `final` and a failed call's `result`. The book's groom holds only pushed runs, which report no turn records, so these elements are declared and not played. The browser tests of `test_turn_reading_dynamic.py` play them.

@@ -274,12 +274,12 @@ class RunDetail(Screen):
     turn_unreadable = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .rd .act-state:has(button.retry-turn)',
         "This turn could not be read",
-        does="shown in the pane when the turn's read fails, announced as an alert, with 'The rest of the run is still here.' The list stays as it was",
+        does="shown in the pane when the turn's read fails, announced as an alert, with 'The rest of the run is still here.' The list stays as it was. Only a container run whose records are still to be pulled fails this way, because a finished turn of a native run with no record is unmatched and has nothing to retry",
     )
     turn_retry = Button(
         '#detail-panel[aria-labelledby="tab-activity"] button.retry-turn',
         "Retry now",
-        does="reads the turn again. A read that succeeds replaces the failure with the turn",
+        does="reads the turn again, which can succeed once a container run's records are pulled. A read that succeeds replaces the failure with the turn",
     )
     activity_reading = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .detail-empty.loading:text("Reading this run")',

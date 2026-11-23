@@ -179,9 +179,9 @@ class ReadTurn(Endpoint):
     path = "/api/run/{run_id}/activity/{slug}"
     params = Object("Turn", run_id=Field(RUN_ID), slug=Field(Str(), does="the slug of an agent turn"))
     answers = (
-        Answer(200, SERVED, "the turn, with its prompt and thinking (null when the backend recorded none), its messages with the final one marked, and its tool calls with their time and, for a failed call, its whole output"),
+        Answer(200, SERVED, "the turn, with its prompt and thinking (null when the backend recorded none), its messages with the final one marked, and its tool calls with their time and, for a failed call, its whole output. A finished turn of a native run with no record in any source answers as unmatched, with no messages"),
         Answer(404, ERROR, "the run has no turn with this slug"),
-        Answer(503, ERROR, "the turn's transcript could not be read"),
+        Answer(503, ERROR, "the turn's transcript could not be read, which only a container run answers while its records are still to be pulled"),
     )
     source = (APP + "run_turn", APP + "_turn", "groom/groom/activity.py::turn", "groom/groom/turns.py")
     does = "Reads one agent turn: its head figures, its prompt and thinking, its messages with the final one marked, and its tool calls with the whole output of a failed one."
