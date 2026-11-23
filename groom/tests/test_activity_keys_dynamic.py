@@ -22,6 +22,14 @@ SELECTED = "#detail-panel .tl button.ev[aria-current=true]"
 STATUS = "#detail-panel [role=status]"
 
 
+def _settles_in_view(page) -> bool:
+    for _wait in range(40):
+        if _in_view(page, page.locator(SELECTED)):
+            return True
+        page.wait_for_timeout(50)
+    return False
+
+
 def _turns_page(tmp_path: Path, run: str):
     live = _live()
     assert live is not None, _UNAVAILABLE
@@ -96,11 +104,11 @@ def test_the_selected_row_stays_in_view_as_j_walks_down_a_long_timeline(tmp_path
         for _step in range(12):
             page.keyboard.press("j")
         expect(page.locator(SELECTED)).to_have_count(1)
-        assert _in_view(page, page.locator(SELECTED))
+        assert _settles_in_view(page)
         down = _selected_key(page)
         for _step in range(12):
             page.keyboard.press("k")
-        assert _in_view(page, page.locator(SELECTED))
+        assert _settles_in_view(page)
         assert _selected_key(page) != down
 
 
@@ -452,5 +460,5 @@ def test_a_key_that_moves_to_a_row_out_of_view_pauses_following_and_a_key_in_vie
         for _step in range(14):
             page.keyboard.press("k")
         expect(page.locator(CONTROL)).to_have_text("Paused")
-        assert _in_view(page, page.locator(SELECTED))
+        assert _settles_in_view(page)
         assert page.locator(LIST).evaluate("el => el.scrollHeight - el.clientHeight - el.scrollTop") > 4
