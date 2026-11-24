@@ -86,6 +86,7 @@ def test_the_steps_control_opens_every_fold_shows_a_count_and_closes_them_again(
         steps.click()
         expect(steps).to_have_attribute("aria-pressed", "true")
         expect(folds).to_have_count(0)
+        expect(page.locator('#detail-panel .tl button.ev[data-kind="step"]')).to_have_count(_number(steps))
         steps.click()
         expect(steps).to_have_attribute("aria-pressed", "false")
         expect(folds).to_have_count(before)
