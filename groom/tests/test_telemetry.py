@@ -774,6 +774,13 @@ def test_run_dir_predicates_split_certain_test_dirs_from_merely_scratch_ones():
     assert store.is_test_run_dir("") is False and store.is_scratch_run_dir("") is False
 
 
+def test_a_temp_folder_nested_under_tmp_still_marks_its_runs_scratch(monkeypatch):
+    monkeypatch.setattr("tempfile.tempdir", "/tmp/user-1000")
+    assert store.is_scratch_run_dir("/tmp/user-1000/tmpab12cd34/runs/coder") is True
+    assert store.is_scratch_run_dir("/tmp/tmpab12cd34/runs/coder") is True
+    assert store.is_scratch_run_dir("/tmp/user-1000/scratch/runs/coder") is False
+
+
 def test_receivers_drop_test_run_telemetry_but_keep_real_runs():
     with _TelemetryEnv():
         client = _hermetic_client()

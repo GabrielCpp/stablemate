@@ -1787,10 +1787,10 @@ def is_scratch_run_dir(run_dir: str) -> bool:
     """Does this run dir look throwaway — a certain test dir, or a Python temp one?"""
     if is_test_run_dir(run_dir):
         return True
-    for root in _temp_roots():
-        if run_dir.startswith(root):
-            return bool(_PY_TEMP_DIR.match(run_dir[len(root) :].split("/", 1)[0]))
-    return False
+    return any(
+        run_dir.startswith(root) and _PY_TEMP_DIR.match(run_dir[len(root) :].split("/", 1)[0])
+        for root in _temp_roots()
+    )
 
 
 @reading
