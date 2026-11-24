@@ -576,10 +576,12 @@ def test_the_pill_brings_the_newest_row_into_view_when_a_later_group_sits_below_
         expect(newest).to_have_count(1)
         assert _uncovered(page, newest)
         assert not (_newest(page).get_attribute("data-slug") or "").startswith("unmatched-"), "a later group must sit below the newest row for this test to mean anything"
-        _arrive(live, name, 2)
+        later = _arrive(live, name, 2)
+        latest = page.locator(f'#detail-panel .tl button[data-slug="unmatched-{later[-1]}"]')
+        expect(latest).to_have_count(1)
         expect(page.locator(PILL)).to_have_count(0)
         flush(page)
-        assert _uncovered(page, page.locator("#detail-panel .tl button[data-slug^=unmatched-]").last)
+        assert _uncovered(page, latest)
 
 
 def test_the_flow_heading_sticks_exactly_under_the_group_heading_so_no_row_shows_between(tmp_path):
