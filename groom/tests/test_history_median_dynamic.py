@@ -238,6 +238,18 @@ def test_an_estimate_run_shows_its_estimate_per_item_in_the_tile_and_is_not_comp
     assert "est $16 per item, not compared: no ending recorded" in tile
 
 
+def test_the_tile_of_a_run_that_ended_in_success_with_an_estimate_says_an_estimate_has_no_median():
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    with _judged(cost_usd=None, est_usd=31.2, priced_turns=0):
+        page = _overview(live)
+        try:
+            tile = " ".join(page.locator(TILE).inner_text().split())
+        finally:
+            page.close()
+    assert "est $16 per item, not compared: an estimate has no median" in tile
+
+
 def test_the_tile_of_a_run_whose_peers_have_a_median_of_zero_says_so_and_not_that_it_takes_five():
     live = _live()
     assert live is not None, _UNAVAILABLE
