@@ -1,16 +1,11 @@
-"""Put the guards under `scripts/` on the path, and build a repo for them to guard."""
+"""Build a repo for the guards under `scripts/` to guard."""
 
 from __future__ import annotations
 
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
-
-SCRIPTS = Path(__file__).resolve().parents[1]
-if str(SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS))
 
 
 @pytest.fixture(autouse=True)

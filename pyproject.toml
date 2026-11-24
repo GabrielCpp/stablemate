@@ -80,6 +80,9 @@ dev = [
     "pillow>=10.0",
 ]
 
+[tool.pytest.ini_options]
+pythonpath = ["scripts"]
+
 # One ruleset for every subproject — ruff is run from this root (`ruff check .`),
 # so member packages deliberately carry no [tool.ruff] of their own.
 [tool.ruff.lint]
@@ -145,6 +148,9 @@ exclude = [
     "farrier/farrier/_vendor/base_library",
 ]
 
+[tool.ty.environment]
+extra-paths = ["ostler/ostler/qa/harness"]
+
 # basedpyright — pyright's inference and its bundled third-party stubs, run from this
 # root next to ruff and ty (`make lint`). It is a third opinion, not a replacement:
 # ty follows this workspace's own calls and is fast; basedpyright sees through the
@@ -160,6 +166,7 @@ exclude = [
 [tool.basedpyright]
 typeCheckingMode = "standard"
 pythonVersion = "3.12"
+extraPaths = ["ostler/ostler/qa/harness"]
 strict = [
     "workflows/src/workhorse_workflows/okf_book",
     "workflows/tests/okf_book",
