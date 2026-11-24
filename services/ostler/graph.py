@@ -160,7 +160,8 @@ class EditRenameUnknown(Command):
 
 
 class CreateMilestone(Command):
-    does = "Create the milestone ms with its numbered folder, in the proposed status."
+    does = ("Create the milestone ms with its numbered folder, in the proposed status, under products/<product>/milestones in the artifacts folder. "
+            "The product comes from the code repository the command starts in.")
     program = "ostler"
     argv = ("--full-ids", "create", "milestone", "ms", "--title", "Milestone")
     args = ARGS
@@ -169,11 +170,11 @@ class CreateMilestone(Command):
         Exit(1, Lines(), "a milestone with that folder or slug exists"),
     )
     carries = act.MakeMilestone
-    source = ("ostler/ostler/crud.py::create_milestone", "ostler/ostler/milestones.py")
+    source = ("ostler/ostler/crud.py::create_milestone", "ostler/ostler/milestones.py", "ostler/ostler/model.py::doc_roots")
 
 
 class MilestoneEpicsFirst(Command):
-    does = "Make the first epic the only epic of the milestone, and write it into the milestone's Epics section."
+    does = "Make the first epic the only epic of the milestone, and write it into the Epics section of the milestone under its product."
     program = "ostler"
     argv = ("--full-ids", "milestone", "epics", "ms", "first")
     args = ARGS
@@ -186,7 +187,7 @@ class MilestoneEpicsFirst(Command):
 
 
 class MilestoneEpicsBoth(Command):
-    does = "List the first and then the second epic in the milestone, in that coding order."
+    does = "List the first and then the second epic in the milestone, in that coding order, in the milestone under its product."
     program = "ostler"
     argv = ("--full-ids", "milestone", "epics", "ms", "first", "second")
     args = ARGS
@@ -199,7 +200,7 @@ class MilestoneEpicsBoth(Command):
 
 
 class MilestoneEpicsUnknown(Command):
-    does = "Refuse a milestone epic list that names an epic the plan lacks, and keep the list the milestone has."
+    does = "Refuse a milestone epic list that names an epic the plan lacks, and keep the list the milestone under its product has."
     program = "ostler"
     argv = ("--full-ids", "milestone", "epics", "ms", "nope")
     args = ARGS

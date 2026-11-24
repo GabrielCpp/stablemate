@@ -10,7 +10,7 @@ from pathlib import Path
 
 from book_fakes import git as _git
 from book_todo import FIXTURE
-from conftest import write
+from conftest import milestones_root, write
 from ostler.book.check import source_faults
 from ostler.book.sources import missing
 from ostler.book.stack import Fresh
@@ -91,7 +91,7 @@ def test_fresh_relative_cwd_is_under_the_book_root_when_started_in_the_code_repo
 
 
 def test_milestone_books_are_read_under_the_book_home(repo):
-    write(repo / "docs/milestones/sign-in/milestone.md", milestone_md())
+    write(milestones_root(repo) / "sign-in/milestone.md", milestone_md())
     write(_artifacts() / "services/acme/area/service.py", "")
     assert findings(repo, "milestone-journey-services") == []
 

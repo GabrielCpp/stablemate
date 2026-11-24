@@ -7,7 +7,7 @@ import pytest
 from ostler import crud, doctor, markdown, query, registry, select
 from ostler.model import load
 
-from conftest import EPIC_A, FOO_ID, FOO_STORY, present, epics_root, write_prefix
+from conftest import EPIC_A, FOO_ID, FOO_STORY, present, epics_root, milestones_root, write_prefix
 
 pytestmark = pytest.mark.usefixtures("minting_root")
 
@@ -344,7 +344,7 @@ def test_delete_epic_removes_its_milestone_reference(tmp_path: Path):
     profiles = crud.create_epic(load(tmp_path), "profiles", "Profiles")
     assert profiles.ok
     assert crud.create_milestone(load(tmp_path), "mvp", "MVP").ok
-    milestone_path = tmp_path / "docs/milestones/0001-mvp/milestone.md"
+    milestone_path = milestones_root(tmp_path) / "0001-mvp/milestone.md"
     milestone_path.write_text(
         milestone_path.read_text(encoding="utf-8").replace(
             "epics: []", "epics:\n- accounts\n- profiles"
@@ -371,7 +371,7 @@ def test_delete_epic_finishes_cleanup_after_interruption(
     created = crud.create_epic(load(tmp_path), "accounts", "Accounts")
     assert created.ok
     assert crud.create_milestone(load(tmp_path), "mvp", "MVP").ok
-    milestone_path = tmp_path / "docs/milestones/0001-mvp/milestone.md"
+    milestone_path = milestones_root(tmp_path) / "0001-mvp/milestone.md"
     milestone_path.write_text(
         milestone_path.read_text(encoding="utf-8").replace("epics: []", "epics:\n- accounts")
     )

@@ -5,7 +5,7 @@ from __future__ import annotations
 from ostler.book import Action, Actor, Create, Delete, Select, Transaction, Update
 
 from ..fixtures import (COVERS, SLUGS, STORY_PATHS, ConflictArgs, CreateEpicArgs, CreateStoryArgs,
-                        DeleteEpicArgs, DeleteStoryArgs, Nothing, PathBranchArgs, PathEpicArgs, PathSpecArgs, PathStoryArgs,
+                        DeleteEpicArgs, DeleteStoryArgs, Nothing, PathBranchArgs, PathDesignArgs, PathEpicArgs, PathMilestoneArgs, PathNotesArgs, PathSpecArgs, PathStoryArgs,
                         SeedAddArgs, SeedRemoveArgs, SetStatusArgs, UnblockArgs, UpdateStoryArgs,
                         slug_of)
 from . import rules
@@ -230,6 +230,32 @@ class SpecPath(Action[PathSpecArgs, Plan]):
     @staticmethod
     def reduce(a: PathSpecArgs, s: Plan, by: Actor | None) -> Transaction:
         return Transaction(says=(f"<sandbox>/art/specs/{a.story}",))
+
+
+class NotesPath(Action[PathNotesArgs, Plan]):
+    accept = PathNotesArgs
+
+    @staticmethod
+    def reduce(a: PathNotesArgs, s: Plan, by: Actor | None) -> Transaction:
+        return Transaction(says=(f"<sandbox>/art/notes/plan/{a.slug}",))
+
+
+class DesignPath(Action[PathDesignArgs, Plan]):
+    accept = PathDesignArgs
+    rules = (rules.bad_design_slug,)
+
+    @staticmethod
+    def reduce(a: PathDesignArgs, s: Plan, by: Actor | None) -> Transaction:
+        return Transaction(says=(f"<sandbox>/art/products/plan/designs/{a.slug}.md",))
+
+
+class MilestonePath(Action[PathMilestoneArgs, Plan]):
+    accept = PathMilestoneArgs
+    rules = (rules.no_milestone_for_path,)
+
+    @staticmethod
+    def reduce(a: PathMilestoneArgs, s: Plan, by: Actor | None) -> Transaction:
+        return Transaction(says=(f"<sandbox>/art/products/plan/milestones/0001-{a.slug}",))
 
 
 class BranchName(Action[PathBranchArgs, Plan]):

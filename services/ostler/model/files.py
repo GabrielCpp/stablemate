@@ -34,7 +34,7 @@ TITLE_LINES = tuple(f"- title: {head} {slug}" for slug in ("alpha", "bravo", "sx
     "- title: Delta story",)
 COVER_LINES = ("- covers: SD-3", "- covers: SD-4")
 
-MILESTONE = "docs/milestones/0001-ms/milestone.md"
+MILESTONE = "art/products/plan/milestones/0001-ms/milestone.md"
 PROPOSED = "status: proposed"
 FIRST_EPIC_LISTED = f"1. First epic (`{FIRST}`)"
 SECOND_EPIC_LISTED = f"2. Second epic (`{SECOND}`)"

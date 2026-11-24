@@ -6,7 +6,7 @@ from __future__ import annotations
 from ostler.book import STDERR, Bool, Command, Exit, Field, Files, Flag, Lines, Object, Positional, Str, Switch
 
 from .model.actions import (AddSeed, ApplyLayout, BranchName, ClearBlocks, DropEpic, DropStory, EditStory, ListFiles,
-                            MakeEpic, MakeStory, PathOfEpic, RecordConflict, RemoveSeed, SetStoryStatus, SpecPath, StoryPath)
+                            DesignPath, MakeEpic, MakeStory, MilestonePath, NotesPath, PathOfEpic, RecordConflict, RemoveSeed, SetStoryStatus, SpecPath, StoryPath)
 from .model.files import MARKS
 
 SEED_EPIC = Field(Str(classes={"an epic that does not exist": "0009"}), required=False, does="the epic that lists the seed")
@@ -257,6 +257,44 @@ class PathSpec(Command):
     source = ("ostler/ostler/path.py::resolve_spec",)
 
 
+class PathNotes(Command):
+    does = ("Print the folder where a repository keeps its scratch notes for a slug, "
+            "which is notes/<repository>/<slug> in the artifacts folder. Nothing is created.")
+    program = "ostler"
+    argv = ("--full-ids", "path", "notes", Positional("slug"))
+    args = Object("PathNotesArgs", slug=Field(Str(classes={"a plain slug": "scratch-pad"}), required=False, does="the notes folder's name"))
+    answers = (Exit(0, Lines(), "the notes folder, which need not exist"),)
+    carries = NotesPath
+    source = ("ostler/ostler/cli.py::_cmd_path_kept",)
+
+
+class PathDesign(Command):
+    does = ("Print the file of a design note under the product of the repository: products/<product>/designs/<slug>.md "
+            "in the artifacts folder. Nothing is created.")
+    program = "ostler"
+    argv = ("--full-ids", "path", "design", Positional("slug"))
+    args = Object("PathDesignArgs", slug=Field(Str(classes={"a kebab-case slug": "use-x", "a slug that is not kebab-case": "Bad Slug"}), required=False, does="the design's slug"))
+    answers = (
+        Exit(0, Lines(), "the design's file, which need not exist"),
+        Exit(1, Lines(), "the slug is not short kebab-case"),
+    )
+    carries = DesignPath
+    source = ("ostler/ostler/cli.py::_cmd_path_kept", "ostler/ostler/decisions.py::slug_problem", "core/stablemate_core/books.py::designs_home")
+
+
+class PathMilestone(Command):
+    does = "Print the folder of a milestone under the product of the repository, which must exist."
+    program = "ostler"
+    argv = ("--full-ids", "path", "milestone", Positional("slug"))
+    args = Object("PathMilestoneArgs", slug=Field(Str(classes={"a milestone that exists": "ms", "a milestone that does not exist": "nope"}), required=False, does="the milestone's slug"))
+    answers = (
+        Exit(0, Lines(), "the milestone's folder"),
+        Exit(1, Lines(), "no milestone has the slug"),
+    )
+    carries = MilestonePath
+    source = ("ostler/ostler/path.py::resolve_milestone",)
+
+
 class PathBranch(Command):
     does = "Print the git branch for a story, which is its slug, or for an epic with --epic, which is feat/ and its slug."
     program = "ostler"
@@ -282,4 +320,4 @@ class Look(Files):
 
 
 ALL = (LayoutApply, SeedAdd, SeedRemove, SetStatus, Conflict, PathEpic, CreateEpic, CreateStory,
-       DeleteEpic, DeleteCreatedEpic, DeleteStory, UpdateStory, Unblock, PathStory, PathSpec, PathBranch, Look)
+       DeleteEpic, DeleteCreatedEpic, DeleteStory, UpdateStory, Unblock, PathStory, PathSpec, PathBranch, PathNotes, PathDesign, PathMilestone, Look)

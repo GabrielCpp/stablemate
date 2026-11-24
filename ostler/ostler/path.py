@@ -8,9 +8,9 @@ from ostler import model, registry
 from ostler.model import Graph
 
 
-def doc_root_in(root: Path, kind: str) -> Path:
-    """The configured directory for doc kind *kind* (``epics``, ``services``, …) under *root*."""
-    return model.doc_roots(root, kinds=())[kind]
+def doc_root_in(root: Path, kind: str, start: Path | None = None) -> Path:
+    """The configured directory for doc kind *kind* (``epics``, ``services``, …) under *root*, milestones found from the code checkout *start*."""
+    return model.doc_roots(root, kinds=(), start=start)[kind]
 
 
 def epics_root_in(root: Path) -> Path:
@@ -170,6 +170,14 @@ def resolve_story(graph: Graph, story: str) -> str:
         raise ValueError(graph.no_story(story))
     epic, s = found
     return display_path(graph.root, s.story_md or epic.directory / "stories" / s.eid / "story.md")
+
+
+def resolve_milestone(graph: Graph, slug: str) -> str:
+    """The folder of the milestone named *slug*, as an absolute path; an unknown slug is an error."""
+    milestone = graph.milestone_by_name(slug)
+    if milestone is None:
+        raise ValueError(f"no milestone '{slug}', create it with `ostler create milestone`")
+    return str(milestone.path.parent)
 
 
 def resolve_branch(graph: Graph, ref: str, *, epic: bool = False) -> str:

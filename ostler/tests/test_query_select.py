@@ -9,7 +9,7 @@ from ostler.model import load
 
 from ostler._vendor.stablemate_core.config import ConfigError
 
-from conftest import EPIC_A, EPIC_B, FOO_ID, epic_md, epics_root, present, story_md, write, write_prefix
+from conftest import EPIC_A, EPIC_B, FOO_ID, epic_md, epics_root, milestones_root, present, story_md, write, write_prefix
 
 pytestmark = pytest.mark.usefixtures("minting_root")
 
@@ -116,7 +116,7 @@ def test_story_id_survives_an_epic_block_that_never_recorded_it(tmp_path: Path):
 
 
 def test_next_epic_uses_milestone_dependency_order(repo: Path):
-    write(repo / "docs/milestones/feature/milestone.md", """---
+    write(milestones_root(repo) / "feature/milestone.md", """---
 type: milestone
 id: m1
 title: Feature
@@ -128,7 +128,7 @@ epics:
 ---
 # Feature
 """)
-    write(repo / "docs/milestones/foundation/milestone.md", """---
+    write(milestones_root(repo) / "foundation/milestone.md", """---
 type: milestone
 id: m0
 title: Foundation
@@ -156,7 +156,7 @@ def test_next_story_respects_dependencies(tmp_path: Path):
 
 
 def test_milestone_epics_put_dependencies_first_and_skip_superseded(repo: Path):
-    write(repo / "docs/milestones/feature/milestone.md", """---
+    write(milestones_root(repo) / "feature/milestone.md", """---
 type: milestone
 id: m1
 title: Feature
@@ -169,7 +169,7 @@ epics:
 ---
 # Feature
 """)
-    write(repo / "docs/milestones/foundation/milestone.md", """---
+    write(milestones_root(repo) / "foundation/milestone.md", """---
 type: milestone
 id: m0
 title: Foundation
@@ -180,7 +180,7 @@ epics:
 ---
 # Foundation
 """)
-    write(repo / "docs/milestones/old/milestone.md", """---
+    write(milestones_root(repo) / "old/milestone.md", """---
 type: milestone
 id: m2
 title: Old

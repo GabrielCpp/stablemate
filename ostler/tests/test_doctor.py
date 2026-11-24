@@ -7,7 +7,7 @@ import pytest
 from ostler import crud, doctor
 from ostler.model import load
 
-from conftest import BAR_ID, present, BAR_STORY, EPIC_A, EPIC_B, FOO_ID, FOO_STORY, epic_md, specs_root, story_md, write, write_prefix, epics_root
+from conftest import BAR_ID, present, BAR_STORY, EPIC_A, EPIC_B, FOO_ID, FOO_STORY, epic_md, specs_root, story_md, write, write_prefix, epics_root, milestones_root
 
 
 def codes(report):
@@ -300,7 +300,7 @@ def test_missing_milestones_directory_does_not_fail(repo: Path):
 
 
 def test_an_epic_assigned_to_no_milestone_is_flagged(repo: Path):
-    write(repo / "docs/milestones/foundation/milestone.md", """---
+    write(milestones_root(repo) / "foundation/milestone.md", """---
 type: milestone
 id: m0
 title: Foundation
@@ -320,7 +320,7 @@ epics:
 
 
 def test_an_epic_another_repo_minted_is_left_to_that_repo(repo: Path):
-    write(repo / "docs/milestones/foundation/milestone.md", _foundation_owning(EPIC_A))
+    write(milestones_root(repo) / "foundation/milestone.md", _foundation_owning(EPIC_A))
     write_prefix(repo, "t")
     assert "epic-without-milestone" in codes(doctor.run(load(repo)))
 
@@ -344,7 +344,7 @@ def _foundation_owning(*epics: str) -> str:
 
 def test_an_epic_of_filed_follow_ups_needs_no_milestone(repo: Path):
     write_prefix(repo)
-    write(repo / "docs/milestones/foundation/milestone.md", _foundation_owning("epic-a", "epic-b"))
+    write(milestones_root(repo) / "foundation/milestone.md", _foundation_owning("epic-a", "epic-b"))
     assert crud.create_epic(load(repo), "fixes", "Filed fixes", followups=True).ok
     loose = crud.create_epic(load(repo), "loose", "Loose")
     assert loose.ok
@@ -359,7 +359,7 @@ def test_a_milestone_listing_the_epic_of_filed_follow_ups_is_flagged(repo: Path)
     write_prefix(repo)
     fixes = crud.create_epic(load(repo), "fixes", "Filed fixes", followups=True)
     assert fixes.ok
-    write(repo / "docs/milestones/foundation/milestone.md",
+    write(milestones_root(repo) / "foundation/milestone.md",
           _foundation_owning("epic-a", "epic-b", "fixes"))
 
     report = doctor.run(load(repo))
@@ -370,7 +370,7 @@ def test_a_milestone_listing_the_epic_of_filed_follow_ups_is_flagged(repo: Path)
 
 
 def test_a_milestone_depending_on_an_unknown_milestone_is_flagged(repo: Path):
-    write(repo / "docs/milestones/foundation/milestone.md", """---
+    write(milestones_root(repo) / "foundation/milestone.md", """---
 type: milestone
 id: m0
 title: Foundation
@@ -392,7 +392,7 @@ epics:
 
 
 def test_a_milestone_listing_an_unknown_epic_is_flagged(repo: Path):
-    write(repo / "docs/milestones/foundation/milestone.md", """---
+    write(milestones_root(repo) / "foundation/milestone.md", """---
 type: milestone
 id: m0
 title: Foundation
@@ -416,7 +416,7 @@ epics:
 def test_backlog_item_cannot_belong_to_multiple_milestones(repo: Path):
     source_item = "ACME-01JBXR7K9QZ4M2T8VNF3HD6PWC"
     for name in ("first", "second"):
-        write(repo / f"docs/milestones/{name}/milestone.md", f"""---
+        write(milestones_root(repo) / f"{name}/milestone.md", f"""---
 type: milestone
 id: {name}
 title: {name.title()}
@@ -492,7 +492,7 @@ def test_writing_the_sections_clears_the_finding(tmp_path: Path):
 
 
 def test_milestone_files_assign_epics(repo: Path):
-    write(repo / "docs/milestones/foundation/milestone.md", """---
+    write(milestones_root(repo) / "foundation/milestone.md", """---
 type: milestone
 id: m0
 title: Foundation
@@ -503,7 +503,7 @@ epics:
 ---
 # Foundation
 """)
-    write(repo / "docs/milestones/feature/milestone.md", """---
+    write(milestones_root(repo) / "feature/milestone.md", """---
 type: milestone
 id: m1
 title: Feature
@@ -524,7 +524,7 @@ epics:
 
 
 def test_an_epic_assigned_to_two_milestones_at_once_is_flagged(repo: Path):
-    write(repo / "docs/milestones/foundation/milestone.md", """---
+    write(milestones_root(repo) / "foundation/milestone.md", """---
 type: milestone
 id: m0
 title: Foundation
@@ -535,7 +535,7 @@ epics:
 ---
 # Foundation
 """)
-    write(repo / "docs/milestones/feature/milestone.md", """---
+    write(milestones_root(repo) / "feature/milestone.md", """---
 type: milestone
 id: m1
 title: Feature

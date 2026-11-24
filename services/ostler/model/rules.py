@@ -4,11 +4,14 @@ on standard output and exits 1."""
 
 from __future__ import annotations
 
+import re
+
 from ostler.book import Actor, Exited, Rule
 
 from ..fixtures import (SEED_LAYERS, SEED_STATUSES, ConflictArgs, CreateEpicArgs, CreateStoryArgs,
-                        DeleteStoryArgs, PathBranchArgs, PathEpicArgs, PathSpecArgs, PathStoryArgs, SeedAddArgs,
+                        DeleteStoryArgs, PathBranchArgs, PathDesignArgs, PathEpicArgs, PathMilestoneArgs, PathSpecArgs, PathStoryArgs, SeedAddArgs,
                         SeedRemoveArgs, SetStatusArgs, UnblockArgs, UpdateStoryArgs)
+from .files import MILESTONE
 from .state import Plan
 
 FAILED = Exited(1)
@@ -106,6 +109,21 @@ unblock_no_epic = Rule[UnblockArgs, Plan]("no epic '{epic}'", _unblock_no_epic, 
 no_story_for_story_path = Rule[PathStoryArgs, Plan]("error: no story with id '{story}'", _no_story, FAILED)
 no_story_for_spec_path = Rule[PathSpecArgs, Plan]("error: no story with id '{story}'", _no_story, FAILED)
 no_story_for_branch = Rule[PathBranchArgs, Plan]("error: no story with id '{ref}'", _no_branch_story, FAILED)
+
+
+def _bad_design_slug(a: PathDesignArgs, s: Plan, by: Actor | None) -> bool:
+    return not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", a.slug or "") or len(a.slug or "") > 60
+
+
+def _no_milestone_folder(a: PathMilestoneArgs, s: Plan, by: Actor | None) -> bool:
+    return a.slug != "ms" or MILESTONE not in s.files.items
+
+
+no_milestone_for_path = Rule[PathMilestoneArgs, Plan](
+    "error: no milestone '{slug}', create it with `ostler create milestone`", _no_milestone_folder, FAILED)
+bad_design_slug = Rule[PathDesignArgs, Plan](
+    "error: slug '{slug}' must be short kebab-case: lowercase letters, digits and single hyphens, at most 60 characters",
+    _bad_design_slug, FAILED)
 
 
 def _numbered(a: object, s: Plan, by: Actor | None) -> bool:

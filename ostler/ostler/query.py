@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ostler import crud_generic, ids, textindex
+from ostler.path import display_path
 from ostler._vendor.stablemate_core.config import ConfigError
 from ostler.model import Graph
 
@@ -54,7 +55,7 @@ def list_entities(graph: Graph, etype: str, epic: str | None = None,
             rows.append({"type": "milestone", "name": m.name, "id": m.eid, "title": m.title,
                           "status": m.status, "dependsOn": m.depends_on, "epics": m.epics,
                           "sourceItems": m.source_items,
-                          "path": m.path.relative_to(graph.root).as_posix()})
+                          "path": display_path(graph.root, m.path)})
     elif etype == "story":
         for e in epics:
             for s in e.stories:

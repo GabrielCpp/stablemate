@@ -13,6 +13,7 @@ from typing import Iterator
 import pytest
 
 from ostler import index, registry
+from ostler._vendor.stablemate_core import books
 
 pytest_plugins = ["private_tmp"]
 
@@ -79,6 +80,13 @@ def repository(path: Path) -> Path:
     git("-C", str(path), "-c", "user.name=t", "-c", "user.email=t@example.com",
         "commit", "--quiet", "-m", "init")
     return path
+
+
+def milestones_root(repo: Path) -> Path:
+    """Where the milestones of the code checkout *repo* live in the test's artifacts folder."""
+    home = books.milestones_home(repo)
+    assert home is not None
+    return home
 
 
 def write_json(path: Path, data: dict) -> None:

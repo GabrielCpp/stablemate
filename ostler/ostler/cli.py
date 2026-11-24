@@ -20,7 +20,7 @@ from ostler import artifact as artifact_mod
 from ostler import qa as qa_mod
 from ostler import index as index_mod
 from ostler import textindex as textindex_mod
-from ostler._vendor.stablemate_core import config as core_config
+from ostler._vendor.stablemate_core import books, config as core_config
 from ostler.environments import cli as env_cli
 from ostler.book import cli as book_cli
 from ostler._vendor.stablemate_core.config import ConfigError
@@ -363,6 +363,12 @@ def _build_parser() -> argparse.ArgumentParser:
     pa_epic.add_argument("epic")
     pa_story = pas.add_parser("story", help="story.md path for a story id")
     pa_story.add_argument("story", help="the story id")
+    pa_notes = pas.add_parser("notes", help="notes folder of this repository in the artifacts folder, created by nothing")
+    pa_notes.add_argument("slug")
+    pa_milestone = pas.add_parser("milestone", help="folder of the milestone with this slug")
+    pa_milestone.add_argument("slug")
+    pa_design = pas.add_parser("design", help="design note file of this product for a slug, created by nothing")
+    pa_design.add_argument("slug")
     pa_branch = pas.add_parser("branch", help="git branch name for a story id (or an epic)")
     pa_branch.add_argument("ref", help="the story id, or the epic name with --epic")
     pa_branch.add_argument(
@@ -1209,6 +1215,23 @@ def _cmd_layout() -> int:
     return 1 if refused else 0
 
 
+def _cmd_path_kept(cwd: Path, args) -> int:
+    """Print where the notes or the design note *slug* of the repository at *cwd* live in the artifacts folder; nothing is created."""
+    if args.what == "notes":
+        _out(str(core_config.resolve_artifacts_dir() / "notes" / core_config.repository_name(cwd) / args.slug))
+        return 0
+    problem = decisions_mod.slug_problem(args.slug)
+    if problem:
+        _out(f"error: {problem}")
+        return 1
+    home = books.designs_home(cwd)
+    if home is None:
+        _out("error: run from the code repository the design is for (`ostler -C <repo>`)")
+        return 1
+    _out(str(home / f"{args.slug}.md"))
+    return 0
+
+
 def _main(argv: list[str] | None) -> int:
     given = sys.argv[1:] if argv is None else argv
     at = _book_position(given)
@@ -1225,6 +1248,8 @@ def _main(argv: list[str] | None) -> int:
         return env_cli.run(args, _env_root(cwd if cwd is not None else Path.cwd()))
     if args.command == "layout":
         return _cmd_layout()
+    if args.command == "path" and args.what in ("notes", "design"):
+        return _cmd_path_kept(cwd if cwd is not None else Path.cwd(), args)
     if args.command == "doctor" and args.verify_index:
         return _cmd_verify_index(cwd, args)
     with index_mod.session(
@@ -1389,6 +1414,8 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
                 _out(path_mod.resolve_epic(graph, args.epic))
             elif args.what == "story":
                 _out(path_mod.resolve_story(graph, args.story))
+            elif args.what == "milestone":
+                _out(path_mod.resolve_milestone(graph, args.slug))
             else:
                 _out(path_mod.resolve_branch(graph, args.ref, epic=args.is_epic))
         except ValueError as exc:

@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from conftest import FOO_ID, FOO_STORY, ostler_process, specs_root, epics_root
+from conftest import FOO_ID, FOO_STORY, milestones_root, ostler_process, specs_root, epics_root
 import pytest
 
 from ostler import crud
+from ostler._vendor.stablemate_core import books, config as core_config
+from ostler.cli import main
 from ostler.model import load
 from ostler.path import epics_root as epics_root_of, resolve_branch, resolve_spec, resolve_story
 
@@ -108,3 +110,49 @@ def test_epics_live_at_the_artifacts_top_level_for_a_workspace_member(tmp_path, 
 
     assert epics_root_of(graph) == epics_root()
     assert graph.root == epics_root().parent
+
+
+def test_path_notes_names_the_repository_folder_and_creates_nothing(tmp_path, capsys):
+    code = main(["-C", str(tmp_path), "path", "notes", "scratch-pad"])
+
+    expected = core_config.resolve_artifacts_dir() / "notes" / core_config.repository_name(tmp_path) / "scratch-pad"
+    assert code == 0
+    assert capsys.readouterr().out.strip() == str(expected)
+    assert not expected.exists()
+    assert not expected.parent.exists()
+
+
+def test_path_milestone_names_the_folder_of_the_slug(tmp_path, capsys):
+    graph = load(tmp_path)
+    assert crud.create_milestone(graph, "ms", "Ms").ok
+    capsys.readouterr()
+
+    code = main(["-C", str(tmp_path), "path", "milestone", "ms"])
+
+    assert code == 0
+    assert capsys.readouterr().out.strip() == str(milestones_root(tmp_path) / "0001-ms")
+
+
+def test_path_milestone_refuses_an_unknown_slug_naming_the_create_command(tmp_path, capsys):
+    code = main(["-C", str(tmp_path), "path", "milestone", "ghost"])
+
+    assert code == 1
+    assert "create it with `ostler create milestone`" in capsys.readouterr().out
+
+
+def test_path_design_names_the_file_in_the_product_and_creates_nothing(tmp_path, capsys):
+    code = main(["-C", str(tmp_path), "path", "design", "sketch"])
+
+    home = books.designs_home(tmp_path)
+    assert home is not None
+    expected = home / "sketch.md"
+    assert code == 0
+    assert capsys.readouterr().out.strip() == str(expected)
+    assert not expected.parent.exists()
+
+
+def test_path_design_refuses_a_slug_that_is_not_kebab_case(tmp_path, capsys):
+    code = main(["-C", str(tmp_path), "path", "design", "../Escape"])
+
+    assert code == 1
+    assert "kebab-case" in capsys.readouterr().out

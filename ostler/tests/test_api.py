@@ -9,7 +9,7 @@ import pytest
 
 from ostler import Ostler
 
-from conftest import EPIC_A, EPIC_B, FOO_ID, FOO_STORY, present, specs_root, write, epics_root
+from conftest import EPIC_A, EPIC_B, FOO_ID, FOO_STORY, present, specs_root, write, epics_root, milestones_root
 
 pytestmark = pytest.mark.usefixtures("minting_root")
 
@@ -170,7 +170,7 @@ def test_create_milestone_is_visible_to_the_next_read(repo: Path):
         "dependsOn": [],
         "sourceItems": [source],
         "epics": [],
-        "path": "docs/milestones/0001-docs-app-mvp/milestone.md",
+        "path": (milestones_root(repo) / "0001-docs-app-mvp/milestone.md").resolve().as_posix(),
     }]
 
     assert okf.set_milestone_source_items("docs-app-mvp", [source]).ok

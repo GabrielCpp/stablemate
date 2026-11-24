@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 from ostler import markdown
-from ostler._vendor.stablemate_core import config as core_config
+from ostler._vendor.stablemate_core import books, config as core_config
 
 KEPT_DOCUMENTS = (("decisions", "decision.md"), ("adrs", "adr.md"))
 
@@ -87,6 +87,38 @@ def kept_moves(artifacts: Path, home: Path) -> list[str]:
     return list(dict.fromkeys(lines))
 
 
+def milestone_moves(artifacts: Path, home: Path, start: Path | None = None) -> list[str]:
+    """The shell commands that bring the milestones *home* and the artifacts dir still hold under ``docs/milestones`` to ``products/<product>/milestones``, a taken number moving to the next free one."""
+    from ostler import registry
+
+    mroot = books.milestones_home(start or home, artifacts)
+    if mroot is None:
+        return []
+    lines: list[str] = []
+    taken = [d.name for d in mroot.iterdir()] if mroot.is_dir() else []
+    sources = [(artifacts, True)]
+    if home.resolve() != artifacts.resolve():
+        sources.insert(0, (home, False))
+    for holder, kept in sources:
+        moved = False
+        for document in sorted((holder / "docs" / "milestones").glob(f"*/{registry.MILESTONE_FILE}")):
+            name = document.parent.name
+            if registry.epic_seq(name) is not None and any(registry.epic_seq(t) == registry.epic_seq(name) for t in taken):
+                name = registry.epic_dir_name(registry.next_epic_seq(taken), registry.epic_slug(name))
+            elif name in taken:
+                name = registry.epic_dir_name(registry.next_epic_seq(taken), name)
+            taken.append(name)
+            target = mroot / name
+            if kept:
+                lines += [f"mkdir -p {mroot}", f"git -C {holder} mv docs/milestones/{document.parent.name} {target.relative_to(holder)}"]
+            else:
+                lines += [f"mkdir -p {mroot}", f"mv {document.parent} {target}"]
+            moved = True
+        if moved and not kept and (holder / ".git").exists():
+            lines.append(f"git -C {holder} rm -r --cached docs/milestones")
+    return list(dict.fromkeys(lines))
+
+
 def numbered_epics(artifacts: Path) -> list[Path]:
     """The epic folders on the shelf still named ``NNNN-slug``; one directory listing."""
     from ostler import registry
@@ -160,8 +192,8 @@ def _epic_folders(shelf: Path) -> list[Path]:
     return [d for d in sorted(shelf.iterdir()) if (d / "epic.md").is_file()]
 
 
-def check(artifacts: Path, home: Path) -> None:
-    """Raise :class:`LayoutMoveRequired` when *artifacts* holds ``backlog/`` or ``adr/``, *home* holds ``docs/epics/``, *home* is not the artifacts dir and holds decisions or ADRs of its own under ``docs/``, or the shelf still names an epic folder ``NNNN-slug``; an emptied folder the moves left behind, or one holding no ``epic.md``, is not a reason to refuse."""
+def check(artifacts: Path, home: Path, start: Path | None = None) -> None:
+    """Raise :class:`LayoutMoveRequired` when *artifacts* holds ``backlog/`` or ``adr/``, *home* holds ``docs/epics/``, *home* is not the artifacts dir and holds decisions or ADRs of its own under ``docs/``, *home* or the artifacts dir holds ``docs/milestones/*/milestone.md``, or the shelf still names an epic folder ``NNNN-slug``; an emptied folder the moves left behind, or one holding no ``epic.md``, is not a reason to refuse."""
     numbered = numbered_epics(artifacts)
     if numbered:
         names = ", ".join(d.name for d in numbered[:5]) + (", ..." if len(numbered) > 5 else "")
@@ -170,7 +202,7 @@ def check(artifacts: Path, home: Path) -> None:
             f"number and slug ({names}); epic and story folders are named by their ids now. Run "
             f"`ostler layout apply` to rename them and record each epic's slug, "
             f"then run ostler again")
-    lines = moves(artifacts, home) + kept_moves(artifacts, home)
+    lines = moves(artifacts, home) + kept_moves(artifacts, home) + milestone_moves(artifacts, home, start)
     if not lines:
         return
     commands = "\n".join(f"  {line}" for line in lines)

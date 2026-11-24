@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ostler import dynamic_registry, index, layout, markdown, registry
-from ostler._vendor.stablemate_core import config as core_config
+from ostler._vendor.stablemate_core import books, config as core_config
 from ostler._vendor.stablemate_core.schema import OrganizationTable
 from ostler.manifest import read_manifest
 
@@ -442,16 +442,21 @@ def load_config(root: Path) -> OrganizationTable:
 
 
 BUILTIN_DOC_ROOTS: dict[str, str] = {
-    "milestones": "docs/milestones",
     "decisions": "docs/decisions",
     "adrs": "docs/adrs",
 }
 
 
-def doc_roots(root: Path, kinds: Sequence[dynamic_registry.TemplateKind] | None = None) -> dict[str, Path]:
-    """Where each kind of document lives: milestones under *root*'s ``docs/``, decisions and ADRs under ``docs/`` of the artifacts dir, epics, specs and the register at the top level of the artifacts dir, and each template kind under *root*."""
+def doc_roots(
+    root: Path,
+    kinds: Sequence[dynamic_registry.TemplateKind] | None = None,
+    *,
+    start: Path | None = None,
+) -> dict[str, Path]:
+    """Where each kind of document lives: milestones under their product in the artifacts dir, found from the code checkout *start* (else *root*), decisions and ADRs under ``docs/`` of the artifacts dir, epics, specs and the register at the top level of the artifacts dir, and each template kind under *root*."""
     artifacts = core_config.resolve_artifacts_dir()
-    roots = {key: (root if key == "milestones" else artifacts) / default for key, default in BUILTIN_DOC_ROOTS.items()}
+    roots = {key: artifacts / default for key, default in BUILTIN_DOC_ROOTS.items()}
+    roots["milestones"] = books.milestones_home(start or root, artifacts) or artifacts / "products" / "-" / "milestones"
     roots["epics"] = artifacts / "epics"
     roots["specs"] = artifacts / "specs"
     roots["register"] = artifacts / "backlogs"
@@ -464,13 +469,15 @@ def load(
     cwd: Path | None = None,
     *,
     root_overrides: Mapping[str, str | Path] | None = None,
+    start: Path | None = None,
 ) -> Graph:
     root = find_root(cwd or Path.cwd())
+    code = Path(start or cwd or Path.cwd())
     config = load_config(root)
 
-    layout.check(core_config.resolve_artifacts_dir(), root)
+    layout.check(core_config.resolve_artifacts_dir(), root, code)
     template_kinds = dynamic_registry.load_kinds(root)
-    roots = doc_roots(root, template_kinds)
+    roots = doc_roots(root, template_kinds, start=code)
     for kind, configured in (root_overrides or {}).items():
         configured_path = Path(configured)
         roots[kind] = configured_path if configured_path.is_absolute() else root / configured_path

@@ -91,9 +91,9 @@ def check_layout(graph: Graph, f: list[Finding]) -> None:
         slug = path.stem
         f.append(Finding(
             "error", "legacy-milestone-file",
-            f"{rel}: a milestone is a folder, move it to `docs/milestones/{slug}/milestone.md`",
+            f"{rel}: a milestone is a folder, move it to `{mroot}/{slug}/milestone.md`",
             path=rel, line=1, ref=slug,
-            suggestion=f"git mv {rel} docs/milestones/{slug}/milestone.md"))
+            suggestion=f"mkdir -p {mroot}/{slug} && mv {path} {mroot}/{slug}/milestone.md"))
     unnumbered = [m for m in graph.milestones if registry.epic_seq(m.path.parent.name) is None]
     first = registry.next_epic_seq(m.path.parent.name for m in graph.milestones)
     for position, milestone in enumerate(unnumbered):
@@ -296,4 +296,8 @@ def _homes_under(base: Path) -> dict[str, list[Path]]:
 
 
 def _rel(graph: Graph, path: Path) -> str:
-    return path.resolve().relative_to(graph.root.resolve()).as_posix()
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(graph.root.resolve()).as_posix()
+    except ValueError:
+        return resolved.as_posix()

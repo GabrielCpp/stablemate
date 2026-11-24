@@ -8,9 +8,9 @@ from typing import Callable
 
 from ostler.book import Axes, Scene
 
-from ..commands import (Conflict, CreateEpic, CreateStory, DeleteCreatedEpic, DeleteEpic, DeleteStory, LayoutApply, Look, PathBranch, PathEpic, PathSpec,
+from ..commands import (Conflict, CreateEpic, CreateStory, DeleteCreatedEpic, DeleteEpic, DeleteStory, LayoutApply, Look, PathBranch, PathDesign, PathEpic, PathMilestone, PathNotes, PathSpec,
                         PathStory, SeedAdd, SeedRemove, SetStatus, Unblock, UpdateStory)
-from ..fixtures import (ALPHA, BRAVO, FIRST, SECOND, SX, THIRD, conflict, create_epic, create_story, delete_epic, delete_story, path_branch, path_epic,
+from ..fixtures import (ALPHA, BRAVO, FIRST, SECOND, SX, THIRD, conflict, create_epic, create_story, delete_epic, delete_story, path_branch, path_design, path_epic, path_milestone, path_notes,
                         path_spec, path_story, seed_add, seed_remove, set_status, unblock, update_story)
 from ..graph import (EnvResetUnknown, EnvUpUnknown, RunGrpcPlan, RunPhonePlan, RunWebPlan, ValidatePhonePlan, ValidateWebPlan, VetDryRun, VetOfUnknownStory,
                      VetWithoutArguments, VetWithoutRegions, EnvAddress, EnvDown, EnvExec, EnvRender, EnvRenderUnknown, BacklogAdopt, BacklogAdd, CutFrames, LintBadPlan, LintPlan, ReadLedger, RecordAssertion, RecordStep, ReplayRun,
@@ -81,6 +81,9 @@ STORY_ACTIONS: dict[str, Callable[[Plan], object]] = {
     "path of an unknown story": lambda m: PathStory(path_story("TST-NOPE")),
     "spec path of the story": lambda m: PathSpec(path_spec(ALPHA)),
     "spec path of an unknown story": lambda m: PathSpec(path_spec("TST-NOPE")),
+    "notes path": lambda m: PathNotes(path_notes()),
+    "design path": lambda m: PathDesign(path_design()),
+    "design path of a slug that is not kebab-case": lambda m: PathDesign(path_design("Bad Slug")),
     "branch of the story": lambda m: PathBranch(path_branch(ALPHA)),
     "branch of an unknown story": lambda m: PathBranch(path_branch("TST-NOPE")),
     "branch of an epic": lambda m: PathBranch(path_branch("second", epic=True)),
@@ -321,6 +324,8 @@ MILESTONE_ACTIONS: dict[str, Callable[[Plan], object]] = {
     "list two epics": lambda m: MilestoneEpicsBoth(nothing()),
     "list an epic that does not exist": lambda m: MilestoneEpicsUnknown(nothing()),
     "own an item": lambda m: MilestoneSourceItem(nothing()),
+    "path of the milestone": lambda m: PathMilestone(path_milestone()),
+    "path of an unknown milestone": lambda m: PathMilestone(path_milestone("nope")),
     "look": lambda m: Look(),
 }
 

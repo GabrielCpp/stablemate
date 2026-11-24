@@ -9,7 +9,7 @@ import pytest
 from ostler import api, model, index
 from ostler.api import Ostler
 
-from conftest import BAR_STORY, FOO_ID, EPIC_A, EPIC_B, FOO_STORY, epic_md, story_md, write, epics_root
+from conftest import BAR_STORY, FOO_ID, EPIC_A, EPIC_B, FOO_STORY, epic_md, story_md, write, epics_root, milestones_root
 
 
 def loads(monkeypatch: pytest.MonkeyPatch) -> list[int]:
@@ -213,7 +213,7 @@ def test_the_probe_order_matches_the_loader(repo, index_home):
 def big_book(root: Path, milestones: int = 400, epics: int = 4, stories: int = 8) -> Path:
     """A book of a few hundred documents — the scale the saving is actually about."""
     for i in range(milestones):
-        write(root / f"docs/milestones/m{i}/milestone.md",
+        write(milestones_root(root) / f"m{i}/milestone.md",
               f"---\ntype: milestone\nid: m{i}\ntitle: M {i}\nstatus: proposed\ndependsOn: []\nepics: []\n---\n# M {i}\n")
     for e in range(epics):
         write(epics_root() / f"t-{e}/epic.md", epic_md(

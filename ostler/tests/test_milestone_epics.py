@@ -6,7 +6,7 @@ import pytest
 from ostler import crud, doctor, markdown, registry
 from ostler.model import load
 
-from conftest import present
+from conftest import milestones_root, present
 
 pytestmark = pytest.mark.usefixtures("minting_root")
 
@@ -18,7 +18,7 @@ def _two_epics_and_a_milestone(root: Path) -> tuple[str, str, Path]:
     profiles = crud.create_epic(load(root), "profiles", "Profiles")
     assert accounts.ok and profiles.ok
     assert crud.create_milestone(load(root), "mvp", "MVP").ok
-    return accounts.entity_id, profiles.entity_id, root / "docs/milestones/0001-mvp/milestone.md"
+    return accounts.entity_id, profiles.entity_id, milestones_root(root) / "0001-mvp/milestone.md"
 
 
 def _epic_list_findings(root: Path) -> list[str]:
@@ -160,7 +160,8 @@ def test_doctor_milestone_reports_only_that_milestone_and_its_epics(tmp_path: Pa
     report = doctor.run(load(tmp_path), milestone_filter="mvp")
 
     assert {f.epic for f in report.findings if f.epic} == {accounts_id}
-    assert {f.path for f in report.findings if not f.epic} == {"docs/milestones/0001-mvp/milestone.md"}
+    assert {f.path for f in report.findings if not f.epic} == {
+        (milestones_root(tmp_path) / "0001-mvp/milestone.md").resolve().as_posix()}
     assert {"unwritten-epic", "story-covers-no-seed"} <= {f.code for f in report.findings}
     assert report.errors
 
@@ -184,16 +185,17 @@ def test_a_new_milestone_folder_is_numbered_and_its_slug_still_names_it(tmp_path
 def test_an_unnumbered_milestone_folder_is_warned_with_the_move_that_numbers_it(tmp_path: Path):
     assert crud.create_milestone(load(tmp_path), "mvp", "MVP").ok
     for slug in ("beta", "gamma"):
-        folder = tmp_path / "docs/milestones" / slug
+        folder = milestones_root(tmp_path) / slug
         folder.mkdir(parents=True)
         (folder / "milestone.md").write_text(
             f"---\ntype: milestone\ntitle: {slug}\nstatus: proposed\n---\n# {slug}\n", encoding="utf-8")
 
     found = [f for f in doctor.run(load(tmp_path)).findings if f.code == "milestone-folder-unnumbered"]
 
+    mroot = milestones_root(tmp_path).resolve().as_posix()
     assert [(f.severity, f.suggestion) for f in found] == [
-        ("warn", "git mv docs/milestones/beta docs/milestones/0002-beta"),
-        ("warn", "git mv docs/milestones/gamma docs/milestones/0003-gamma"),
+        ("warn", f"git mv {mroot}/beta {mroot}/0002-beta"),
+        ("warn", f"git mv {mroot}/gamma {mroot}/0003-gamma"),
     ]
 
 

@@ -1,6 +1,6 @@
 # Artifacts layout and the docs home
 
-Note (2026-11-24): lines 31-32 and 42 are superseded for decisions and ADRs. Kept decisions and ADRs of every repository now live in the artifacts folder, whether or not a workspace lists it. Milestones stay in the repository. This design is not rewritten.
+Note (2026-11-24): lines 31-32 and 42 are superseded for decisions and ADRs. Kept decisions and ADRs of every repository now live in the artifacts folder, whether or not a workspace lists it. Milestones now live under their product in the artifacts folder, at `products/<product>/milestones/NNNN-<slug>/milestone.md`, and design notes at `products/<product>/designs/<slug>.md`. The Milestone row of the table in section 4 is superseded. This design is not rewritten.
 
 Note (2026-11-21): the book home rule changed. The artifacts folder is now the home of every book unless `agents.yml` says `book.home: repo`. See `services/ostler/decisions/the-artifacts-folder-is-the-home-of-every-book.md`. This design is not rewritten.
 

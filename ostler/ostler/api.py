@@ -130,8 +130,10 @@ class Ostler:
         doc_roots: Mapping[str, str | Path] | None = None,
         use_index: bool = True,
         index_dir: str | Path | None = None,
+        start: str | Path | None = None,
     ) -> None:
         self._root = Path(root) if root is not None else None
+        self._start = Path(start) if start is not None else None
         self._doc_roots = dict(doc_roots or {})
         self._graph: Graph | None = None
         self._use_index = use_index
@@ -163,7 +165,7 @@ class Ostler:
             snapshot = self._recall(key, roots)
             if snapshot is not None:
                 return snapshot.graph
-            graph = load(self._root, root_overrides=self._doc_roots)
+            graph = load(self._root, root_overrides=self._doc_roots, start=self._start)
             self.index.put_key(key, _snapshot_of(graph, roots))
             return graph
 
@@ -225,7 +227,7 @@ class Ostler:
         root = find_root(self._root or Path.cwd())
         configured = self._doc_roots.get(kind)
         if configured is None:
-            return path_mod.doc_root_in(root, kind)
+            return path_mod.doc_root_in(root, kind, self._start or self._root)
         path = Path(configured)
         return path if path.is_absolute() else root / path
 

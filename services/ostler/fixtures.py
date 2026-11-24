@@ -211,6 +211,33 @@ class PathSpecArgs(Fixture):
 
 
 @dataclass
+class PathNotesArgs(Fixture):
+    slug: str | None = None
+
+    @classmethod
+    def examples(cls, state: Any, by: Actor | None) -> Iterable[PathNotesArgs]:
+        return (path_notes(),)
+
+
+@dataclass
+class PathDesignArgs(Fixture):
+    slug: str | None = None
+
+    @classmethod
+    def examples(cls, state: Any, by: Actor | None) -> Iterable[PathDesignArgs]:
+        return (path_design(), path_design("Bad Slug"))
+
+
+@dataclass
+class PathMilestoneArgs(Fixture):
+    slug: str | None = None
+
+    @classmethod
+    def examples(cls, state: Any, by: Actor | None) -> Iterable[PathMilestoneArgs]:
+        return (path_milestone(), path_milestone("nope"))
+
+
+@dataclass
 class PathBranchArgs(Fixture):
     ref: str | None = None
     epic: bool | None = None
@@ -253,6 +280,18 @@ def path_story(story: str | None = ALPHA) -> PathStoryArgs:
 
 def path_spec(story: str | None = ALPHA) -> PathSpecArgs:
     return PathSpecArgs(story=story)
+
+
+def path_notes(slug: str | None = "scratch-pad") -> PathNotesArgs:
+    return PathNotesArgs(slug=slug)
+
+
+def path_design(slug: str | None = "use-x") -> PathDesignArgs:
+    return PathDesignArgs(slug=slug)
+
+
+def path_milestone(slug: str | None = "ms") -> PathMilestoneArgs:
+    return PathMilestoneArgs(slug=slug)
 
 
 def path_branch(ref: str | None = ALPHA, *, epic: bool | None = None) -> PathBranchArgs:
@@ -301,4 +340,5 @@ __all__ = [
     "ALPHA", "BRAVO", "FIRST", "SECOND", "SLUG_OF", "THIRD", "ConflictArgs", "EPICS", "PathEpicArgs", "SEED_LAYERS",
     "SEED_STATUSES", "STORY_PATHS", "SX", "SeedAddArgs", "SeedRemoveArgs", "SetStatusArgs", "conflict", "directory_of", "path_epic",
     "seed_add", "seed_remove", "set_status", "slug_of",
+    "PathDesignArgs", "PathMilestoneArgs", "PathNotesArgs", "path_design", "path_milestone", "path_notes",
 ]

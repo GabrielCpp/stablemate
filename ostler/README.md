@@ -83,9 +83,9 @@ documents the graph reads.
 
 ### Entity types
 
-| `type` | Location (repo-relative) | Identity | Required frontmatter |
+| `type` | Location | Identity | Required frontmatter |
 |---|---|---|---|
-| `milestone` | `docs/milestones/<NNNN-slug>/milestone.md` | folder name `<NNNN-slug>`, or its bare `<slug>`; optional `id` defaults to it | `type`, `title`, `status` |
+| `milestone` | `<artifacts dir>/products/<product>/milestones/<NNNN-slug>/milestone.md` | folder name `<NNNN-slug>`, or its bare `<slug>`; optional `id` defaults to it | `type`, `title`, `status` |
 | `epic` | `<artifacts dir>/epics/<epic-id>/epic.md` | the minted `id`, which names the folder; the `slug` names it in commands and branches | `type`, `id`, `slug`, `title` |
 | `story` | `<artifacts dir>/epics/<epic-id>/stories/<story-id>/story.md` | opaque `id` (a ULID when ostler mints it), which names the folder; the `slug` names the `epic.md` heading | `type`, `slug`, `status` |
 | `spec.<stem>` (`spec.plan`, `spec.review`, `spec.qa`, `spec.executive`, `spec.vet`, …) | `<artifacts dir>/specs/<story-id>/*.md` (`ostler path spec <story-id>`) | path | `type` |

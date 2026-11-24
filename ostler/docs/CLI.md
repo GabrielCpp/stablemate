@@ -13,7 +13,7 @@ The commands fall into two surfaces that barely overlap:
 
 | Surface | Verbs | What it operates on |
 |---|---|---|
-| **The planning graph** | `doctor` `list` `search` `query` `next-*` `create` `delete` `seed` `set-status` `unblock` `backlog` `milestone` `edit` `path` `vet` | `docs/milestones/`, and on the artifacts shelf `epics/`, `specs/`, `backlogs/` |
+| **The planning graph** | `doctor` `list` `search` `query` `next-*` `create` `delete` `seed` `set-status` `unblock` `backlog` `milestone` `edit` `path` `vet` | `products/<product>/milestones/`, and on the artifacts shelf `epics/`, `specs/`, `backlogs/` |
 | **Verification** | `qa` `artifact` | a story's spec dir, and what a QA run produces |
 
 ## Global
@@ -69,6 +69,7 @@ ostler query stories-covering-seed <arg> [--json]
 ostler next-epic [--json]                     # first epic in milestone order with unfinished work
 ostler next-story <epic> [--json]             # next runnable story (deps satisfied, not done)
 ostler path epic <epic> | path spec <story-id> | path story <story-id> | path branch <story-id> [--epic]
+ostler path milestone <slug> | path notes <slug> | path design <slug>
 ```
 
 `search` ranks sections with BM25 across the current book and decisions, OR-ing the query's terms
@@ -144,9 +145,10 @@ list into records once and deletes the list. `backlog prune` closes a record as 
 promoted.
 
 `create milestone` allocates an id independent of the readable `<name>`, writes the milestone to
-`docs/milestones/NNNN-<name>/` with the next free number, and records full backlog ids in
+`products/<product>/milestones/NNNN-<name>/` in the artifacts folder with the next free number for that product, and records full backlog ids in
 `sourceItems`. The bare `<name>` still names the milestone in every command. `doctor` warns on a
 milestone folder with no number and prints the `git mv` that numbers it.
+`create milestone` takes the product from the code repository it starts in, so run it there (`ostler -C <repo>`). From the artifacts folder it refuses. A repository that still holds `docs/milestones/` is refused with the commands that move it.
 `milestone set-source-items` replaces that ownership set on an existing milestone and accepts full
 ids or unambiguous short handles. `doctor` reports an error if one backlog id is owned by more than
 one milestone.

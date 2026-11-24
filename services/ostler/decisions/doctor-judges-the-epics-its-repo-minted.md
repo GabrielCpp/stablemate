@@ -4,7 +4,7 @@ elements: Doctor
 
 `ostler doctor` judges only the epics its repo minted. One artifacts dir holds the epics of every repo that shares it,
 and each repo mints ids under the `repo.id_prefix` its `agents.yml` sets. An epic whose id carries another prefix
-belongs to the repo that minted it. Its milestones and declared fixtures live there, so judging it here would report
+belongs to the repo that minted it. Its milestones sit under that repo's product and its declared fixtures live in that repo, so judging it here would report
 `epic-without-milestone` and `unknown-story-fixture` for an epic that is sound in its own repo. Doctor leaves such an
 epic out of its findings and its epic list.
 

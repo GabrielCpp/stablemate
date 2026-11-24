@@ -135,7 +135,7 @@ REGISTRY: tuple[EntityType, ...] = (
     EntityType(
         name="milestone", doc_root="milestones", location=f"*/{MILESTONE_FILE}",
         required=("type", "title", "status"), schema="milestone.schema.json",
-        note="Release contract: `docs/milestones/<slug>/milestone.md`, a dependency-ordered group of epics.",
+        note="Release contract: `products/<product>/milestones/NNNN-<slug>/milestone.md` in the artifacts folder, a dependency-ordered group of epics.",
     ),
     EntityType(
         name="story", doc_root="epics", location="*/stories/*/story.md",

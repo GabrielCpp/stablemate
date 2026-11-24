@@ -8,7 +8,7 @@ from ostler import Ostler, crud, doctor
 from ostler.milestones import MilestoneSelectionError, approved_milestone, journey_slug
 from ostler.model import load
 
-from conftest import keep_book_in_repo, write, write_prefix
+from conftest import keep_book_in_repo, milestones_root, write, write_prefix
 
 SECTIONS = ("Outcome", "Release Boundary", "User Journeys", "Architecture Decisions",
             "Constraints", "Acceptance", "Non-Goals")
@@ -33,7 +33,7 @@ def milestone_md(status: str = "approved", *, journeys: str = JOURNEY, omit: tup
 
 
 def put(repo: Path, slug: str = "sign-in", **kwargs) -> Path:
-    path = repo / f"docs/milestones/{slug}/milestone.md"
+    path = milestones_root(repo) / f"{slug}/milestone.md"
     write(path, milestone_md(**kwargs))
     keep_book_in_repo(repo)
     write(repo / "services/area/service.py", "")
@@ -58,12 +58,12 @@ def test_a_milestone_is_loaded_from_its_folder(repo: Path):
 
     assert milestone.name == "sign-in"
     assert milestone.eid == "sign-in"
-    assert milestone.path == repo / "docs/milestones/sign-in/milestone.md"
+    assert milestone.path == milestones_root(repo) / "sign-in/milestone.md"
     assert milestone.status == "approved"
 
 
 def test_a_frontmatter_id_overrides_the_folder_name_as_the_eid(repo: Path):
-    write(repo / "docs/milestones/sign-in/milestone.md",
+    write(milestones_root(repo) / "sign-in/milestone.md",
           milestone_md().replace("title: Sign in", "id: m-1\ntitle: Sign in"))
 
     [milestone] = load(repo).milestones
@@ -72,19 +72,20 @@ def test_a_frontmatter_id_overrides_the_folder_name_as_the_eid(repo: Path):
 
 
 def test_a_flat_milestone_file_is_flagged_and_not_loaded(repo: Path):
-    write(repo / "docs/milestones/sign-in.md", milestone_md())
+    write(milestones_root(repo) / "sign-in.md", milestone_md())
 
     [finding] = findings(repo, "legacy-milestone-file")
 
     assert finding.severity == "error"
-    assert finding.path == "docs/milestones/sign-in.md"
-    assert "docs/milestones/sign-in/milestone.md" in finding.message
+    mroot = milestones_root(repo).resolve().as_posix()
+    assert finding.path == f"{mroot}/sign-in.md"
+    assert f"{mroot}/sign-in/milestone.md" in finding.message
     assert load(repo).milestones == []
 
 
 def test_a_flat_page_that_is_not_a_milestone_is_not_flagged(repo: Path):
-    write(repo / "docs/milestones/notes.md", "# Notes\n")
-    write(repo / "docs/milestones/other.md", "---\ntype: concept\ntitle: Other\n---\n# Other\n")
+    write(milestones_root(repo) / "notes.md", "# Notes\n")
+    write(milestones_root(repo) / "other.md", "---\ntype: concept\ntitle: Other\n---\n# Other\n")
 
     assert findings(repo, "legacy-milestone-file") == []
 
@@ -138,7 +139,7 @@ def test_a_complete_milestone_has_no_readiness_finding(repo: Path):
 
 
 def test_a_missing_or_empty_section_fires_once_per_section(repo: Path):
-    write(repo / "docs/milestones/sign-in/milestone.md",
+    write(milestones_root(repo) / "sign-in/milestone.md",
           milestone_md(omit=("Constraints",)).replace("## Acceptance\n\nProse.\n", "## Acceptance\n"))
 
     found = findings(repo, "milestone-missing-section")
@@ -163,7 +164,7 @@ def test_an_open_decisions_section_fires(repo: Path):
 
 
 def test_a_dangling_link_fires_and_a_resolving_one_does_not(repo: Path):
-    write(repo / "docs/design/real.md", "# Real\n")
+    write(milestones_root(repo).parent / "design/real.md", "# Real\n")
     put(repo, extra=("\nSee [real](../../design/real.md), [anchor](#outcome), "
                      "[web](https://example.com/x), [mail](mailto:a@example.com) and "
                      "[gone](../../design/gone.md).\n"))
@@ -251,12 +252,12 @@ def test_the_api_returns_the_readiness_findings_of_one_milestone(repo: Path):
 def test_grills_and_artifacts_and_html_mockups_produce_no_finding(repo: Path):
     add_ui_book(repo)
     put(repo, journeys=UI_JOURNEY)
-    write(repo / "docs/milestones/sign-in/mockups/sign-in-with-a-code.html", "<html></html>")
-    write(repo / "docs/milestones/sign-in/grills/auth.md", "# Auth grill\n\n1. Which provider?\n")
-    write(repo / "docs/milestones/sign-in/grills/typed.md",
+    write(milestones_root(repo) / "sign-in/mockups/sign-in-with-a-code.html", "<html></html>")
+    write(milestones_root(repo) / "sign-in/grills/auth.md", "# Auth grill\n\n1. Which provider?\n")
+    write(milestones_root(repo) / "sign-in/grills/typed.md",
           "---\ntype: concept\ntitle: Typed\n---\n# Typed\n")
-    write(repo / "docs/milestones/sign-in/artifacts/notes.md", "no frontmatter\n")
-    write(repo / "docs/milestones/sign-in/artifacts/data.json", "{}\n")
+    write(milestones_root(repo) / "sign-in/artifacts/notes.md", "no frontmatter\n")
+    write(milestones_root(repo) / "sign-in/artifacts/data.json", "{}\n")
 
     report = doctor.run(load(repo))
 
@@ -279,7 +280,7 @@ def test_create_milestone_writes_the_folder_with_every_section_as_a_stub(tmp_pat
     write_prefix(tmp_path)
     result = crud.create_milestone(load(tmp_path), "sign-in", "Sign in")
 
-    path = tmp_path / "docs/milestones/0001-sign-in/milestone.md"
+    path = milestones_root(tmp_path) / "0001-sign-in/milestone.md"
     assert result.ok and result.paths == [path]
     text = path.read_text(encoding="utf-8")
     assert "status: proposed" in text

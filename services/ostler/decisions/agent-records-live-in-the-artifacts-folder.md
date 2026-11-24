@@ -9,7 +9,7 @@ Decisions and ADRs of every repository live in the artifacts folder under `docs/
 
 Only `doc_roots` changed. `find_root` is kept, because the root also locates the manifest, the templates and the run folders.
 
-Milestones stay in the repository, because the operator reviews them there.
+Milestones live under their product in the artifacts folder, as `milestones-and-designs-live-under-their-product` says.
 
 A repository that still holds a `docs/decisions/*/decision.md` with a `repo:` key or a `docs/adrs/*/adr.md` is refused with the commands that move it: `mkdir -p`, `mv` and `git rm -r --cached`. Reading both places would split where a decision is filed from where it is read. A taken slug moves to `<slug>-<repo>`. A file with no such shape is not refused.
 

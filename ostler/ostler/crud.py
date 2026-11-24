@@ -123,6 +123,8 @@ def create_milestone(
 ) -> Result:
     """Create ``<milestones>/NNNN-<slug>/milestone.md`` with a generated id; the folder's number carries its order."""
     mroot = graph.doc_roots["milestones"]
+    if mroot.parent.name == "-":
+        return Result(False, "run from the code repository the milestone is for (`ostler -C <repo>`)")
     existing = graph.milestone_by_name(name)
     if existing is not None:
         return Result(False, f"milestone '{existing.name}' already exists")
