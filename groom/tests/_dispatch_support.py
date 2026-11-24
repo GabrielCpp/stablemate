@@ -116,6 +116,7 @@ async def open_dispatch(app: Any, pilot: Any, link: support.FakeLink, queues: in
     await support.until(lambda: app.main.query_one("#runs", OptionList).option_count == 3)
     await pilot.press("D")
     await support.until(lambda: isinstance(app.screen, DispatchScreen))
+    await pilot.pause()
     await support.until(lambda: queue_list(app.screen).option_count == queues)
     return app.screen
 
