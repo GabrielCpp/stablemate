@@ -379,7 +379,7 @@ def test_the_watch_reports_a_gate_written_after_it_started():
                     "STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\n\nWhich one?\n"
                 )
                 try:
-                    frame = await asyncio.wait_for(outbox.get(), timeout=15)
+                    frame = await asyncio.wait_for(outbox.get(), timeout=30)
                 finally:
                     stop.set()
                     watcher.cancel()
@@ -518,7 +518,7 @@ def test_the_watch_sends_workspace_for_a_git_index_write_and_none_for_the_object
                     await asyncio.sleep(2.5)
                     quiet = outbox.qsize()
                     (ws_dir / ".git" / "index").write_bytes(b"\xff\x00")
-                    frame = await asyncio.wait_for(outbox.get(), timeout=15)
+                    frame = await asyncio.wait_for(outbox.get(), timeout=30)
                     await asyncio.sleep(2.5)
                     return quiet, frame, outbox.qsize()
                 finally:

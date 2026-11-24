@@ -18,7 +18,7 @@ from litestar.testing import TestClient
 from groom import app as groom_app
 from groom import discovery, dispatch, dispatch_ledger, state, store
 
-WAIT_S = 5.0
+WAIT_S = 30.0
 
 
 class _FakeProc:

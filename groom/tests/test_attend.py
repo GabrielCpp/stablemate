@@ -20,7 +20,7 @@ from groom import attend, attend_ledger, attend_transcript, discovery, state, st
 from groom.alerts import Alert
 from groom.models import GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 
-WAIT_S = 5.0
+WAIT_S = 30.0
 
 
 class _Spawner:

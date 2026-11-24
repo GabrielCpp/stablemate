@@ -89,10 +89,10 @@ def _page(live, selected: str = "", init: str = ""):
     if init:
         page.add_init_script(init)
     page.goto(live.url(), wait_until="load")
-    page.wait_for_selector(ROW, timeout=15000)
+    page.wait_for_selector(ROW, timeout=30000)
     if selected:
         page.locator(ROW, has_text=selected).first.click()
-        page.wait_for_selector("#detail .detail-head", timeout=10000)
+        page.wait_for_selector("#detail .detail-head", timeout=30000)
     return page
 
 
@@ -105,7 +105,7 @@ def _badge(page, which: str) -> tuple[bool, str, str]:
 def _stamp_old(page) -> None:
     page.evaluate(f"() => localStorage.setItem('{SEEN}', JSON.stringify(1))")
     page.reload(wait_until="load")
-    page.wait_for_selector(ROW, timeout=15000)
+    page.wait_for_selector(ROW, timeout=30000)
 
 
 def test_a_selected_run_that_ends_stays_open_with_a_strip_saying_it_ended_how_long_ago_and_how():
@@ -116,7 +116,7 @@ def test_a_selected_run_that_ends_stays_open_with_a_strip_saying_it_ended_how_lo
         try:
             assert page.locator(STRIP).count() == 0
             _end(live, "end-ok")
-            page.wait_for_selector(STRIP, timeout=10000)
+            page.wait_for_selector(STRIP, timeout=30000)
             text = page.locator(STRIP).inner_text()
             head = page.locator("#detail .detail-head").inner_text()
             role = page.locator(STRIP).get_attribute("role")
@@ -135,7 +135,7 @@ def test_the_row_and_the_head_change_to_ended_with_the_strip_and_the_tabs_leave_
         page = _page(live, "end-row")
         try:
             _end(live, "end-row")
-            page.wait_for_selector(STRIP, timeout=10000)
+            page.wait_for_selector(STRIP, timeout=30000)
             row = page.locator(ROW, has_text="end-row").first
             kind = row.get_attribute("data-state")
             doing = row.locator(".doing").inner_text()
@@ -156,12 +156,12 @@ def _announce(run: str) -> None:
     from groom import app
 
     queue = next(iter(state.CLIENTS))
-    asyncio.run_coroutine_threadsafe(app._write_summary(run), vars(queue)["_loop"]).result(timeout=20)
+    asyncio.run_coroutine_threadsafe(app._write_summary(run), vars(queue)["_loop"]).result(timeout=30)
 
 
 def _wait_ended(page, run: str) -> None:
-    page.wait_for_selector(f'{ROW}[data-state="finished"]', timeout=10000)
-    page.wait_for_selector(STRIP, timeout=10000)
+    page.wait_for_selector(f'{ROW}[data-state="finished"]', timeout=30000)
+    page.wait_for_selector(STRIP, timeout=30000)
 
 
 def test_a_run_that_fails_while_open_shows_its_failure_banner_under_the_strip():
@@ -171,12 +171,12 @@ def test_a_run_that_fails_while_open_shows_its_failure_banner_under_the_strip():
         page = _page(live, "end-bad")
         try:
             _end(live, "end-bad", "fail", **{"error.class": "WatchdogKilled", "error.kind": "fatal"})
-            page.wait_for_selector(STRIP, timeout=10000)
+            page.wait_for_selector(STRIP, timeout=30000)
             strip = page.locator(STRIP).inner_text()
             klass = page.locator(STRIP).get_attribute("class") or ""
             assert page.locator("#detail #detail-ending").count() == 0
             _announce("end-bad")
-            page.wait_for_selector("#detail #detail-ending", timeout=10000)
+            page.wait_for_selector("#detail #detail-ending", timeout=30000)
             above = page.evaluate("() => document.querySelector('#ended-strip').compareDocumentPosition(document.querySelector('#detail-ending')) & Node.DOCUMENT_POSITION_FOLLOWING")
             banner = page.locator("#detail #detail-ending h2").inner_text()
         finally:
@@ -211,20 +211,20 @@ def test_the_strip_links_to_the_run_in_history_and_clears_a_filter_that_would_hi
         page = _page(live)
         try:
             page.click(RAIL)
-            page.wait_for_selector("#history table.ht", timeout=10000)
+            page.wait_for_selector("#history table.ht", timeout=30000)
             page.get_by_role("combobox", name="Ending").select_option(label="success")
             page.click('.act-btn[data-mode="runs"]')
             page.locator(ROW, has_text="end-go").first.click()
             _end(live, "end-go", "fail", **{"error.kind": "fatal"})
-            page.wait_for_selector(STRIP, timeout=10000)
+            page.wait_for_selector(STRIP, timeout=30000)
             _announce("end-go")
             page.get_by_role("link", name="Open it in History").click()
-            page.wait_for_selector("#history .row.selected", timeout=10000)
+            page.wait_for_selector("#history .row.selected", timeout=30000)
             selected = page.locator("#history .row.selected").get_attribute("data-run")
             mode = page.locator(".app").get_attribute("data-mode")
             detail = page.locator("#history-detail .detail-head").inner_text()
             page.get_by_role("button", name="Close run").click()
-            page.wait_for_selector("#history table.ht", timeout=10000)
+            page.wait_for_selector("#history table.ht", timeout=30000)
             picked = page.get_by_role("combobox", name="Ending").evaluate("(el) => el.selectedOptions[0].textContent")
             first = _default_ending(page)
         finally:
@@ -241,12 +241,12 @@ def test_the_strip_stays_until_the_operator_selects_another_run():
         page = _page(live, "end-st")
         try:
             _end(live, "end-st")
-            page.wait_for_selector(STRIP, timeout=10000)
+            page.wait_for_selector(STRIP, timeout=30000)
             _post_turn(live, "ab01", usd=0.1)
             page.wait_for_timeout(1500)
             kept = page.locator(STRIP).count()
             page.locator(ROW, has_text="run-running").first.click()
-            page.wait_for_selector("#detail .detail-head", timeout=10000)
+            page.wait_for_selector("#detail .detail-head", timeout=30000)
             gone = page.locator(STRIP).count()
         finally:
             page.close()
@@ -260,10 +260,10 @@ def test_a_selected_runs_row_that_is_evicted_leaves_the_detail_open_and_the_list
         page = _page(live, "end-ev")
         try:
             _end(live, "end-ev")
-            page.wait_for_selector(STRIP, timeout=10000)
+            page.wait_for_selector(STRIP, timeout=30000)
             state.evict_runs(["end-ev"])
             _post_turn(live, "ab02", usd=0.1)
-            page.wait_for_function("(id) => ![...document.querySelectorAll('#runs-list .row')].some((row) => row.textContent.includes(id))", arg="end-ev", timeout=10000)
+            page.wait_for_function("(id) => ![...document.querySelectorAll('#runs-list .row')].some((row) => row.textContent.includes(id))", arg="end-ev", timeout=30000)
             strip = page.locator(STRIP).count()
             head = page.locator("#detail .detail-head").inner_text()
         finally:
@@ -285,7 +285,7 @@ def test_a_run_that_fails_crashes_or_is_stopped_by_a_fatal_error_raises_the_hist
         try:
             for run, (terminal, attrs) in ends.items():
                 _end(live, run, terminal, **attrs)
-            page.wait_for_function("() => document.getElementById('history-badge').textContent === '3'", timeout=10000)
+            page.wait_for_function("() => document.getElementById('history-badge').textContent === '3'", timeout=30000)
             shown = _badge(page, "history")
         finally:
             page.close()
@@ -294,7 +294,7 @@ def test_a_run_that_fails_crashes_or_is_stopped_by_a_fatal_error_raises_the_hist
 
 def _fail_one(live, page, run: str, terminal: str = "fail", **attrs: str) -> None:
     _end(live, run, terminal, **attrs)
-    page.wait_for_selector(f'{ROW}[data-state="finished"]', timeout=10000)
+    page.wait_for_selector(f'{ROW}[data-state="finished"]', timeout=30000)
     page.wait_for_timeout(300)
 
 
@@ -306,14 +306,14 @@ def test_opening_history_clears_the_badge_and_the_count_survives_a_reload():
         try:
             _fail_one(live, page, "bd-one", **{"error.kind": "fatal"})
             page.reload(wait_until="load")
-            page.wait_for_selector(ROW, timeout=15000)
+            page.wait_for_selector(ROW, timeout=30000)
             kept = _badge(page, "history")
             page.click(RAIL)
-            page.wait_for_selector("#history table.ht, #history .empty-big", timeout=10000)
+            page.wait_for_selector("#history table.ht, #history .empty-big", timeout=30000)
             opened = _badge(page, "history")
             page.click('.act-btn[data-mode="runs"]')
             page.reload(wait_until="load")
-            page.wait_for_selector(ROW, timeout=15000)
+            page.wait_for_selector(ROW, timeout=30000)
             after = _badge(page, "history")
         finally:
             page.close()
@@ -331,7 +331,7 @@ def test_a_success_a_stop_the_operator_asked_for_and_a_reload_raise_no_badge():
             _end(live, "bd-ok")
             _end(live, "bd-stop", "interrupted", **{"error.kind": "interrupt", "error.class": "KeyboardInterrupt"})
             _end(live, "bd-re", "reload")
-            page.wait_for_function("() => document.querySelectorAll('#runs-list .row[data-state=finished]').length >= 3", timeout=10000)
+            page.wait_for_function("() => document.querySelectorAll('#runs-list .row[data-state=finished]').length >= 3", timeout=30000)
             page.wait_for_timeout(500)
             shown = _badge(page, "history")
         finally:
@@ -377,7 +377,7 @@ def test_the_last_opened_time_lives_in_the_browser_and_the_server_is_told_nothin
     page.on("request", lambda request: sent.append(request.method + " " + request.url) if request.method != "GET" else None)
     try:
         page.click(RAIL)
-        page.wait_for_selector("#history table.ht, #history .empty-big", timeout=10000)
+        page.wait_for_selector("#history table.ht, #history .empty-big", timeout=30000)
         page.click('.act-btn[data-mode="runs"]')
         stamp = page.evaluate(f"() => localStorage.getItem('{SEEN}')")
     finally:
@@ -393,10 +393,10 @@ def test_a_run_that_becomes_blocked_raises_the_runs_badge_while_history_is_open(
         page = _page(live)
         try:
             page.click(RAIL)
-            page.wait_for_selector("#history table.ht, #history .empty-big", timeout=10000)
+            page.wait_for_selector("#history table.ht, #history .empty-big", timeout=30000)
             before = _badge(page, "runs")
             _block(live, "bk-one")
-            page.wait_for_function("() => document.getElementById('runs-badge').textContent === '2'", timeout=10000)
+            page.wait_for_function("() => document.getElementById('runs-badge').textContent === '2'", timeout=30000)
             after = _badge(page, "runs")
         finally:
             page.close()
@@ -411,15 +411,15 @@ def test_a_run_that_ends_while_history_is_open_tops_the_table_the_totals_follow_
         page = _page(live)
         try:
             page.click(RAIL)
-            page.wait_for_selector("#history table.ht", timeout=10000)
+            page.wait_for_selector("#history table.ht", timeout=30000)
             before = _totals_runs(page)
             _end(live, "end-hi", "fail", **{"error.kind": "fatal"})
             _announce("end-hi")
-            page.wait_for_function("() => document.querySelector('#history tr.hrow')?.dataset.run === 'end-hi'", timeout=10000)
+            page.wait_for_function("() => document.querySelector('#history tr.hrow')?.dataset.run === 'end-hi'", timeout=30000)
             order = _history_text(page)
             after = _totals_runs(page)
             page.locator("#history tr.hrow", has_text="hist-a").first.click()
-            page.wait_for_selector("#history-detail .detail-head", timeout=10000)
+            page.wait_for_selector("#history-detail .detail-head", timeout=30000)
             _end(live, "end-hi", "fail", **{"error.kind": "fatal"})
             _announce("end-hi")
             page.wait_for_timeout(800)
@@ -459,14 +459,14 @@ def test_the_strip_and_both_badges_pass_an_axe_scan_and_the_link_works_from_the_
         page = _page(live, "ax-one")
         try:
             _end(live, "ax-one", "fail", **{"error.kind": "fatal"})
-            page.wait_for_selector(STRIP, timeout=10000)
-            page.wait_for_function("() => document.getElementById('history-badge').textContent === '1'", timeout=10000)
+            page.wait_for_selector(STRIP, timeout=30000)
+            page.wait_for_function("() => document.getElementById('history-badge').textContent === '1'", timeout=30000)
             page.add_script_tag(path=str(AXE))
             found = page.evaluate(_SCAN_NEW)
             link = page.get_by_role("link", name="Open it in History")
             link.focus()
             page.keyboard.press("Enter")
-            page.wait_for_selector("#history-pane", state="visible", timeout=10000)
+            page.wait_for_selector("#history-pane", state="visible", timeout=30000)
             mode = page.locator(".app").get_attribute("data-mode")
         finally:
             page.close()
@@ -475,7 +475,7 @@ def test_the_strip_and_both_badges_pass_an_axe_scan_and_the_link_works_from_the_
 
 
 def _toast(page, text: str) -> tuple[str, str]:
-    page.wait_for_function("(text) => [...document.querySelectorAll('#toasts .toast')].some((t) => t.textContent.includes(text))", arg=text, timeout=10000)
+    page.wait_for_function("(text) => [...document.querySelectorAll('#toasts .toast')].some((t) => t.textContent.includes(text))", arg=text, timeout=30000)
     return page.evaluate(
         "(text) => { const t = [...document.querySelectorAll('#toasts .toast')].find((x) => x.textContent.includes(text)); return [t.querySelector('.t-title').textContent, t.className]; }",
         text,
@@ -546,8 +546,8 @@ def test_a_narrowed_row_with_long_names_keeps_its_pill_inside_and_both_names_vis
         _begin(live, LONG_RUN, "coder", LONG_REPO)
         page = _page(live, LONG_RUN[:20])
         try:
-            page.wait_for_selector(f'{ROW}[data-worker-id="{LONG_RUN}"] .pulse', timeout=10000)
-            page.wait_for_selector('#runs-list .row .badge[data-type="okf-book"]', timeout=10000)
+            page.wait_for_selector(f'{ROW}[data-worker-id="{LONG_RUN}"] .pulse', timeout=30000)
+            page.wait_for_selector('#runs-list .row .badge[data-type="okf-book"]', timeout=30000)
             geometry = page.evaluate(_GEOMETRY, LONG_RUN)
         finally:
             page.close()

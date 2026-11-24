@@ -50,13 +50,13 @@ def _archived_activity(tmp: Path, run: str, *, logs: int = 0, samples: int = 0, 
 def _opened(live, name: str):
     page = _archive_page(live, name)
     _open_archive(page, name)
-    page.wait_for_selector(f"{DETAIL} .ov", timeout=15000)
+    page.wait_for_selector(f"{DETAIL} .ov", timeout=30000)
     return page
 
 
 def _activity(page) -> None:
     page.locator(f"{DETAIL}").get_by_role("tab", name="Activity").click()
-    page.wait_for_selector(f"{PANEL} .feed, {PANEL} .side-state", timeout=10000)
+    page.wait_for_selector(f"{PANEL} .feed, {PANEL} .side-state", timeout=30000)
 
 
 def _drive(tmp_path: Path, run: str, check, *, tab: bool = True, **given) -> None:
@@ -106,7 +106,7 @@ def test_the_overview_problem_count_of_an_archived_run_opens_the_tab_and_both_sh
         assert counted >= 1
         link.click()
         expect(page.locator(f"{DETAIL} [role=tab][aria-selected=true]")).to_contain_text("Activity")
-        page.wait_for_selector(f"{PANEL} .tl button.ev", timeout=10000)
+        page.wait_for_selector(f"{PANEL} .tl button.ev", timeout=30000)
         problems = page.locator(f'{PANEL} .feedbar [data-filter="problems"]')
         expect(problems).to_have_attribute("aria-pressed", "true")
         assert int(problems.locator("b").inner_text()) == counted
@@ -188,7 +188,7 @@ def test_raw_of_an_archived_run_lists_newest_first_counts_what_it_hides_and_load
 
     def check(page, name):
         page.locator(f'{PANEL} .feedbar [data-filter="raw"]').click()
-        page.wait_for_selector(LINES, timeout=10000)
+        page.wait_for_selector(LINES, timeout=30000)
         expect(page.locator(LINES)).to_have_count(200)
         times = [page.locator(LINES).nth(number).locator(".lt-ts").inner_text() for number in range(200)]
         assert times == sorted(times, reverse=True)
@@ -208,7 +208,7 @@ def test_metric_samples_of_an_archived_run_stay_hidden_until_the_control_asks_fo
 
     def check(page, name):
         page.locator(f'{PANEL} .feedbar [data-filter="raw"]').click()
-        page.wait_for_selector(LINES, timeout=10000)
+        page.wait_for_selector(LINES, timeout=30000)
         metrics = page.locator(f'{PANEL} .feedbar [data-filter="metrics"]')
         expect(metrics).to_have_attribute("aria-pressed", "false")
         assert "METRIC" not in page.locator(f"{LINES} .lt-lvl").all_inner_texts()
@@ -244,7 +244,7 @@ def test_an_archive_whose_files_are_gone_says_activity_cannot_be_read_and_the_ov
         page = _archive_page(live, name)
         try:
             _open_archive(page, name)
-            page.wait_for_selector(f"{DETAIL} .ov", timeout=15000)
+            page.wait_for_selector(f"{DETAIL} .ov", timeout=30000)
             _activity(page)
             gone = page.locator(f"{PANEL} .side-state")
             expect(gone).to_contain_text("Activity cannot be read")
@@ -281,10 +281,10 @@ def test_the_archived_activity_surface_has_no_axe_violations_with_the_timeline_a
     def check(page, name):
         page.add_script_tag(path=str(AXE))
         page.locator(f"{PANEL} .tl button.ev").nth(0).click()
-        page.wait_for_selector(f"{PANEL} .rd .at-msg", timeout=10000)
+        page.wait_for_selector(f"{PANEL} .rd .at-msg", timeout=30000)
         assert _scan(page) == []
         page.locator(f'{PANEL} .feedbar [data-filter="raw"]').click()
-        page.wait_for_selector(LINES, timeout=10000)
+        page.wait_for_selector(LINES, timeout=30000)
         assert _scan(page) == []
 
     _drive(tmp_path, "arch-axe", check)
@@ -293,7 +293,7 @@ def test_the_archived_activity_surface_has_no_axe_violations_with_the_timeline_a
 def test_a_long_run_id_keeps_the_archived_timeline_and_the_pane_inside_the_detail(tmp_path):
     def check(page, name):
         page.locator(f"{PANEL} .tl button.ev").nth(0).click()
-        page.wait_for_selector(f"{PANEL} .rd .at-msg", timeout=10000)
+        page.wait_for_selector(f"{PANEL} .rd .at-msg", timeout=30000)
         box = page.locator(DETAIL).bounding_box()
         for part in (f"{PANEL} .tl", f"{PANEL} .rd", f"{PANEL} .feedbar"):
             inner = page.locator(part).first.bounding_box()

@@ -117,7 +117,7 @@ class _Sidecar:
 
     def drop(self) -> None:
         self.socket.close()
-        self.thread.join(timeout=5)
+        self.thread.join(timeout=30)
 
 
 def _connect(live, container: str = CONTAINER, checkouts: dict[str, _Checkout] | None = None, *, names: bool = True) -> _Sidecar:
@@ -144,7 +144,7 @@ def _select(page):
 
 def _show(page, name: str) -> None:
     _tab(page, name).click()
-    page.wait_for_selector("#detail-panel .fd-split, #detail-panel .detail-empty:not(.loading), #detail-panel .side-state", timeout=10000)
+    page.wait_for_selector("#detail-panel .fd-split, #detail-panel .detail-empty:not(.loading), #detail-panel .side-state", timeout=30000)
 
 
 def _files(page) -> list[str]:
@@ -360,7 +360,7 @@ def test_a_reload_starts_again_at_the_first_checkout():
             _select(page).select_option("web-app")
             expect(_tab(page, "Diff")).to_contain_text(WEB_SIZE)
             page.reload(wait_until="load")
-            page.wait_for_selector("#runs-list .row", timeout=15000)
+            page.wait_for_selector("#runs-list .row", timeout=30000)
             _pick(page, CONTAINER)
             _show(page, "Diff")
             expect(_select(page)).to_have_value("api-service")
@@ -567,7 +567,7 @@ def test_the_rail_has_no_files_diff_or_repository_picker_and_the_page_never_asks
     repos = _requests(page, "/repos")
     try:
         page.goto(live.url(), wait_until="load")
-        page.wait_for_selector("#runs-list .row", timeout=15000)
+        page.wait_for_selector("#runs-list .row", timeout=30000)
         modes = page.locator("#activitybar .act-btn").evaluate_all("els => els.map((e) => e.dataset.mode)")
         assert modes == ["runs", "history", "attend", "dispatch", "settings"]
         names = page.locator("#activitybar .act-btn").evaluate_all("els => els.map((e) => e.getAttribute('aria-label'))")
@@ -576,7 +576,7 @@ def test_the_rail_has_no_files_diff_or_repository_picker_and_the_page_never_asks
             expect(page.locator(gone)).to_have_count(0)
         for mode in ("attend", "dispatch", "settings", "runs"):
             page.click(f'.act-btn[data-mode="{mode}"]')
-            page.wait_for_function(f"() => document.querySelector('.app').dataset.mode === '{mode}'", timeout=5000)
+            page.wait_for_function(f"() => document.querySelector('.app').dataset.mode === '{mode}'", timeout=30000)
         assert repos == []
     finally:
         page.close()

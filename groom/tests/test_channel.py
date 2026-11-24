@@ -118,11 +118,11 @@ def _channel(groom: FakeGroom, sent: Sink, channels: list[Channel], mail: FakeMa
 
 def _call(channel: Channel, sent: Sink, method: str, params: dict[str, Any]) -> dict[str, Any]:
     channel.handle({"jsonrpc": "2.0", "id": 7, "method": method, "params": params})
-    return sent.replies.get(timeout=5)
+    return sent.replies.get(timeout=30)
 
 
 def _pushed(sent: Sink) -> dict[str, Any]:
-    message = sent.pushes.get(timeout=5)
+    message = sent.pushes.get(timeout=30)
     assert message["method"] == "notifications/claude/channel"
     return message["params"]
 
@@ -227,7 +227,7 @@ def test_serve_answers_each_line_and_stops_every_watch_at_end_of_input(
                     "params": {"name": "watch", "arguments": {"run_id": "acme"}}}),
     ]
     channel.serve(line + "\n" for line in lines)
-    answered = [sent.replies.get(timeout=5)["id"] for _ in range(2)]
+    answered = [sent.replies.get(timeout=30)["id"] for _ in range(2)]
     assert answered == [1, 2]
     assert live.closed.is_set()
 

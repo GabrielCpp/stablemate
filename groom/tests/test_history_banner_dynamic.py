@@ -80,7 +80,7 @@ def test_the_link_opens_the_activity_tab_with_the_failing_row_selected_and_its_s
         try:
             _ready(page)
             page.get_by_role("button", name="Open this moment in Activity").click()
-            page.wait_for_selector(f"{DETAIL} .tl button.ev[aria-current=true]", timeout=15000)
+            page.wait_for_selector(f"{DETAIL} .tl button.ev[aria-current=true]", timeout=30000)
             selected = page.locator(f"{DETAIL} .tl button.ev[aria-current=true]")
             tab = page.get_by_role("tab", name=re.compile("^Activity")).get_attribute("aria-selected")
             expect(page.locator(f"{DETAIL} .rd")).to_contain_text("test")
@@ -180,7 +180,7 @@ def test_the_banner_passes_an_axe_scan_and_its_link_and_copy_control_work_from_t
             link = page.get_by_role("button", name="Open this moment in Activity")
             link.focus()
             page.keyboard.press("Enter")
-            page.wait_for_selector(f"{DETAIL} .tl button.ev[aria-current=true]", timeout=15000)
+            page.wait_for_selector(f"{DETAIL} .tl button.ev[aria-current=true]", timeout=30000)
             region = page.locator(BANNER).count()
         finally:
             page.close()

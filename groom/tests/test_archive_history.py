@@ -304,12 +304,12 @@ def every_archive_worker_busy() -> Iterator[threading.Event]:
     started = threading.Barrier(pools.ARCHIVE.workers + 1)
 
     def hold() -> bool:
-        started.wait(timeout=10)
+        started.wait(timeout=30)
         return release.wait(timeout=30)
 
     holders = [pools.ARCHIVE.executor().submit(hold) for _ in range(pools.ARCHIVE.workers)]
     try:
-        started.wait(timeout=10)
+        started.wait(timeout=30)
         yield release
     finally:
         release.set()

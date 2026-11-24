@@ -120,7 +120,7 @@ def test_telemetry_gate_answer_reaches_the_waiting_process(native_root, monkeypa
                     "file_path": detail["gates"][0]["file_path"], "answer": "sqlite",
                 })
                 assert response.json()["ok"] is True
-                assert waiting.result(timeout=5) is None
+                assert waiting.result(timeout=30) is None
                 content = gate.read_text(encoding="utf-8")
                 assert gates.status_of(content) == "ANSWERED"
                 assert content.endswith("\n\nsqlite\n")

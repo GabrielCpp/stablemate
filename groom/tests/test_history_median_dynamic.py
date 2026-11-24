@@ -130,7 +130,7 @@ def test_the_totals_median_ignores_the_range_and_the_other_filters():
     with _history(*rows):
         page = _open_history(live)
         try:
-            page.wait_for_selector("#history table.ht", timeout=10000)
+            page.wait_for_selector("#history table.ht", timeout=30000)
             _choose(page, "Workflow", "coder")
             _choose(page, "Repo", "acme")
             _choose(page, "Range", "Last 7 days")

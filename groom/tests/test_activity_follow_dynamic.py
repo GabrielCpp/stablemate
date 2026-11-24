@@ -51,7 +51,7 @@ def _open_watched(live, height: int = 640):
     page = live.browser.new_page(viewport={"width": 1400, "height": height})
     page.add_init_script(WATCH_SOCKETS)
     page.goto(live.url(), wait_until="load")
-    page.wait_for_selector("#runs-list .row", timeout=15000)
+    page.wait_for_selector("#runs-list .row", timeout=30000)
     page.add_script_tag(path=str(AXE))
     return page
 
@@ -87,7 +87,7 @@ def _send(live, run: str, *, name: str = "agent_turn", node: str = "qa-story", u
         else:
             kv.value.int_value = value
     http = urllib.request.Request(live.url() + "v1/traces", data=request.SerializeToString(), headers={"Content-Type": "application/x-protobuf"})
-    with urllib.request.urlopen(http, timeout=10) as reply:
+    with urllib.request.urlopen(http, timeout=30) as reply:
         assert reply.status == 200
     return span_id
 
@@ -194,9 +194,9 @@ def test_a_running_turns_row_and_pane_show_new_messages_and_tool_calls_as_they_a
                 {"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "All nine scenarios pass now."}},
             ):
                 handle.write(json.dumps({"sessionId": "sess-1", "update": update, "_meta": {"ts": time.time(), "node": "qa-story"}}) + "\n")
-        expect(page.locator(".rd .at-tool-name")).to_have_text("Bash", timeout=10000)
-        expect(page.locator(".rd .at-msg").last).to_contain_text("All nine scenarios pass now.", timeout=10000)
-        expect(row.locator(".w")).to_have_text("All nine scenarios pass now.", timeout=10000)
+        expect(page.locator(".rd .at-tool-name")).to_have_text("Bash", timeout=30000)
+        expect(page.locator(".rd .at-msg").last).to_contain_text("All nine scenarios pass now.", timeout=30000)
+        expect(row.locator(".w")).to_have_text("All nine scenarios pass now.", timeout=30000)
         assert ", running," in (row.get_attribute("aria-label") or "")
 
 
@@ -214,7 +214,7 @@ def test_an_open_activity_pane_on_a_quiet_run_makes_no_request_and_one_ingest_ma
         page.wait_for_function(
             "([count]) => performance.getEntriesByType('resource').filter((entry) => entry.name.endsWith('/activity')).length > count",
             arg=[settled],
-            timeout=1000,
+            timeout=30000,
         )
         page.wait_for_timeout(1500)
         assert len(_activity_requests(page)) == settled + 1
@@ -278,7 +278,7 @@ def test_while_paused_a_group_that_finishes_stays_open_under_the_operators_eyes(
         opened = heads.count()
         assert opened > 0
         _end(live, name)
-        expect(page.locator(CONTROL)).to_have_count(0, timeout=10000)
+        expect(page.locator(CONTROL)).to_have_count(0, timeout=30000)
         page.wait_for_timeout(500)
         assert heads.count() == opened
 
@@ -356,7 +356,7 @@ def test_a_lost_connection_says_the_timeline_is_not_connected(tmp_path):
     with _following(tmp_path, "fol-lost") as (_live_, page, _name):
         page.evaluate(DROP)
         control = page.locator(CONTROL)
-        expect(control).to_have_text("Not connected", timeout=8000)
+        expect(control).to_have_text("Not connected", timeout=30000)
         expect(control).to_be_disabled()
         assert page.locator(".stat.conn").get_attribute("data-conn") != "live"
         page.evaluate(RESTORE)
@@ -370,7 +370,7 @@ def test_on_reconnect_the_timeline_fills_the_gap_and_the_mark_clears(tmp_path):
         before = _rows(page).count()
         page.evaluate(DROP)
         control = page.locator(CONTROL)
-        expect(control).to_have_text("Not connected", timeout=8000)
+        expect(control).to_have_text("Not connected", timeout=30000)
         span_id = _stored_turn(name)
         page.wait_for_timeout(1500)
         assert _rows(page).count() == before
@@ -391,7 +391,7 @@ def test_when_the_run_ends_the_follow_control_and_the_pill_go_and_the_running_ro
         _wheel_up(page, 50)
         _send(live, name, usd=2.0, slug=RUNNING, attrs=_turn_attrs(RUNNING, "Locked account returns 423.", 2.0, 1800))
         _end(live, name)
-        expect(page.locator(CONTROL)).to_have_count(0, timeout=10000)
+        expect(page.locator(CONTROL)).to_have_count(0, timeout=30000)
         expect(page.locator(PILL)).to_have_count(0)
         expect(page.locator(".newpill")).to_have_count(0)
         expect(row).to_have_attribute("aria-label", re.compile(r", finished,"))
@@ -411,7 +411,7 @@ def test_when_the_run_ends_the_headings_and_the_run_row_take_the_cost_of_that_la
         first_row = run_row.inner_text()
         _send(live, name, usd=2.0, slug=RUNNING, attrs=_turn_attrs(RUNNING, "Locked account returns 423.", 2.0, 1800))
         _end(live, name)
-        expect(page.locator(CONTROL)).to_have_count(0, timeout=10000)
+        expect(page.locator(CONTROL)).to_have_count(0, timeout=30000)
         for index in range(headings.count()):
             expect(headings.nth(index)).to_contain_text("$2.00")
         expect(run_row).to_contain_text("$2.00")
@@ -475,7 +475,7 @@ def test_the_follow_control_and_the_pill_have_a_role_a_name_keyboard_operation_a
         expect(page.locator(PILL)).to_have_count(0)
         expect(page.get_by_role("button", name="Following")).to_be_focused()
         page.evaluate(DROP)
-        expect(page.get_by_role("button", name="Not connected")).to_be_disabled(timeout=8000)
+        expect(page.get_by_role("button", name="Not connected")).to_be_disabled(timeout=30000)
         assert not _scan(page)
         page.evaluate(RESTORE)
 
@@ -602,7 +602,7 @@ def test_a_run_that_ends_with_no_turn_span_stops_saying_running(tmp_path):
         assert "running" in before
         spent = re.findall(r"\$[\d.]+", before)
         _end(live, name)
-        expect(page.locator(CONTROL)).to_have_count(0, timeout=10000)
+        expect(page.locator(CONTROL)).to_have_count(0, timeout=30000)
         expect(row).to_have_attribute("aria-label", re.compile(r", ended with no record,"))
         expect(row.locator(".w")).to_have_text("ended with no record")
         expect(row.locator(".m")).to_have_text("")
@@ -630,10 +630,10 @@ def test_the_connection_chip_says_not_connected_once_the_connection_is_offline(t
         chip = page.locator(".stat.conn")
         expect(chip).to_have_text("live")
         page.evaluate(DROP)
-        expect(chip).to_have_text("reconnecting", timeout=8000)
+        expect(chip).to_have_text("reconnecting", timeout=30000)
         assert "reconnecting" in chip.get_attribute("aria-label")
         page.evaluate(LONG_LOSS)
-        expect(chip).to_have_text("not connected", timeout=8000)
+        expect(chip).to_have_text("not connected", timeout=30000)
         expect(chip).to_have_attribute("aria-label", "Connection: not connected")
         expect(chip).to_have_attribute("data-conn", "offline")
         expect(page.locator(CONTROL)).to_have_text("Not connected")

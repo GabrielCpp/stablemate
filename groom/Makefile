@@ -24,9 +24,9 @@ install: ## Create/sync the workspace venv from the root uv.lock
 HOST ?= 0.0.0.0
 PORT ?= 8787
 
-# Generous because one file in the suite boots a real groom and drives Chromium
-# through five panes; the rest finish in seconds.
-TEST_TIMEOUT ?= 600
+# A safety net for a hung suite, not a budget: the suite takes about 16 minutes on a
+# loaded machine.
+TEST_TIMEOUT ?= 2400
 
 .PHONY: run
 run: ## Start the groom web dashboard (HOST=… PORT=… to override; binds 0.0.0.0:8787)

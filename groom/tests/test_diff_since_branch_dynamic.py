@@ -100,7 +100,7 @@ class _Sidecar:
 
     def drop(self) -> None:
         self.socket.close()
-        self.thread.join(timeout=5)
+        self.thread.join(timeout=30)
 
 
 def _connect(live, container: str = CONTAINER, *, uncommitted: dict | None = None, since: dict | None = None, names: list[str] | None = None, replies: dict | None = None) -> _Sidecar:

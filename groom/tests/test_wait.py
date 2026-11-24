@@ -63,7 +63,7 @@ def frame_server(frames: list[dict]) -> Iterator[str]:
             yield f"http://127.0.0.1:{server.socket.getsockname()[1]}"
         finally:
             server.shutdown()
-            worker.join(timeout=5)
+            worker.join(timeout=30)
 
 
 def test_wait_command_is_available(capsys: pytest.CaptureFixture[str]) -> None:

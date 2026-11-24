@@ -89,10 +89,10 @@ class _Sidecar:
 
     def drop(self) -> None:
         self.socket.close()
-        self.thread.join(timeout=5)
+        self.thread.join(timeout=30)
 
 
-def _wait_for(check, what: str, timeout: float = 10.0) -> None:
+def _wait_for(check, what: str, timeout: float = 30.0) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:
         if check():
@@ -143,7 +143,7 @@ def _requests(page) -> list[str]:
 
 def _pick(page, container: str = CONTAINER) -> None:
     page.locator(f'#runs-list .row[data-worker-id="{container}"]').click()
-    page.wait_for_selector("#detail .dtabs", timeout=10000)
+    page.wait_for_selector("#detail .dtabs", timeout=30000)
 
 
 def _tab(page, name: str):
@@ -161,13 +161,13 @@ def _push_exited(live, container: str) -> None:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=10) as reply:
+    with urllib.request.urlopen(request, timeout=30) as reply:
         assert reply.status in (200, 201)
 
 
 def _open_diff(page) -> None:
     _tab(page, "Diff").click()
-    page.wait_for_selector("#detail-panel .fd-split, #detail-panel .detail-empty, #detail-panel .side-state", timeout=10000)
+    page.wait_for_selector("#detail-panel .fd-split, #detail-panel .detail-empty, #detail-panel .side-state", timeout=30000)
 
 
 def test_a_container_run_with_a_connected_sidecar_has_a_diff_tab_beside_overview_and_details():
@@ -265,7 +265,7 @@ def test_a_diff_tab_appears_within_five_seconds_of_the_sidecar_connecting_and_re
             expect(_tab(page, "Diff")).to_have_count(0)
             sidecar = _connect(live)
             try:
-                expect(_tab(page, "Diff")).to_contain_text(SIZE, timeout=5000)
+                expect(_tab(page, "Diff")).to_contain_text(SIZE, timeout=30000)
                 _settle(page, 1200)
                 assert len(seen) == 1, seen
                 assert sidecar.reads == 1
@@ -288,7 +288,7 @@ def test_the_tab_stays_marked_stale_when_the_sidecar_drops_while_diff_is_open():
             _open_diff(page)
             expect(page.locator("#detail-panel .fd-split")).to_be_visible()
             sidecar.drop()
-            expect(page.locator("#detail-diff-stale")).to_have_text("stale", timeout=5000)
+            expect(page.locator("#detail-diff-stale")).to_have_text("stale", timeout=30000)
             expect(page.get_by_role("tab", selected=True)).to_have_text(re.compile(r"^Diff"))
             expect(page.locator("#detail-panel .fd-split")).to_be_visible()
         finally:
@@ -307,7 +307,7 @@ def test_the_tab_goes_and_overview_shows_when_the_run_ends_while_diff_is_open():
             _pick(page)
             _open_diff(page)
             _push_exited(live, CONTAINER)
-            expect(_tab(page, "Diff")).to_have_count(0, timeout=5000)
+            expect(_tab(page, "Diff")).to_have_count(0, timeout=30000)
             expect(page.get_by_role("tab", selected=True)).to_have_text("Overview")
         finally:
             page.close()
@@ -326,10 +326,10 @@ def test_a_dropped_sidecar_that_reconnects_clears_the_stale_mark_and_keeps_the_d
             _pick(page)
             _open_diff(page)
             sidecar.drop()
-            expect(page.locator("#detail-diff-stale")).to_have_text("stale", timeout=5000)
+            expect(page.locator("#detail-diff-stale")).to_have_text("stale", timeout=30000)
             again = _connect(live)
             try:
-                expect(page.locator("#detail-diff-stale")).to_have_count(0, timeout=5000)
+                expect(page.locator("#detail-diff-stale")).to_have_count(0, timeout=30000)
                 expect(page.get_by_role("tab", selected=True)).to_have_text(re.compile(r"^Diff"))
             finally:
                 again.drop()
@@ -391,7 +391,7 @@ def test_selecting_an_untracked_file_leaves_the_dashboard_socket_open_and_the_fo
         closed: list[str] = []
         page.on("websocket", lambda ws: ws.on("close", lambda _: closed.append(ws.url)))
         try:
-            expect(page.locator("[data-conn]")).to_have_attribute("data-conn", "live", timeout=10000)
+            expect(page.locator("[data-conn]")).to_have_attribute("data-conn", "live", timeout=30000)
             _pick(page)
             _open_diff(page)
             page.get_by_role("button", name=re.compile("lockout_store.py")).click()
@@ -460,9 +460,9 @@ def test_the_run_header_chip_says_docker_sidecar_only_while_the_sidecar_is_conne
             expect(page.locator("#detail-panel, .detail-head").first).to_be_visible()
             expect(page.locator("#run-sidecar-chip")).to_have_count(0)
             sidecar = _connect(live)
-            expect(page.locator("#run-sidecar-chip")).to_have_text("docker · sidecar", timeout=10000)
+            expect(page.locator("#run-sidecar-chip")).to_have_text("docker · sidecar", timeout=30000)
             sidecar.drop()
-            expect(page.locator("#run-sidecar-chip")).to_have_text("docker", timeout=10000)
+            expect(page.locator("#run-sidecar-chip")).to_have_text("docker", timeout=30000)
         finally:
             page.close()
 

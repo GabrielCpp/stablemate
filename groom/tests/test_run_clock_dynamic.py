@@ -254,7 +254,7 @@ def test_a_live_refresh_keeps_the_scroll_position_with_the_new_sections_open():
             placed = page.evaluate(mark)
             turns = int(page.locator("#detail-turns-tile .vv").inner_text())
             _post_turn(live, "00000000000000d1", usd=0.5, run=run, workflow="coder", node="dev")
-            expect(page.locator("#detail-turns-tile .vv")).to_have_text(str(turns + 1), timeout=15000)
+            expect(page.locator("#detail-turns-tile .vv")).to_have_text(str(turns + 1), timeout=30000)
             assert abs(page.evaluate(mark) - placed) <= 1
             expect(page.locator("#detail-sessions")).to_be_attached()
         finally:

@@ -51,7 +51,7 @@ async def _settle() -> None:
 
 async def _next_detail(queue: asyncio.Queue) -> dict:
     while True:
-        message = await asyncio.wait_for(queue.get(), timeout=3.0)
+        message = await asyncio.wait_for(queue.get(), timeout=30)
         if message["type"] == "detail":
             return message
 
@@ -533,7 +533,7 @@ def test_snapshot_and_ingest_do_not_lose_or_duplicate_a_log(ingest_first):
 
     def held(*args, **kwargs):
         entered.set()
-        assert release.wait(timeout=5)
+        assert release.wait(timeout=30)
         return original(*args, **kwargs)
 
     async def drive():

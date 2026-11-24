@@ -115,12 +115,12 @@ def _run(run: str, tmp: Path, *, native: bool = True, turns: bool = True, runnin
 def _pick(page, run: str) -> None:
     container = f"{run}-box"[:12].ljust(12, "x")
     page.locator(f'#runs-list .row[data-worker-id="{container}"]').click()
-    page.wait_for_selector("#detail .dtabs", timeout=10000)
+    page.wait_for_selector("#detail .dtabs", timeout=30000)
 
 
 def _open_activity(page) -> None:
     page.get_by_role("tab", name="Activity").click()
-    page.wait_for_selector("#detail-panel .feed, #detail-panel .empty-big, #detail-panel .side-state", timeout=10000)
+    page.wait_for_selector("#detail-panel .feed, #detail-panel .empty-big, #detail-panel .side-state", timeout=30000)
 
 
 def _rows(page):

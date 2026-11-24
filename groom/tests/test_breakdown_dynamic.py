@@ -169,7 +169,7 @@ def test_the_view_and_sort_survive_a_tab_round_trip_and_a_live_refresh_and_reset
             expect(page.get_by_role("table", name="Time and cost per node")).to_be_visible()
             turns = int(page.locator("#detail-turns-tile .vv").inner_text())
             _post_turn(live, "00000000000000c1", usd=1.0, run=RUN, workflow=WORKFLOW, node="build")
-            expect(page.locator("#detail-turns-tile .vv")).to_have_text(str(turns + 1), timeout=15000)
+            expect(page.locator("#detail-turns-tile .vv")).to_have_text(str(turns + 1), timeout=30000)
             expect(_view(page, "By node")).to_have_attribute("aria-pressed", "true")
             expect(_sort(page, "Cost")).to_have_attribute("aria-pressed", "true")
             expect(page.get_by_role("table", name="Time and cost per node")).to_be_visible()

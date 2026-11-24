@@ -242,7 +242,7 @@ def test_a_zombie_pid_is_not_a_live_run():
     """A killed process keeps its pid until its parent reaps it, and answers signal 0 the whole time."""
     child = subprocess.Popen(["true"])
     try:
-        deadline = time.time() + 5
+        deadline = time.time() + 30
         while time.time() < deadline:
             stat = Path(f"/proc/{child.pid}/stat").read_text()
             if stat.rpartition(")")[2].split()[0] == "Z":

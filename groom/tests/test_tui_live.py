@@ -73,7 +73,7 @@ class _Live:
         self.thread.start()
         self._await_port()
 
-    def _await_port(self, timeout: float = 20.0) -> None:
+    def _await_port(self, timeout: float = 30.0) -> None:
         deadline = time.time() + timeout
         while time.time() < deadline:
             try:
@@ -86,7 +86,7 @@ class _Live:
     def close(self) -> None:
         self._patch.stop()
         self.server.should_exit = True
-        self.thread.join(timeout=10)
+        self.thread.join(timeout=30)
         state.WORKFLOWS.clear()
 
 

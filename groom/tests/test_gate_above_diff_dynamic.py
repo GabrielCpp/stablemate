@@ -90,7 +90,7 @@ class _Sidecar:
         from groom import sidecar_hub
 
         self.socket.close()
-        self.thread.join(timeout=5)
+        self.thread.join(timeout=30)
         _wait_for(lambda: sidecar_hub.get(self.container) is None, "the sidecar to unregister")
 
 
@@ -137,9 +137,9 @@ def _scroll(page, to: int) -> None:
 
 def _read_diff(page) -> int:
     _tab(page, "Diff").click()
-    page.wait_for_selector("#detail-panel .fd-split", timeout=10000)
+    page.wait_for_selector("#detail-panel .fd-split", timeout=30000)
     page.locator("#detail-panel .fd-tree").get_by_role("button", name=re.compile("lockout.py")).click()
-    page.wait_for_selector("#detail-diff-file-head:has-text('lockout.py')", timeout=10000)
+    page.wait_for_selector("#detail-diff-file-head:has-text('lockout.py')", timeout=30000)
     _scroll(page, 400)
     assert _view(page)["scrollTop"] >= 300
     return int(_view(page)["scrollTop"])
@@ -147,9 +147,9 @@ def _read_diff(page) -> int:
 
 def _read_files(page) -> int:
     _tab(page, "Files").click()
-    page.wait_for_selector("#detail-panel .fd-split", timeout=10000)
+    page.wait_for_selector("#detail-panel .fd-split", timeout=30000)
     page.locator("#detail-panel .fd-tree").get_by_role("button", name="lockout.py", exact=True).click()
-    page.wait_for_selector("#detail-files-file-head:has-text('lockout.py')", timeout=10000)
+    page.wait_for_selector("#detail-files-file-head:has-text('lockout.py')", timeout=30000)
     _scroll(page, 400)
     assert _view(page)["scrollTop"] >= 300
     return int(_view(page)["scrollTop"])

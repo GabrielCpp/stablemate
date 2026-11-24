@@ -109,7 +109,7 @@ class _Sidecar:
         from groom import sidecar_hub
 
         self.socket.close()
-        self.thread.join(timeout=5)
+        self.thread.join(timeout=30)
         _wait_for(lambda: sidecar_hub.get(self.container) is None, "the sidecar to unregister")
 
 
@@ -133,7 +133,7 @@ def _reads(page, marker: str) -> list[str]:
 
 def _open_files(page) -> None:
     _tab(page, "Files").click()
-    page.wait_for_selector("#detail-panel .fd-split, #detail-panel .detail-empty:not(.loading), #detail-panel .side-state", timeout=10000)
+    page.wait_for_selector("#detail-panel .fd-split, #detail-panel .detail-empty:not(.loading), #detail-panel .side-state", timeout=30000)
 
 
 def _open_file(page, name: str) -> None:
@@ -459,12 +459,12 @@ def test_files_says_the_sidecar_stopped_answering_and_clears_on_reconnect():
             _open_files(page)
             expect(page.locator("#detail-panel .fd-split")).to_be_visible()
             sidecar.drop()
-            expect(page.locator("#detail-files-stale")).to_be_visible(timeout=5000)
+            expect(page.locator("#detail-files-stale")).to_be_visible(timeout=30000)
             expect(page.locator("#detail-panel .fd-split")).to_have_count(0)
             again = _connect(live)
             try:
-                expect(page.locator("#detail-files-stale")).to_have_count(0, timeout=5000)
-                expect(page.locator("#detail-panel .fd-split")).to_be_visible(timeout=5000)
+                expect(page.locator("#detail-files-stale")).to_have_count(0, timeout=30000)
+                expect(page.locator("#detail-panel .fd-split")).to_be_visible(timeout=30000)
             finally:
                 again.drop()
         finally:
@@ -484,7 +484,7 @@ def test_the_tab_goes_and_overview_shows_when_the_run_ends_while_files_is_open()
             _open_files(page)
             expect(page.locator("#detail-panel .fd-split")).to_be_visible()
             _push_exited(live, CONTAINER)
-            expect(_tab(page, "Files")).to_have_count(0, timeout=5000)
+            expect(_tab(page, "Files")).to_have_count(0, timeout=30000)
             expect(page.get_by_role("tab", selected=True)).to_have_text("Overview")
         finally:
             page.close()

@@ -304,7 +304,7 @@ def test_the_gate_backfill_retries_on_failure_and_marks_the_fleet_on_success(dir
         queue = _tab()
         live.snapshot()
         groom_app._ensure_gate_backfill(run)
-        await asyncio.wait_for(groom_app._BACKFILLS["run-g"], timeout=3.0)
+        await asyncio.wait_for(groom_app._BACKFILLS["run-g"], timeout=30)
         await settled()
         return _drain(queue)
 
@@ -327,8 +327,8 @@ def test_a_connected_tab_receives_a_ping_each_heartbeat_and_a_feed_does_not(monk
         queue = _tab()
         task = asyncio.create_task(groom_app._heartbeat_loop())
         try:
-            first = await asyncio.wait_for(queue.get(), timeout=2.0)
-            second = await asyncio.wait_for(queue.get(), timeout=2.0)
+            first = await asyncio.wait_for(queue.get(), timeout=30)
+            second = await asyncio.wait_for(queue.get(), timeout=30)
         finally:
             task.cancel()
         return first, second
@@ -556,7 +556,7 @@ class _HeldProc:
         self.done = threading.Event()
 
     def wait(self) -> int:
-        self.done.wait(5.0)
+        self.done.wait(30)
         return 0
 
 

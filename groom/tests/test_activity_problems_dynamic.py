@@ -57,7 +57,7 @@ def _leave(page, context) -> None:
 
 def _on(page) -> None:
     page.locator(CHIP).click()
-    page.wait_for_selector(f'{CHIP}[aria-pressed="true"]', timeout=5000)
+    page.wait_for_selector(f'{CHIP}[aria-pressed="true"]', timeout=30000)
 
 
 def _keys(page) -> list[str]:

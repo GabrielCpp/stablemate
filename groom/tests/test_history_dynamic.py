@@ -59,14 +59,14 @@ def _open_history(live, handler=None):
     if handler is not None:
         page.route("**/api/history", handler)
     page.goto(live.url(), wait_until="load")
-    page.wait_for_selector("#runs-list .row", timeout=15000)
+    page.wait_for_selector("#runs-list .row", timeout=30000)
     page.click('.act-btn[data-mode="history"]')
     return page
 
 
 def _history_page(live):
     page = _open_history(live)
-    page.wait_for_selector("#history table.ht, #history .empty-big", timeout=10000)
+    page.wait_for_selector("#history table.ht, #history .empty-big", timeout=30000)
     return page
 
 
@@ -210,7 +210,7 @@ def test_an_ended_run_with_no_summary_reads_reading_its_summary_stays_out_of_the
         marker = page.evaluate("window.__marker = 'same page'")
         history.compute("hist-a", now)
         groom_live.bump_threadsafe("history")
-        page.wait_for_selector("#history tbody tr td .chip", timeout=15000)
+        page.wait_for_selector("#history tbody tr td .chip", timeout=30000)
         filled = _table(page, TABLE)[0]
         after = _totals(page)
         same = page.evaluate("window.__marker")
@@ -235,12 +235,12 @@ def test_the_pane_shows_a_reading_state_that_clears_when_the_table_appears():
     with _history(_row("hist-a", 1)):
         page = _open_history(live, lambda route: held.append(route))
         try:
-            page.wait_for_selector("#history .loading", timeout=10000)
+            page.wait_for_selector("#history .loading", timeout=30000)
             state = page.locator("#history .loading")
             text = state.inner_text()
             role, busy = state.get_attribute("role"), state.get_attribute("aria-busy")
             held[0].continue_()
-            page.wait_for_selector("#history table.ht", timeout=10000)
+            page.wait_for_selector("#history table.ht", timeout=30000)
             remaining = page.locator("#history .loading").count()
         finally:
             page.close()
@@ -269,11 +269,11 @@ def test_a_failed_read_says_history_could_not_be_read_offers_a_retry_and_a_retry
     with _history(_row("hist-a", 1)):
         page = _open_history(live, answer)
         try:
-            page.wait_for_selector("#history .side-state", timeout=10000)
+            page.wait_for_selector("#history .side-state", timeout=30000)
             message = page.locator("#history .side-state").inner_text()
             answers["fail"] = False
             page.get_by_role("button", name="Retry now").click()
-            page.wait_for_selector("#history table.ht", timeout=10000)
+            page.wait_for_selector("#history table.ht", timeout=30000)
             page.click('.act-btn[data-mode="runs"]')
             runs_visible = page.locator("#runs-pane").is_visible()
         finally:
@@ -356,7 +356,7 @@ def test_the_history_pane_has_no_accessibility_violations():
     with _history(*rows):
         page = _open_history(live)
         try:
-            page.wait_for_selector("#history table.ht", timeout=10000)
+            page.wait_for_selector("#history table.ht", timeout=30000)
             page.add_script_tag(path=str(Path(__file__).resolve().parent / "vendor" / "axe.min.js"))
             violations = _scan(page)
         finally:

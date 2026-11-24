@@ -25,7 +25,7 @@ def _enqueue(live, queue: str, plan: str) -> dict:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=10) as reply:
+    with urllib.request.urlopen(request, timeout=30) as reply:
         return json.loads(reply.read())
 
 

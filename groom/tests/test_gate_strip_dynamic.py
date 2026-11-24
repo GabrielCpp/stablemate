@@ -66,7 +66,7 @@ def _post(live, route: str, body: dict) -> None:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(request, timeout=10) as reply:
+    with urllib.request.urlopen(request, timeout=30) as reply:
         assert reply.status in (200, 201)
 
 
@@ -124,7 +124,7 @@ def _show_overview(page) -> None:
     page.wait_for_function(
         "() => { const el = document.querySelector('#detail-panel > .ov');"
         " return !!el && el.scrollHeight - el.clientHeight > 250 && !!document.querySelector('#detail-panel table.tt tbody tr:nth-child(3)'); }",
-        timeout=15000,
+        timeout=30000,
     )
 
 

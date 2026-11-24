@@ -61,14 +61,14 @@ def _archived(*runs: str, summarized: bool = True) -> Iterator[float]:
 
 def _everything(live, handler=None):
     page = _open_history(live, handler)
-    page.wait_for_selector("#history table.ht, #history .empty-big", timeout=10000)
+    page.wait_for_selector("#history table.ht, #history .empty-big", timeout=30000)
     _choose(page, "Range", EVERYTHING)
     return page
 
 
 def _archive_page(live, run: str):
     page = _everything(live)
-    page.wait_for_selector(f"#history tr.hrow:has-text('{run}')", timeout=10000)
+    page.wait_for_selector(f"#history tr.hrow:has-text('{run}')", timeout=30000)
     return page
 
 
@@ -88,7 +88,7 @@ def test_the_range_filter_offers_everything_archives_included_and_it_is_operable
             box.focus()
             page.keyboard.press("ArrowDown")
             page.keyboard.press("ArrowDown")
-            page.wait_for_selector("#history tr.hrow:has-text('arch-a')", timeout=10000)
+            page.wait_for_selector("#history tr.hrow:has-text('arch-a')", timeout=30000)
             chosen = box.evaluate("(el) => el.options[el.selectedIndex].text")
         finally:
             page.close()
@@ -122,7 +122,7 @@ def test_an_archived_run_in_the_narrowed_list_wears_the_archived_chip_on_its_fir
         page = _archive_page(live, "arch-a")
         try:
             _open_archive(page, "arch-a")
-            page.wait_for_selector("#history .row .line1 .chip", timeout=10000)
+            page.wait_for_selector("#history .row .line1 .chip", timeout=30000)
             chip = page.locator("#history .row .line1 .chip").inner_text().lower()
         finally:
             page.close()
@@ -140,7 +140,7 @@ def test_an_older_archive_reads_its_summary_while_the_table_says_so_and_the_row_
             totals_before = _totals(page)
             history.compute_archive("arch-a")
             groom_live.bump_threadsafe("history")
-            page.wait_for_function("() => !document.querySelector('#history tr.hrow').innerText.includes('reading its summary')", timeout=15000)
+            page.wait_for_function("() => !document.querySelector('#history tr.hrow').innerText.includes('reading its summary')", timeout=30000)
             after = _table(page, TABLE)[0]
             totals_after = " ".join(_totals(page))
         finally:
@@ -179,7 +179,7 @@ def test_an_unreadable_summary_shows_the_row_with_no_figures_says_so_and_retry_n
             text = row.inner_text()
             totals = " ".join(_totals(page))
             row.get_by_role("button", name=re.compile("^Retry")).click()
-            page.wait_for_function("() => document.querySelector('#history tr.hrow').innerText.includes('reading its summary')", timeout=15000)
+            page.wait_for_function("() => document.querySelector('#history tr.hrow').innerText.includes('reading its summary')", timeout=30000)
             stored = history.stored("arch-a")
             state = stored["state"] if stored else None
         finally:
@@ -198,11 +198,11 @@ def test_the_first_open_of_an_archive_says_it_is_reading_then_shows_the_overview
         page.route("**/api/archive/**", lambda route: held.append(route))
         try:
             _open_archive(page, "arch-a")
-            page.wait_for_selector(f"{DETAIL} .loading", timeout=10000)
+            page.wait_for_selector(f"{DETAIL} .loading", timeout=30000)
             reading = page.locator(f"{DETAIL} .loading").inner_text().strip()
             problems_during = page.locator(f"{DETAIL} button.problems-link, {DETAIL} [data-problems]").count()
             held[0].continue_()
-            page.wait_for_selector(f"{DETAIL} .ov", timeout=15000)
+            page.wait_for_selector(f"{DETAIL} .ov", timeout=30000)
             tabs = page.locator(f"{DETAIL} [role=tab]").all_inner_texts()
             head = page.locator(f"{DETAIL} .detail-head").inner_text().lower()
             attention = page.locator(f"{DETAIL} #detail-attention-tile").inner_text()
@@ -260,7 +260,7 @@ def test_an_archive_whose_files_are_gone_keeps_its_row_and_shows_the_stored_tile
         try:
             rows = page.locator("#history tr.hrow").count()
             _open_archive(page, "arch-a")
-            page.wait_for_selector(f"{DETAIL} .side-state", timeout=15000)
+            page.wait_for_selector(f"{DETAIL} .side-state", timeout=30000)
             state = page.locator(f"{DETAIL} .side-state").inner_text()
             tiles = page.locator(f"{DETAIL} .kpis").inner_text().lower()
             facts = page.locator(f"{DETAIL} .pair").inner_text().lower()
@@ -285,7 +285,7 @@ def test_an_archive_that_cannot_be_opened_says_so_in_the_detail_and_a_retry_show
         try:
             _open_archive(page, "arch-a")
             text, rows = _read_the_failure_and_retry(page, answers)
-            page.wait_for_selector(f"{DETAIL} .ov", timeout=15000)
+            page.wait_for_selector(f"{DETAIL} .ov", timeout=30000)
         finally:
             page.close()
     assert "This archive could not be read" in text
@@ -302,7 +302,7 @@ def test_a_live_ended_run_still_shows_its_overview_and_activity_tabs_when_everyt
         page = _everything(live)
         try:
             page.locator("#history tr.hrow", has_text="hist-a").first.click()
-            page.wait_for_selector(f"{DETAIL} .ov", timeout=15000)
+            page.wait_for_selector(f"{DETAIL} .ov", timeout=30000)
             tabs = [tab.split()[0] for tab in page.locator(f"{DETAIL} [role=tab]").all_inner_texts()]
             chips = page.locator("#history tr.hrow .who .chip").count()
         finally:
@@ -324,11 +324,11 @@ def test_the_archive_surfaces_pass_an_axe_scan() -> None:
             page.wait_for_selector(f"{DETAIL} .ov", timeout=30000)
             overview = _scan(page)
             page.locator("#history .row", has_text="arch-b").click()
-            page.wait_for_selector(f"{DETAIL} .side-state", timeout=15000)
+            page.wait_for_selector(f"{DETAIL} .side-state", timeout=30000)
             gone = _scan(page)
             page.route("**/api/archive/**", lambda route: route.fulfill(status=500, body="no"))
             page.locator("#history .row", has_text="arch-a").click()
-            page.wait_for_selector(f"{DETAIL} .retry-overview", timeout=15000)
+            page.wait_for_selector(f"{DETAIL} .retry-overview", timeout=30000)
             failed = _scan(page)
         finally:
             page.close()
@@ -354,7 +354,7 @@ def test_a_long_run_id_and_repo_label_keep_the_archived_row_inside_the_table_and
             wide = page.evaluate("document.documentElement.scrollWidth > document.documentElement.clientWidth")
             chip = page.locator("#history tr.hrow .who .chip").bounding_box()
             _open_archive(page, LONG_RUN[:12])
-            page.wait_for_selector("#history .row .line1 .chip", timeout=10000)
+            page.wait_for_selector("#history .row .line1 .chip", timeout=30000)
             box = page.locator("#history .row").first.evaluate("(el) => [el.scrollWidth, el.clientWidth]")
         finally:
             page.close()
@@ -372,14 +372,14 @@ def test_a_slow_answer_for_the_old_range_does_not_replace_the_list_of_the_range_
     with _archived("arch-a"):
         page = _everything(live)
         try:
-            page.wait_for_selector("#history tr.hrow:has-text('arch-a')", timeout=10000)
+            page.wait_for_selector("#history tr.hrow:has-text('arch-a')", timeout=30000)
             page.route("**/api/history", lambda route: held.append(route))
             _choose(page, "Range", "Last 30 days")
             page.wait_for_function("() => true")
             while not held:
                 page.wait_for_timeout(50)
             _choose(page, "Range", EVERYTHING)
-            page.wait_for_selector("#history tr.hrow:has-text('arch-a')", timeout=10000)
+            page.wait_for_selector("#history tr.hrow:has-text('arch-a')", timeout=30000)
             held[0].continue_()
             page.wait_for_timeout(800)
             shown = page.locator("#history tr.hrow:has-text('arch-a')").count()
@@ -397,7 +397,7 @@ def test_an_archive_that_gets_its_row_later_appears_in_the_table_without_a_reloa
             page.wait_for_timeout(500)
             history.discover_archives()
             groom_live.bump_threadsafe("history")
-            page.wait_for_selector("#history tr.hrow:has-text('arch-a')", timeout=15000)
+            page.wait_for_selector("#history tr.hrow:has-text('arch-a')", timeout=30000)
             rows = page.locator("#history tr.hrow").count()
         finally:
             page.close()
@@ -415,7 +415,7 @@ def test_pressing_enter_on_retry_now_asks_again_and_does_not_open_the_run() -> N
         try:
             page.get_by_role("button", name=re.compile("^Retry")).focus()
             page.keyboard.press("Enter")
-            page.wait_for_function("() => document.querySelector('#history tr.hrow').innerText.includes('reading its summary')", timeout=15000)
+            page.wait_for_function("() => document.querySelector('#history tr.hrow').innerText.includes('reading its summary')", timeout=30000)
             opened = page.locator(f"{DETAIL} .detail-head").count()
             selected = page.locator("#history .selected, #history [aria-current=true]").count()
         finally:

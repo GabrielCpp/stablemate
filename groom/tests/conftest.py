@@ -29,6 +29,16 @@ def _logging_handlers_do_not_outlive_the_test() -> Iterator[None]:
             logger.handlers[:] = saved.get(logger, [])
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _playwright_assertions_wait_as_a_safety_net() -> None:
+    """Size Playwright's assertion deadline for a hung page, not a quiet machine."""
+    try:
+        from playwright.sync_api import expect
+    except ImportError:
+        return
+    expect.set_options(timeout=30_000)
+
+
 TOOL_CACHE = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")
 
 

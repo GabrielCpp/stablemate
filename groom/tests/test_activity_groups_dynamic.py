@@ -298,7 +298,7 @@ def test_a_heading_adds_up_to_the_overview_figures_for_its_work_item(tmp_path: P
         heading = _heads(page, "tl-group").nth(1).inner_text()
         page.get_by_role("tab", name="Overview").click()
         page.get_by_role("button", name="By work item").click()
-        page.wait_for_selector("table[aria-label='Time and cost per work item']", timeout=10000)
+        page.wait_for_selector("table[aria-label='Time and cost per work item']", timeout=30000)
         row = page.locator("table[aria-label='Time and cost per work item'] tbody tr", has_text="reset").first.inner_text()
         assert "$3.00" in heading and "$3.00" in row
         assert "1m" in heading and "1m 10s" in row

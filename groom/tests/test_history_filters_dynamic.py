@@ -44,7 +44,7 @@ def _choose(page, name: str, option: str) -> None:
 def _api_requests_after_the_table(page) -> list[str]:
     asked: list[str] = []
     page.on("request", lambda request: asked.append(request.url) if "/api/" in request.url else None)
-    page.wait_for_selector("#history table.ht", timeout=10000)
+    page.wait_for_selector("#history table.ht", timeout=30000)
     asked.clear()
     return asked
 
@@ -59,7 +59,7 @@ def _picked(page, name: str) -> str:
 
 def _narrow(page, run: str) -> None:
     page.locator("#history tr.hrow", has_text=run).click()
-    page.wait_for_selector(f"{DETAIL} .dtabs", timeout=15000)
+    page.wait_for_selector(f"{DETAIL} .dtabs", timeout=30000)
 
 
 def test_the_workflow_and_repo_filters_offer_the_values_in_the_list_each_with_an_all_choice():
@@ -220,7 +220,7 @@ def test_the_narrowed_list_says_so_when_the_text_filter_leaves_it_empty_and_the_
     with _history(*_rows()):
         page = _opened(live, "hist-a")
         try:
-            page.wait_for_selector(f"{DETAIL} .dtabs", timeout=15000)
+            page.wait_for_selector(f"{DETAIL} .dtabs", timeout=30000)
             page.get_by_role("searchbox", name="Filter history").fill("zzz")
             message = page.locator(EMPTY).inner_text()
             rows = page.locator(NARROW).count()
@@ -268,7 +268,7 @@ def test_leaving_history_for_another_tab_and_coming_back_keeps_the_filters_and_t
             _narrow(page, "hist-c")
             page.click('.act-btn[data-mode="attend"]')
             page.click('.act-btn[data-mode="history"]')
-            page.wait_for_selector(f"{NARROW}.selected", timeout=10000)
+            page.wait_for_selector(f"{NARROW}.selected", timeout=30000)
             rows = _narrowed(page)
             selected = page.locator(f"{NARROW}.selected").get_attribute("data-run")
             scope = page.locator(f"{BAR} .scope").inner_text()
@@ -359,9 +359,9 @@ def test_j_k_and_e_stay_inert_while_a_filter_holds_focus():
     with _ended(hist_b={}):
         page = _opened(live, "hist-a")
         try:
-            page.wait_for_selector(f"{DETAIL} .dtabs", timeout=15000)
+            page.wait_for_selector(f"{DETAIL} .dtabs", timeout=30000)
             page.get_by_role("tab", name=re.compile("^Activity")).click()
-            page.wait_for_selector(f"{DETAIL} .tl button", timeout=15000)
+            page.wait_for_selector(f"{DETAIL} .tl button", timeout=30000)
             lit = f"{DETAIL} .tl button[aria-current=true]"
             before = page.locator(lit).evaluate_all("(rows) => rows.map((r) => r.dataset.entry || r.dataset.slug)")
             page.get_by_role("searchbox", name="Filter history").focus()
@@ -396,7 +396,7 @@ def test_the_filtered_history_has_no_accessibility_violations():
     with _ended(hist_b={}):
         page = _opened(live, "hist-a")
         try:
-            page.wait_for_selector(f"{DETAIL} .ov", timeout=15000)
+            page.wait_for_selector(f"{DETAIL} .ov", timeout=30000)
             page.add_script_tag(path=str(AXE))
             page.get_by_role("searchbox", name="Filter history").fill("hist")
             narrow = _scan(page)

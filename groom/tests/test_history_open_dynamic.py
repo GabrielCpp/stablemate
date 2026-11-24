@@ -51,17 +51,17 @@ def _ended(**plain: dict) -> Iterator[float]:
 
 def _opened(live, run: str = "hist-a", handler=None):
     page = _open_history(live, handler)
-    page.wait_for_selector("#history table.ht", timeout=10000)
+    page.wait_for_selector("#history table.ht", timeout=30000)
     page.locator("#history tr.hrow", has_text=run).first.click()
     return page
 
 
 def _ready(page) -> None:
-    page.wait_for_selector(f"{DETAIL} .ov", timeout=15000)
+    page.wait_for_selector(f"{DETAIL} .ov", timeout=30000)
 
 
 def _read_the_failure_and_retry(page, answers: dict) -> tuple[str, int]:
-    page.wait_for_selector(f"{DETAIL} .retry-overview", timeout=10000)
+    page.wait_for_selector(f"{DETAIL} .retry-overview", timeout=30000)
     text = page.locator(f"{DETAIL} [role=alert]").inner_text()
     rows = page.locator("#history .row").count()
     answers["fail"] = False
@@ -203,7 +203,7 @@ def test_the_activity_tab_opens_the_timeline_with_finished_items_folded_no_follo
         try:
             _ready(page)
             page.get_by_role("tab", name=re.compile("^Activity")).click()
-            page.wait_for_selector(f"{DETAIL} .tl button", timeout=15000)
+            page.wait_for_selector(f"{DETAIL} .tl button", timeout=30000)
             items = page.locator(f"{DETAIL} .tl [aria-expanded]").evaluate_all("(rows) => rows.map((r) => r.getAttribute('aria-expanded'))")
             follow = page.locator(f"{DETAIL} [data-follow], {DETAIL} .follow, {DETAIL} .newpill, {DETAIL} .livepill").count()
             body = page.locator(DETAIL).inner_text()
@@ -223,7 +223,7 @@ def test_an_answered_gate_reads_in_activity_only_and_the_detail_has_no_answer_bo
             _ready(page)
             before = page.locator(f"{DETAIL} textarea, {DETAIL} .gate-strip, {DETAIL} form").count()
             page.get_by_role("tab", name=re.compile("^Activity")).click()
-            page.wait_for_selector(f"{DETAIL} .tl button", timeout=15000)
+            page.wait_for_selector(f"{DETAIL} .tl button", timeout=30000)
             closed = page.locator(f"{DETAIL} .tl button[aria-expanded=false]")
             for _ in range(30):
                 if not closed.count():
@@ -279,9 +279,9 @@ def test_while_a_run_is_read_the_detail_shows_a_reading_state_that_clears_when_t
         page = _open_history(live)
         page.route("**/overview", lambda route: held.append(route))
         try:
-            page.wait_for_selector("#history table.ht", timeout=10000)
+            page.wait_for_selector("#history table.ht", timeout=30000)
             page.locator("#history tr.hrow", has_text="hist-a").click()
-            page.wait_for_selector(f"{DETAIL} .loading", timeout=10000)
+            page.wait_for_selector(f"{DETAIL} .loading", timeout=30000)
             text = page.locator(f"{DETAIL} .loading").inner_text()
             role = page.locator(f"{DETAIL} .loading").get_attribute("role")
             held[0].continue_()
@@ -303,7 +303,7 @@ def test_a_failed_read_says_the_run_figures_could_not_be_read_keeps_the_list_and
         page = _open_history(live)
         page.route("**/overview", answer)
         try:
-            page.wait_for_selector("#history table.ht", timeout=10000)
+            page.wait_for_selector("#history table.ht", timeout=30000)
             page.locator("#history tr.hrow", has_text="hist-a").click()
             text, rows = _read_the_failure_and_retry(page, answers)
             _ready(page)
@@ -330,7 +330,7 @@ def test_j_and_k_open_the_next_and_previous_run_in_history_and_move_the_timeline
             page.wait_for_function("document.querySelector('#history .row.selected').dataset.run === 'hist-a'")
             after_k = page.locator("#history .row.selected").get_attribute("data-run")
             page.get_by_role("tab", name=re.compile("^Activity")).click()
-            page.wait_for_selector(f"{DETAIL} .tl button", timeout=15000)
+            page.wait_for_selector(f"{DETAIL} .tl button", timeout=30000)
             closed = page.locator(f"{DETAIL} .tl button[aria-expanded=false]")
             for _ in range(30):
                 if not closed.count():
@@ -355,7 +355,7 @@ def test_every_new_control_has_a_role_an_accessible_name_and_keyboard_operation(
     with _history(_row("hist-a", 1), _row("hist-b", 2)):
         page = _open_history(live)
         try:
-            page.wait_for_selector("#history table.ht", timeout=10000)
+            page.wait_for_selector("#history table.ht", timeout=30000)
             page.locator("#history tr.hrow", has_text="hist-b").focus()
             page.keyboard.press("Enter")
             page.wait_for_selector("#history .row.selected")
@@ -391,7 +391,7 @@ def test_the_opened_history_has_no_accessibility_violations():
             page.add_script_tag(path=str(AXE))
             overview = _scan(page)
             page.get_by_role("tab", name=re.compile("^Activity")).click()
-            page.wait_for_selector(f"{DETAIL} .tl button", timeout=15000)
+            page.wait_for_selector(f"{DETAIL} .tl button", timeout=30000)
             activity = _scan(page)
         finally:
             page.close()
@@ -487,7 +487,7 @@ def test_the_activity_filter_bar_labels_the_problems_pill_only_and_the_others_al
         try:
             _ready(page)
             page.get_by_role("tab", name=re.compile("^Activity")).click()
-            page.wait_for_selector(f"{DETAIL} .feedbar", timeout=15000)
+            page.wait_for_selector(f"{DETAIL} .feedbar", timeout=30000)
             labels = page.locator(f"{DETAIL} .feedbar .flabel").all_inner_texts()
             order = page.locator(f"{DETAIL} .feedbar .flabel, {DETAIL} .feedbar .fchip.prob").evaluate_all("(els) => els.map((e) => e.className.includes('prob') ? 'pill' : e.textContent)")
         finally:
@@ -530,8 +530,8 @@ def test_the_node_name_in_the_turn_head_stays_on_one_line_and_the_work_item_name
         try:
             _ready(page)
             page.get_by_role("tab", name=re.compile("^Activity")).click()
-            page.wait_for_selector(f"{DETAIL} .tl button", timeout=15000)
-            page.wait_for_selector(f"{DETAIL} .rd-head .rd-node", timeout=15000)
+            page.wait_for_selector(f"{DETAIL} .tl button", timeout=30000)
+            page.wait_for_selector(f"{DETAIL} .rd-head .rd-node", timeout=30000)
             node = page.locator(f"{DETAIL} .rd-head .rd-node").first.evaluate("(el) => el.getClientRects().length + ':' + Math.round(el.getBoundingClientRect().height)")
             line = page.locator(f"{DETAIL} .rd-head .l1").first.evaluate("(el) => parseFloat(getComputedStyle(el).lineHeight) || 16")
         finally:

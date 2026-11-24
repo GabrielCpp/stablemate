@@ -53,13 +53,13 @@ def _open_items(page) -> None:
 
 def _raw(page) -> None:
     _chip(page, "raw").click()
-    page.wait_for_selector(LINES, timeout=10000)
+    page.wait_for_selector(LINES, timeout=30000)
 
 
 def _arrive(live, node: str, body: str) -> None:
     payload = _logs_request([{"body": body, "ts": time.time(), "attrs": {"node": node}}], {"run_id": _CURRENT[0], "workflow": "coder"})
     http = urllib.request.Request(live.url() + "v1/logs", data=payload, headers={"Content-Type": "application/x-protobuf"})
-    with urllib.request.urlopen(http, timeout=10) as reply:
+    with urllib.request.urlopen(http, timeout=30) as reply:
         assert reply.status == 200
 
 
@@ -279,7 +279,7 @@ def test_while_following_new_records_appear_at_the_top_and_paused_holds_them(tmp
             follow = page.locator("#detail-panel .feedbar .follow")
             expect(follow).to_have_attribute("aria-pressed", "true")
             _arrive(live, "prepare_fixtures", "fresh while following")
-            expect(page.locator(LINES).first).to_contain_text("fresh while following", timeout=12000)
+            expect(page.locator(LINES).first).to_contain_text("fresh while following", timeout=30000)
             follow.click()
             expect(follow).to_have_attribute("aria-pressed", "false")
             held = page.locator(LINES).count()
@@ -288,7 +288,7 @@ def test_while_following_new_records_appear_at_the_top_and_paused_holds_them(tmp
             assert page.locator(LINES).count() == held
             assert "arrived while paused" not in " ".join(page.locator(LINES).all_inner_texts())
             follow.click()
-            expect(page.locator(LINES).first).to_contain_text("arrived while paused", timeout=12000)
+            expect(page.locator(LINES).first).to_contain_text("arrived while paused", timeout=30000)
         finally:
             page.close()
 
@@ -333,7 +333,7 @@ def test_raw_shows_a_reading_state_while_the_records_load(tmp_path):
             expect(reading).to_contain_text("Reading this run's records")
             expect(reading).to_have_attribute("aria-busy", "true")
             held[0].continue_()
-            page.wait_for_selector(LINES, timeout=10000)
+            page.wait_for_selector(LINES, timeout=30000)
         finally:
             page.close()
 
@@ -355,7 +355,7 @@ def test_a_failed_read_says_so_keeps_the_timeline_and_a_retry_replaces_the_messa
             expect(alert).to_contain_text("The timeline still works.")
             page.unroute("**/api/run/*/records*")
             page.locator("#detail-panel .retry-raw").click()
-            page.wait_for_selector(LINES, timeout=10000)
+            page.wait_for_selector(LINES, timeout=30000)
             expect(page.locator("#detail-panel [role=alert]")).to_have_count(0)
             _chip(page, "raw").click()
             expect(page.locator("#detail-panel .tl button.ev").first).to_be_visible()
@@ -391,7 +391,7 @@ def test_the_tabs_are_overview_activity_files_diff_and_a_stale_saved_trail_view_
         try:
             page.evaluate("() => { localStorage.setItem('groom.trailView', 'telemetry'); localStorage.setItem('groom.detailTab', 'details') }")
             page.reload(wait_until="load")
-            page.wait_for_selector("#runs-list .row", timeout=15000)
+            page.wait_for_selector("#runs-list .row", timeout=30000)
             _pick(page, name)
             names = [re.sub(r"\s.*", "", text) for text in page.locator("#detail .dtabs [role=tab]").all_inner_texts()]
             assert names[:2] == ["Overview", "Activity"]
@@ -475,7 +475,7 @@ def test_steps_info_logs_raw_and_metric_samples_are_named_pressed_and_work_from_
         raw = _chip(page, "raw")
         raw.focus()
         page.keyboard.press("Enter")
-        page.wait_for_selector(LINES, timeout=10000)
+        page.wait_for_selector(LINES, timeout=30000)
         metrics = _chip(page, "metrics")
         assert metrics.inner_text().startswith("Metric samples")
         metrics.focus()
