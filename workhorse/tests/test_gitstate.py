@@ -180,13 +180,12 @@ def test_head_is_cached_until_refreshed():
             gitstate.unbind()
 
 
-def test_a_git_that_cannot_answer_costs_a_field_not_an_exception():
-    original = gitstate.TIMEOUT_S
-    try:
-        gitstate.TIMEOUT_S = 0.001
-        assert gitstate._git(".", "log", "--all") == ""
-    finally:
-        gitstate.TIMEOUT_S = original
+def test_a_git_that_cannot_answer_costs_a_field_not_an_exception(monkeypatch):
+    def timed_out(argv, **options):
+        raise subprocess.TimeoutExpired(argv, options["timeout"])
+
+    monkeypatch.setattr(gitstate.subprocess, "run", timed_out)
+    assert gitstate._git(".", "log", "--all") == ""
 
 
 class _Head:
