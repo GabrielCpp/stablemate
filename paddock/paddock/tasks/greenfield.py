@@ -87,7 +87,6 @@ class Fixture:
 
     milestone: str
     decision_records: str = ""
-    decision_records_path: str = "docs/decisions"
     surfaces: tuple[Surface, ...] = ()
     packs: str = ""
     docs_scaffold: str = ""
@@ -329,14 +328,23 @@ def seed_milestone(run: Run, fixture: Fixture) -> None:
         keep_book_in_repo(home)
 
 
+def product_pages_folder(run: Run) -> Path:
+    """Where the round's product pages live: `product/` of a book kept in the repo, else the product's folder in the artifacts folder."""
+    home = home_of(run)
+    folder = books.product_folder(home) if books.book_in_repo(home) else books.product_home(home, artifacts_of(run))
+    if folder is None:
+        raise TrialError(f"no product for {home} — the round has nowhere to keep its product pages")
+    return folder
+
+
 def seed_decision_records(run: Run, fixture: Fixture) -> None:
-    """Copy the fixture's standing decision records into the produced repo."""
+    """Copy the fixture's decision records into the round's product folder as product pages."""
     if not fixture.decision_records:
         return
     source = run.benchmark.root / fixture.decision_records
     if not source.is_dir():
         raise TrialError(f"no decision records at {source} — is the benchmark folder the one that holds the milestone?")
-    destination = home_of(run) / fixture.decision_records_path
+    destination = product_pages_folder(run)
     destination.mkdir(parents=True, exist_ok=True)
     for record in sorted(source.glob("*.md")):
         (destination / record.name).write_text(record.read_text(encoding="utf-8"), encoding="utf-8")

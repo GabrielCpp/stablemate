@@ -12,7 +12,7 @@ from fakes import DOCS, PRODUCTS, fake_run, folder_run, init_repo
 from ostler.milestones import BOOKS_DIR
 from stablemate_core import config as core_config
 from paddock.runner import CommandResult, RoundInterrupted, Run
-from paddock.tasks import greenfield
+from paddock.tasks import greenfield, replay
 from paddock.tasks.stablemate import TrialError, uv_run
 from smoke import git
 
@@ -52,7 +52,7 @@ def test_a_missing_milestone_is_named(tmp_path: Path) -> None:
         greenfield.seed_milestone(fake_run(tmp_path), FIXTURE)
 
 
-def test_decision_records_are_copied_into_the_produced_repo(tmp_path: Path) -> None:
+def test_decision_records_land_in_the_product_folder_and_no_docs_decisions_is_made(tmp_path: Path) -> None:
     run = fake_run(tmp_path)
     records = run.benchmark.root / "records"
     records.mkdir(parents=True)
@@ -60,7 +60,27 @@ def test_decision_records_are_copied_into_the_produced_repo(tmp_path: Path) -> N
 
     greenfield.seed_decision_records(run, FIXTURE)
 
-    assert (run.stage / "docs" / "decisions" / "0001.md").read_text(encoding="utf-8") == "# one\n"
+    kept = list(greenfield.artifacts_of(run).glob("products/*/0001.md"))
+    assert [path.read_text(encoding="utf-8") for path in kept] == ["# one\n"]
+    assert not (run.stage / "docs" / "decisions").exists()
+    assert not (greenfield.artifacts_of(run) / "docs" / "decisions").exists()
+
+
+def test_a_book_kept_in_the_repo_takes_the_records_in_its_product_folder(tmp_path: Path) -> None:
+    run = fake_run(tmp_path)
+    records = run.benchmark.root / "records"
+    records.mkdir(parents=True)
+    (records / "0001.md").write_text("# one\n", encoding="utf-8")
+    replay.keep_book_in_repo(run.stage)
+
+    greenfield.seed_decision_records(run, FIXTURE)
+
+    assert (run.stage / "product" / "0001.md").read_text(encoding="utf-8") == "# one\n"
+    assert not (run.stage / "docs" / "decisions").exists()
+
+
+def test_a_fixture_has_no_decision_records_path() -> None:
+    assert not hasattr(FIXTURE, "decision_records_path")
 
 
 def test_missing_decision_records_are_named(tmp_path: Path) -> None:
@@ -131,7 +151,8 @@ def test_genesis_scaffolds_each_surface_in_its_member(tmp_path: Path, monkeypatc
     assert kept[0] == greenfield.produced_milestone(run, FOLDER_FIXTURE)
     assert not (home / "docs" / "milestones").exists()
     assert (home / BOOKS_DIR / PRODUCTS[1] / "web").is_dir()
-    assert (home / "docs" / "decisions" / "0001.md").is_file()
+    assert len(list(home.glob("products/*/0001.md"))) == 1
+    assert not (home / "docs" / "decisions").exists()
     assert not (run.stage / PRODUCTS[0] / "docs" / "milestones").exists()
 
 
