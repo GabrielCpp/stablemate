@@ -217,9 +217,17 @@ def test_the_first_open_of_an_archive_says_it_is_reading_then_shows_the_overview
     assert links == 1
 
 
-def test_a_later_open_of_an_archive_shows_no_reading_state_and_the_overview_comes_in_under_two_seconds() -> None:
+def _index_written(run: str) -> tuple[int, int]:
+    folder = archive.exact_dir(run)
+    assert folder is not None
+    written = (folder / archive.INDEX_FILE).stat()
+    return written.st_ino, written.st_mtime_ns
+
+
+def test_a_later_open_of_an_archive_shows_no_reading_state_and_reads_the_index_it_already_has() -> None:
     live = _live()
     assert live is not None, _UNAVAILABLE
+    held: list = []
     with _archived("arch-a"):
         first = _archive_page(live, "arch-a")
         try:
@@ -227,19 +235,20 @@ def test_a_later_open_of_an_archive_shows_no_reading_state_and_the_overview_come
             first.wait_for_selector(f"{DETAIL} .ov", timeout=30000)
         finally:
             first.close()
+        built = _index_written("arch-a")
         page = _archive_page(live, "arch-a")
+        page.route("**/api/archive/**", lambda route: held.append(route))
         try:
-            seen: list[str] = []
-            page.on("framenavigated", lambda frame: None)
-            began = time.perf_counter()
             _open_archive(page, "arch-a")
-            page.wait_for_selector(f"{DETAIL} .ov", timeout=10000)
-            took = time.perf_counter() - began
+            page.wait_for_selector(f"{DETAIL} .detail-empty[aria-busy=true]", timeout=30000)
             seen = page.locator(f"{DETAIL} .loading").all_inner_texts()
+            held[0].continue_()
+            page.wait_for_selector(f"{DETAIL} .ov", timeout=30000)
+            after = _index_written("arch-a")
         finally:
             page.close()
     assert seen == []
-    assert took < 2.0
+    assert after == built
 
 
 def test_an_archive_whose_files_are_gone_keeps_its_row_and_shows_the_stored_tiles_and_facts() -> None:

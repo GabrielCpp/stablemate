@@ -249,19 +249,34 @@ def test_a_backend_that_reports_no_cost_shows_an_estimate_and_no_cost() -> None:
     assert row["est_usd"] == costs["est_usd"]
 
 
-def test_the_list_reads_summaries_and_opens_in_under_two_seconds_with_the_store_full() -> None:
-    now = time.time()
-    rows = [(f"bulk-{index}", "coder", "acme", "main", now - index * 600) for index in range(3000)]
-    with _DB():
-        history._insert_pending(rows)
-        for index in range(0, 3000, 2):
+def _summaries(now: float, indexes: range) -> None:
+    history._insert_pending([(f"bulk-{index}", "coder", "acme", "main", now - index * 600) for index in indexes])
+    for index in indexes:
+        if index % 2 == 0:
             history._write({"run_id": f"bulk-{index}", "workflow": "coder", "state": "ready", "ending": "success", "ended_ts": now - index * 600, "last_ts": now - index * 600})
+
+
+def _listing_and_its_queries(now: float) -> tuple[dict, list[str]]:
+    queries: list[str] = []
+    reader = store.read_connection()
+    reader.set_trace_callback(queries.append)
+    try:
+        return history.listing(set(), now), queries
+    finally:
+        reader.set_trace_callback(None)
+
+
+def test_the_list_reads_summaries_and_runs_the_same_queries_with_the_store_full() -> None:
+    now = time.time()
+    with _DB():
+        _summaries(now, range(30))
+        few, queries_of_few = _listing_and_its_queries(now)
+        _summaries(now, range(30, 3000))
         with patch.object(store, "run_turn_spans", side_effect=AssertionError("the list read a run's records")):
-            began = time.perf_counter()
-            result = history.listing(set(), now)
-            took = time.perf_counter() - began
+            result, queries = _listing_and_its_queries(now)
+    assert len(few["runs"]) == 30
     assert len(result["runs"]) == 3000 - sum(1 for index in range(3000) if now - index * 600 < now - 30 * DAY)
-    assert took < 2.0
+    assert queries_of_few and queries == queries_of_few
 
 
 def test_the_listing_names_every_ending_once_in_the_order_the_ending_filter_offers_them() -> None:

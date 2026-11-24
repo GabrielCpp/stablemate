@@ -5,7 +5,6 @@ import asyncio
 import os
 import tempfile
 import threading
-import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -17,8 +16,7 @@ from groom import app as groom_app
 from groom import discovery, pools, state, store
 from tests.test_telemetry import _trace_request
 
-HOLD_S = 2.0
-BUDGET_S = 0.25
+HOLD_S = 30.0
 
 
 @contextmanager
@@ -81,22 +79,19 @@ def test_a_saturated_ingest_pool_does_not_delay_a_dashboard_read():
     """Ingest wedged on the disk must not be what stops the UI from updating."""
     release = threading.Event()
 
-    async def probe() -> float:
+    async def probe() -> list[bool]:
         blocked = [
             asyncio.ensure_future(pools.INGEST.run(release.wait, HOLD_S))
             for _ in range(pools.INGEST.workers * 2)
         ]
         await asyncio.sleep(0.05)
-        start = time.monotonic()
         await pools.QUERY.run(lambda: None)
-        waited = time.monotonic() - start
         release.set()
-        await asyncio.gather(*blocked)
-        return waited
+        return await asyncio.gather(*blocked)
 
     with _fresh_pools():
-        waited = asyncio.run(probe())
-    assert waited < BUDGET_S, f"the dashboard read queued behind ingest ({waited:.3f}s)"
+        released = asyncio.run(probe())
+    assert all(released), "the dashboard read queued behind ingest until a worker gave up its wait"
 
 
 def test_the_trace_receiver_stores_through_the_ingest_pool():

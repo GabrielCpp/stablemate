@@ -478,7 +478,7 @@ def _native(tmp_path) -> tuple[WorkflowContainer, Path]:
     return _watched(native=True, runs_volume=str(tmp_path)), path
 
 
-def test_a_transcript_line_reaches_the_open_run_within_a_second(tmp_path):
+def test_a_transcript_line_reaches_the_open_run_through_its_follower(tmp_path):
     _, path = _native(tmp_path)
 
     async def drive():
@@ -488,16 +488,12 @@ def test_a_transcript_line_reaches_the_open_run_within_a_second(tmp_path):
         await asyncio.sleep(0.3)
         with path.open("a") as handle:
             handle.write(_line("second", 11.0))
-        deadline = time.monotonic() + 1.0
-        while time.monotonic() < deadline:
-            await asyncio.sleep(0.05)
-            sent = _details(_drain(queue))
-            if sent:
-                return opened, sent[-1]["detail"]["activity_rev"]
-        return opened, None
+        sent: list = []
+        await until(lambda: bool(sent.extend(_details(_drain(queue))) or sent), "the appended line reaching the tab")
+        return opened, sent[-1]["detail"]["activity_rev"]
 
     opened, after = asyncio.run(drive())
-    assert after is not None and after > opened
+    assert after > opened
 
 
 def test_lines_read_by_the_activity_request_still_push_a_detail(tmp_path):

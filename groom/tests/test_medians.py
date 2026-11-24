@@ -4,7 +4,7 @@ import json
 import time
 
 import pytest
-from test_history import seed
+from test_history import _listing_and_its_queries, seed
 from test_history_dynamic import _row
 from test_run_clock import _DB
 
@@ -149,16 +149,18 @@ def test_a_run_still_alive_stays_out_of_the_median() -> None:
     assert listing["medians"]["coder"] == {"usd": 2.0, "runs": 5}
 
 
-def test_the_list_with_every_comparison_opens_in_under_two_seconds_and_reads_summaries_only() -> None:
+def test_the_list_with_every_comparison_reads_summaries_only_and_runs_the_same_queries_with_the_store_full() -> None:
     now = time.time()
     with _DB():
-        for index in range(3000):
+        for index in range(30):
             history._write(_row(f"bulk-{index}", index / 6, cost_usd=1.0 + index % 7))
-        began = time.process_time()
-        result = history.listing(set(), now)
-        took = time.process_time() - began
+        few, queries_of_few = _listing_and_its_queries(now)
+        for index in range(30, 3000):
+            history._write(_row(f"bulk-{index}", index / 6, cost_usd=1.0 + index % 7))
+        result, queries = _listing_and_its_queries(now)
+    assert len(result["runs"]) > len(few["runs"]) > 0
     assert all(item["vs_pct"] is not None for item in result["runs"])
-    assert took < 2.0
+    assert queries_of_few and queries == queries_of_few
 
 
 def test_an_ended_runs_overview_carries_its_comparison_and_a_run_that_has_not_ended_carries_none() -> None:

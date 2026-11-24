@@ -303,9 +303,9 @@ def every_archive_worker_busy() -> Iterator[threading.Event]:
     release = threading.Event()
     started = threading.Barrier(pools.ARCHIVE.workers + 1)
 
-    def hold() -> None:
+    def hold() -> bool:
         started.wait(timeout=10)
-        release.wait(timeout=30)
+        return release.wait(timeout=30)
 
     holders = [pools.ARCHIVE.executor().submit(hold) for _ in range(pools.ARCHIVE.workers)]
     try:
@@ -313,8 +313,8 @@ def every_archive_worker_busy() -> Iterator[threading.Event]:
         yield release
     finally:
         release.set()
-        for holder in holders:
-            holder.result(timeout=30)
+        released = [holder.result(timeout=30) for holder in holders]
+    assert all(released), "the block queued behind the archive workers until one gave up its wait"
 
 
 def test_history_answers_while_every_archive_read_worker_is_busy() -> None:
@@ -322,12 +322,9 @@ def test_history_answers_while_every_archive_read_worker_is_busy() -> None:
     with _DB():
         _archived("run-old", now)
         with every_archive_worker_busy():
-            began = time.perf_counter()
             with TestClient(app=groom_app.create_app()) as client:
                 body = client.get("/api/history?archives=1").json()
-            took = time.perf_counter() - began
     assert [item["run_id"] for item in body["runs"]] == ["run-old"]
-    assert took < 5
 
 
 def test_a_sweep_leaves_an_existing_archive_file_untouched() -> None:

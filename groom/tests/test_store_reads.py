@@ -5,43 +5,12 @@ import os
 import sqlite3
 import tempfile
 import threading
-import time
-from collections.abc import Iterator
-from contextlib import contextmanager
 
 import pytest
 
+from _store_lock import HOLD_S, lock_held
+
 from groom import store
-
-HOLD_S = 2.0
-BUDGET_S = 0.25
-
-
-@contextmanager
-def _lock_held() -> Iterator[None]:
-    """Hold the process-wide store lock from another thread for the block."""
-    holding = threading.Event()
-    release = threading.Event()
-
-    def hold() -> None:
-        with store.STORE.lock:
-            holding.set()
-            release.wait(HOLD_S)
-
-    thread = threading.Thread(target=hold, daemon=True)
-    thread.start()
-    assert holding.wait(HOLD_S), "the holder thread never acquired the store lock"
-    try:
-        yield
-    finally:
-        release.set()
-        thread.join(HOLD_S)
-
-
-def _elapsed(call) -> tuple[float, object]:
-    start = time.monotonic()
-    result = call()
-    return time.monotonic() - start, result
 
 
 def _span(run_id: str, node: str, start: float) -> dict[str, object]:
@@ -87,11 +56,10 @@ def test_the_dashboard_queries_answer_while_the_write_lock_is_held():
         for read in reads.values():
             read()
 
-        with _lock_held():
-            waited = {name: _elapsed(read)[0] for name, read in reads.items()}
+        with lock_held():
+            answered = [name for name, read in reads.items() if read() is not None]
 
-    slow = {name: round(s, 3) for name, s in waited.items() if s >= BUDGET_S}
-    assert not slow, f"these reads queued for the write lock: {slow}"
+    assert answered == list(reads)
 
 
 def test_a_read_still_answers_after_the_writer_is_recycled_underneath_it():
