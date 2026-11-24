@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 from pathlib import Path
 
 from check_ruff_staged import _git, refuse, staged_python
@@ -53,10 +54,18 @@ def member_roots(root: Path) -> list[str]:
     return found
 
 
+def configured_paths(scratch: Path, base: str | None) -> list[str]:
+    """The search paths the repository's own config names, which a config that extends it would replace."""
+    if base is None or not (scratch / base).is_file():
+        return []
+    table = tomllib.loads((scratch / base).read_text(encoding="utf-8"))
+    return [str(path) for path in table.get("tool", {}).get("basedpyright", {}).get("extraPaths", [])]
+
+
 def pyright_config(scratch: Path, roots: list[str], base: str | None) -> list[str]:
     if not roots:
         return ["-p", base] if base else []
-    settings: dict[str, object] = {"extraPaths": roots}
+    settings: dict[str, object] = {"extraPaths": [*configured_paths(scratch, base), *roots]}
     if base:
         settings["extends"] = base
     path = scratch / "pyrightconfig.json"

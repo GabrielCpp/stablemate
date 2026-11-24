@@ -104,3 +104,13 @@ def test_member_roots_reach_basedpyright_through_a_config_in_the_scratch_tree(tm
     assert (tmp_path / "pyrightconfig.json").read_text(encoding="utf-8") == (
         '{"extraPaths": ["lib", "pkgs/src"], "extends": "pyproject.toml"}'
     )
+
+
+def test_the_search_paths_the_repository_configures_stay_ahead_of_the_member_roots(tmp_path: Path) -> None:
+    _ = (tmp_path / "pyproject.toml").write_text('[tool.basedpyright]\nextraPaths = ["tools/harness"]\n', encoding="utf-8")
+
+    _ = _load_script().pyright_config(tmp_path, ["lib"], "pyproject.toml")
+
+    assert (tmp_path / "pyrightconfig.json").read_text(encoding="utf-8") == (
+        '{"extraPaths": ["tools/harness", "lib"], "extends": "pyproject.toml"}'
+    )
