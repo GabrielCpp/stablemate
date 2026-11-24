@@ -860,7 +860,7 @@ def _assert_one_clock(page, expected: int | None) -> None:
     while time.time() < deadline:
         time.sleep(0.25)
         later = _clock_readings(page, strip_cell)
-        if later["strip"] >= first + 2:
+        if later["strip"] >= first + 2 and len(set(later.values())) == 1:
             break
     assert len(set(later.values())) == 1 and later["strip"] >= first + 2, (first, later)
 
