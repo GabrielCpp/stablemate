@@ -5,6 +5,7 @@ import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 
+from _page_settle import settle
 from playwright.sync_api import expect
 from test_a11y_dynamic import (
     _UNAVAILABLE,
@@ -13,9 +14,26 @@ from test_a11y_dynamic import (
     teardown_module,  # noqa: F401
 )
 from test_history import refresh
-from test_history_dynamic import TABLE, _clear, _history, _history_page, _open_history, _row, _table, _totals
+from test_history_dynamic import (
+    TABLE,
+    _clear,
+    _history,
+    _history_page,
+    _open_history,
+    _row,
+    _table,
+    _totals,
+)
 from test_history_filters_dynamic import _api_requests_after_the_table, _choose
-from test_history_open_dynamic import AXE, DETAIL, LONG_REPO, LONG_RUN, _opened, _ready, _rich
+from test_history_open_dynamic import (
+    AXE,
+    DETAIL,
+    LONG_REPO,
+    LONG_RUN,
+    _opened,
+    _ready,
+    _rich,
+)
 
 from groom import history
 
@@ -113,7 +131,7 @@ def test_with_a_workflow_filter_the_totals_show_the_median_per_item_and_the_runs
             cell_title = page.locator("#history .h-sum span").last.get_attribute("title")
             _choose(page, "Workflow", "author")
             author_totals = _totals(page)
-            page.wait_for_timeout(300)
+            settle(page)
         finally:
             page.close()
     assert not [text for text in every if "median" in text]

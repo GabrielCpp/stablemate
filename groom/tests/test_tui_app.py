@@ -134,7 +134,7 @@ def test_an_answered_frame_for_another_run_leaves_the_box_alone():
             await pilot.press(*"sqlite")
             link.push({"type": "answered", "id": support.GLOBEX, "file_path": "context/gate.md"})
             link.push({"type": "answered", "id": support.ACME, "file_path": "other.md"})
-            await asyncio.sleep(0.2)
+            await support.reached(link, app)
             assert block.answer_box is not None
             assert block.answer_box.text == "sqlite"
 
@@ -251,7 +251,7 @@ def test_detail_for_a_run_that_is_not_open_is_ignored():
         async with _booted(link) as (app, pilot):
             await _open_blocked(app, pilot, link)
             link.push(support.detail_frame(support.GLOBEX))
-            await asyncio.sleep(0.2)
+            await support.reached(link, app)
             assert [b.file_path for b in _blocks(app)] == ["context/gate.md"]
 
     _run(scenario)

@@ -6,8 +6,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-from test_activity_step_gate_dynamic import _CURRENT, _stepped, _telemetry
-from test_activity_tab_dynamic import _open_activity, _pick
+from _page_settle import count_pushes, flush, pushes, settle, wait_for_push
 from test_a11y_dynamic import (
     _UNAVAILABLE,
     _live,
@@ -15,6 +14,8 @@ from test_a11y_dynamic import (
     _scan,
     teardown_module,  # noqa: F401
 )
+from test_activity_step_gate_dynamic import _CURRENT, _stepped, _telemetry
+from test_activity_tab_dynamic import _open_activity, _pick
 from test_telemetry import _logs_request
 
 from groom import state, store
@@ -124,7 +125,7 @@ def test_turning_info_logs_on_while_paused_does_not_count_them_as_arrivals(tmp_p
         expect(page.locator("#detail-panel .newpill button")).to_have_count(0)
         _chip(page, "logs").click()
         expect(page.locator('#detail-panel .tl button[data-entry^="log:"]').first).to_be_visible()
-        page.wait_for_timeout(500)
+        flush(page)
         expect(page.locator("#detail-panel .newpill button")).to_have_count(0)
 
     _drive(tmp_path, "raw-logs-paused", check, running=True)
@@ -272,6 +273,7 @@ def test_while_following_new_records_appear_at_the_top_and_paused_holds_them(tmp
     assert live is not None, _UNAVAILABLE
     with _stepped("raw-follow", tmp_path, running=True) as name:
         page = _open(live)
+        count_pushes(page)
         try:
             _pick(page, name)
             _open_activity(page)
@@ -283,8 +285,12 @@ def test_while_following_new_records_appear_at_the_top_and_paused_holds_them(tmp
             follow.click()
             expect(follow).to_have_attribute("aria-pressed", "false")
             held = page.locator(LINES).count()
+            page.clock.install()
+            sent = pushes(page)
             _arrive(live, "prepare_fixtures", "arrived while paused")
-            page.wait_for_timeout(4500)
+            wait_for_push(page, sent)
+            page.clock.run_for(4500)
+            settle(page)
             assert page.locator(LINES).count() == held
             assert "arrived while paused" not in " ".join(page.locator(LINES).all_inner_texts())
             follow.click()

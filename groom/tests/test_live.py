@@ -13,7 +13,7 @@ from unittest.mock import patch
 import pytest
 import _tui_support as support
 from _native_support import node_active_export
-from _settle import settled, until
+from _settle import settled, until, watch_started
 
 from groom import alerts, live, otlp, projection, sidecar_hub, state, store
 from groom import app as groom_app
@@ -73,7 +73,8 @@ def test_a_quiet_fleet_sends_no_frame():
         live.bind(asyncio.get_running_loop())
         queue = _tab()
         live.snapshot()
-        await asyncio.sleep(0.5)
+        live.mark_fleet()
+        await settled()
         return _drain(queue)
 
     assert asyncio.run(drive()) == []
@@ -106,7 +107,7 @@ def test_two_batches_inside_one_window_send_one_run_frame(dirs, monkeypatch):
         live.snapshot()
         await _ingest("run-a", dirs, node="deploy")
         await _ingest("run-a", dirs, node="verify")
-        await asyncio.sleep(0.5)
+        await settled()
         return _drain(queue)
 
     runs = [f for f in asyncio.run(drive()) if f["type"] == "run"]
@@ -181,8 +182,9 @@ def test_a_run_turns_silent_when_its_silence_passes_the_threshold(dirs):
         await _ingest("run-a", dirs)
         queue = _tab()
         live.snapshot()
-        await asyncio.sleep(1.2)
-        return _drain(queue)
+        frames: list[dict] = []
+        await until(lambda: bool(frames.extend(_drain(queue)) or any(f["type"] == "run" and f["run"]["live"] == "dead" for f in frames)), "the run turning silent")
+        return frames
 
     with patch.object(projection, "LIVE_AFTER_S", 0.2):
         frames = asyncio.run(drive())
@@ -373,7 +375,8 @@ def test_a_quiet_watched_run_gets_no_detail_after_the_first():
         queue = await _open()
         first = _drain(queue)
         live.snapshot()
-        await asyncio.sleep(0.5)
+        live.mark_run("run-w")
+        await settled()
         return first, _drain(queue)
 
     first, rest = asyncio.run(drive())
@@ -409,7 +412,7 @@ def test_two_log_batches_inside_one_window_send_one_detail(monkeypatch):
         live.snapshot()
         await _log("run-w", "one")
         await _log("run-w", "two")
-        await asyncio.sleep(0.6)
+        await settled()
         return _details(_drain(queue))
 
     sent = asyncio.run(drive())
@@ -482,18 +485,19 @@ def _native(tmp_path) -> tuple[WorkflowContainer, Path]:
 def test_a_transcript_line_reaches_the_open_run_through_its_follower(tmp_path):
     _, path = _native(tmp_path)
 
-    async def drive():
+    async def drive(watching: asyncio.Event):
         live.bind(asyncio.get_running_loop())
         queue = await _open()
         opened = _details(_drain(queue))[0]["detail"]["activity_rev"]
-        await asyncio.sleep(0.3)
+        await watching.wait()
         with path.open("a") as handle:
             handle.write(_line("second", 11.0))
         sent: list = []
         await until(lambda: bool(sent.extend(_details(_drain(queue))) or sent), "the appended line reaching the tab")
         return opened, sent[-1]["detail"]["activity_rev"]
 
-    opened, after = asyncio.run(drive())
+    with watch_started(groom_app) as watching:
+        opened, after = asyncio.run(drive(watching))
     assert after > opened
 
 

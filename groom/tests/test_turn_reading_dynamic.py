@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from _page_settle import flush
 from test_a11y_dynamic import (
     _UNAVAILABLE,
     _live,
@@ -268,7 +269,7 @@ def test_a_long_failed_output_scrolls_in_its_own_box_and_the_turn_around_it_stay
             body_scroll = _body(page).evaluate("el => el.scrollTop")
             box.hover()
             page.mouse.wheel(0, 120)
-            page.wait_for_timeout(300)
+            page.wait_for_function("(el) => el.scrollTop > 0", arg=box.element_handle())
             assert box.evaluate("el => el.scrollTop") > 0
             assert _body(page).evaluate("el => el.scrollTop") == body_scroll
             assert final.bounding_box() == before
@@ -384,7 +385,7 @@ def test_prompt_thinking_and_tool_output_render_as_text_and_no_script_runs(tmp_p
             expect(page.locator(".rd details.prompt .at-text")).to_contain_text("remote logo")
             expect(page.locator(".rd details.thought .at-text")).to_contain_text(HTML_TEXT)
             expect(page.locator(".rd pre.at-tool-body")).to_have_text(HTML_TEXT)
-            page.wait_for_timeout(300)
+            flush(page)
             assert page.evaluate("window.__pwned") is None
             assert page.locator(".rd img, .rd script, .rd picture, .rd source").count() == 0
             assert not [url for url in requested if "pixel.png" in url]

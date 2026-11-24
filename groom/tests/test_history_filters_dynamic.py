@@ -3,14 +3,30 @@ from __future__ import annotations
 import json
 import re
 
+from _page_settle import settle
 from test_a11y_dynamic import (
     _UNAVAILABLE,
     _live,
     _scan,
     teardown_module,  # noqa: F401
 )
-from test_history_dynamic import TABLE, _history, _history_page, _open_history, _row, _totals
-from test_history_open_dynamic import AXE, DETAIL, LONG_REPO, LONG_RUN, _ended, _long_names, _opened
+from test_history_dynamic import (
+    TABLE,
+    _history,
+    _history_page,
+    _open_history,
+    _row,
+    _totals,
+)
+from test_history_open_dynamic import (
+    AXE,
+    DETAIL,
+    LONG_REPO,
+    LONG_RUN,
+    _ended,
+    _long_names,
+    _opened,
+)
 
 BAR = "#history .h-top"
 NARROW = "#history .row"
@@ -153,7 +169,7 @@ def test_each_filter_narrows_the_rows_at_once_and_filters_combine_without_a_requ
             failed = _shown(page)
             page.get_by_role("searchbox", name="Filter history").fill("nothing-like-this")
             with_text = _shown(page) if page.locator("table.ht").count() else []
-            page.wait_for_timeout(300)
+            settle(page)
         finally:
             page.close()
     assert by_workflow == ["hist-a", "hist-c"]

@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
+from _settle import until
 from litestar.testing import TestClient
 
 from groom import app as groom_app
@@ -78,13 +79,18 @@ def test_ingest_does_not_run_on_the_shared_default_executor():
 def test_a_saturated_ingest_pool_does_not_delay_a_dashboard_read():
     """Ingest wedged on the disk must not be what stops the UI from updating."""
     release = threading.Event()
+    arrived: list[int] = []
+
+    def hold(seconds: float) -> bool:
+        arrived.append(1)
+        return release.wait(seconds)
 
     async def probe() -> list[bool]:
         blocked = [
-            asyncio.ensure_future(pools.INGEST.run(release.wait, HOLD_S))
+            asyncio.ensure_future(pools.INGEST.run(hold, HOLD_S))
             for _ in range(pools.INGEST.workers * 2)
         ]
-        await asyncio.sleep(0.05)
+        await until(lambda: len(arrived) == pools.INGEST.workers, "every ingest worker holding")
         await pools.QUERY.run(lambda: None)
         release.set()
         return await asyncio.gather(*blocked)

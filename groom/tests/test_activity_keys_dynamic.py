@@ -3,10 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from test_activity_groups_dynamic import _open_all
-from test_activity_follow_dynamic import CONTROL, LIST, _following, _in_view, _wheel_up
-from test_activity_step_gate_dynamic import _stepped
-from test_activity_tab_dynamic import _open_activity, _pick, _rows, _run
+from _page_settle import flush
 from test_a11y_dynamic import (
     _UNAVAILABLE,
     _live,
@@ -14,6 +11,10 @@ from test_a11y_dynamic import (
     _scan,
     teardown_module,  # noqa: F401
 )
+from test_activity_follow_dynamic import CONTROL, LIST, _following, _in_view, _wheel_up
+from test_activity_groups_dynamic import _open_all
+from test_activity_step_gate_dynamic import _stepped
+from test_activity_tab_dynamic import _open_activity, _pick, _rows, _run
 
 SEARCH = '#detail-panel .feedbar input[aria-label="Search activity"]'
 SELECTOR = '#detail-panel .feedbar select[aria-label="Work item"]'
@@ -154,16 +155,16 @@ def test_after_a_key_moves_the_selection_focus_sits_on_the_selected_row_and_ente
         opened = fold.get_attribute("aria-expanded")
         for key in ["e", "j", "k", "e"]:
             page.keyboard.press(key)
-            page.wait_for_timeout(150)
+            flush(page)
             focused = page.evaluate("() => { const one = document.activeElement; return one ? (one.dataset.slug || one.dataset.entry || one.dataset.fold || '') : ''; }")
             assert focused == _selected_key(page), key
             assert page.locator("#detail-panel .tl :focus-visible").count() <= 1
         page.keyboard.press("e")
-        page.wait_for_timeout(150)
+        flush(page)
         chosen = _selected_key(page)
         page.keyboard.press("Enter")
         page.keyboard.press("Space")
-        page.wait_for_timeout(150)
+        flush(page)
         assert _selected_key(page) == chosen
         assert fold.get_attribute("aria-expanded") == opened
     finally:
@@ -257,12 +258,10 @@ def test_while_transcripts_are_searched_a_status_says_so_and_it_clears_when_the_
     try:
         held = []
         page.route("**/api/run/*/search*", lambda route: held.append(route))
-        page.locator(SEARCH).fill("5432")
+        with page.expect_request("**/api/run/*/search*"):
+            page.locator(SEARCH).fill("5432")
         expect(page.locator(STATUS).filter(has_text="Searching the transcripts of this run…")).to_be_visible()
-        for _wait in range(50):
-            if held:
-                break
-            page.wait_for_timeout(100)
+        page.wait_for_function("true")
         held[0].continue_()
         expect(page.locator(STATUS).filter(has_text="Searching the transcripts")).to_have_count(0)
     finally:

@@ -8,6 +8,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from _page_settle import settle
 from test_a11y_dynamic import (
     _UNAVAILABLE,
     _live,
@@ -16,9 +17,22 @@ from test_a11y_dynamic import (
 )
 from test_archive_history import _without_summary
 from test_history import seed
-from test_history_dynamic import _clear, _failing_until_cleared, _history_page, _open_history, _table, _totals
+from test_history_dynamic import (
+    _clear,
+    _failing_until_cleared,
+    _history_page,
+    _open_history,
+    _table,
+    _totals,
+)
 from test_history_filters_dynamic import _choose, _options
-from test_history_open_dynamic import _read_the_failure_and_retry, AXE, DETAIL, LONG_REPO, LONG_RUN
+from test_history_open_dynamic import (
+    AXE,
+    DETAIL,
+    LONG_REPO,
+    LONG_RUN,
+    _read_the_failure_and_retry,
+)
 
 from groom import archive, history, store, turns
 from groom import live as groom_live
@@ -374,14 +388,14 @@ def test_a_slow_answer_for_the_old_range_does_not_replace_the_list_of_the_range_
         try:
             page.wait_for_selector("#history tr.hrow:has-text('arch-a')", timeout=30000)
             page.route("**/api/history", lambda route: held.append(route))
-            _choose(page, "Range", "Last 30 days")
+            with page.expect_request("**/api/history"):
+                _choose(page, "Range", "Last 30 days")
             page.wait_for_function("() => true")
-            while not held:
-                page.wait_for_timeout(50)
             _choose(page, "Range", EVERYTHING)
             page.wait_for_selector("#history tr.hrow:has-text('arch-a')", timeout=30000)
-            held[0].continue_()
-            page.wait_for_timeout(800)
+            with page.expect_response("**/api/history"):
+                held[0].continue_()
+            settle(page)
             shown = page.locator("#history tr.hrow:has-text('arch-a')").count()
         finally:
             page.close()
@@ -394,7 +408,7 @@ def test_an_archive_that_gets_its_row_later_appears_in_the_table_without_a_reloa
     with _archived("arch-a", summarized=False):
         page = _everything(live)
         try:
-            page.wait_for_timeout(500)
+            settle(page)
             history.discover_archives()
             groom_live.bump_threadsafe("history")
             page.wait_for_selector("#history tr.hrow:has-text('arch-a')", timeout=30000)

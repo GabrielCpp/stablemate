@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from _page_settle import flush
 from test_a11y_dynamic import (
     _UNAVAILABLE,
     _live,
@@ -15,7 +16,14 @@ from test_a11y_dynamic import (
 )
 from test_activity_groups import _pass
 from test_history import refresh, seed
-from test_history_dynamic import _clear, _failing_until_cleared, _history, _history_page, _open_history, _row
+from test_history_dynamic import (
+    _clear,
+    _failing_until_cleared,
+    _history,
+    _history_page,
+    _open_history,
+    _row,
+)
 from test_run_clock import span
 
 from groom import store
@@ -339,7 +347,7 @@ def test_j_and_k_open_the_next_and_previous_run_in_history_and_move_the_timeline
             page.locator(f"{DETAIL} .tl button").first.focus()
             before = page.locator(f"{DETAIL} .tl button[aria-current=true]").evaluate_all("(rows) => rows.map((r) => r.dataset.entry || r.dataset.slug)")
             page.keyboard.press("k")
-            page.wait_for_timeout(300)
+            flush(page)
             moved = page.locator(f"{DETAIL} .tl button[aria-current=true]").evaluate_all("(rows) => rows.map((r) => r.dataset.entry || r.dataset.slug)")
             kept = page.locator("#history .row.selected").get_attribute("data-run")
         finally:

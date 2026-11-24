@@ -10,6 +10,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from unittest.mock import patch
 
+from _page_settle import settle
 from test_a11y_dynamic import (
     _UNAVAILABLE,
     _live,
@@ -150,8 +151,8 @@ def _tab(page, name: str):
     return page.get_by_role("tab", name=re.compile(rf"^{name}\b"))
 
 
-def _settle(page, ms: int = 600) -> None:
-    page.wait_for_timeout(ms)
+def _settle(page) -> None:
+    settle(page)
 
 
 def _push_exited(live, container: str) -> None:
@@ -224,7 +225,7 @@ def test_rows_that_are_not_selected_cost_no_diff_read():
         seen = _requests(page)
         try:
             _pick(page)
-            _settle(page, 1200)
+            _settle(page)
             assert (mine.reads, other.reads) == (1, 0)
             assert len(seen) == 1
         finally:
@@ -266,7 +267,7 @@ def test_a_diff_tab_appears_within_five_seconds_of_the_sidecar_connecting_and_re
             sidecar = _connect(live)
             try:
                 expect(_tab(page, "Diff")).to_contain_text(SIZE, timeout=30000)
-                _settle(page, 1200)
+                _settle(page)
                 assert len(seen) == 1, seen
                 assert sidecar.reads == 1
             finally:
@@ -395,7 +396,7 @@ def test_selecting_an_untracked_file_leaves_the_dashboard_socket_open_and_the_fo
             _pick(page)
             _open_diff(page)
             page.get_by_role("button", name=re.compile("lockout_store.py")).click()
-            _settle(page, 1500)
+            _settle(page)
             expect(page.locator("[data-conn]")).to_have_attribute("data-conn", "live")
             assert not closed
         finally:
@@ -482,8 +483,7 @@ def test_the_tab_says_when_the_diff_was_read_and_refresh_reads_again_and_updates
             clock = page.locator(".dtabs .right")
             expect(clock).to_contain_text(re.compile(r"read \d\d:\d\d:\d\d"))
             first = clock.inner_text()
-            page.wait_for_timeout(2500)
-            assert clock.inner_text() != first
+            expect(clock).not_to_have_text(first)
             sidecar.reply = _read(SIGN_IN)
             page.get_by_role("button", name="Read the diff again").click()
             expect(_tab(page, "Diff")).to_contain_text("+3 −1")

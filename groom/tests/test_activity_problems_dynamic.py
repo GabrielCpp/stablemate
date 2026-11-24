@@ -3,13 +3,6 @@ from __future__ import annotations
 from contextlib import contextmanager
 from pathlib import Path
 
-from test_activity_follow_dynamic import _IDS, _open_watched, _send
-from test_activity_groups import BASE, _attrs, _polls
-from test_activity_groups_dynamic import _open_all
-from test_activity_keys_dynamic import SEARCH, SELECTED, SELECTOR, STATUS
-from test_activity_step_gate_dynamic import _stepped
-from test_activity_tab_dynamic import _open_activity, _pick, _rows, _run
-from test_run_clock import span
 from test_a11y_dynamic import (
     _UNAVAILABLE,
     _export,
@@ -18,6 +11,13 @@ from test_a11y_dynamic import (
     _scan,
     teardown_module,  # noqa: F401
 )
+from test_activity_follow_dynamic import _IDS, _open_watched, _send
+from test_activity_groups import BASE, _attrs, _polls
+from test_activity_groups_dynamic import _open_all
+from test_activity_keys_dynamic import SEARCH, SELECTED, SELECTOR, STATUS
+from test_activity_step_gate_dynamic import _stepped
+from test_activity_tab_dynamic import _open_activity, _pick, _rows, _run
+from test_run_clock import span
 
 CHIP = '#detail-panel .feedbar button[data-filter="problems"].fchip'
 LIST = "#detail-panel .tl"
@@ -239,9 +239,8 @@ def test_while_paused_in_the_problems_view_the_pill_counts_new_problems_and_name
         page.locator("#detail-panel .feedbar .follow").click()
         pill = page.locator("#detail-panel .newpill button")
         _send(live, name, node="late")
-        page.wait_for_timeout(500)
-        expect(pill).to_have_count(0)
         _send_failed(live, name)
+        expect(pill).to_contain_text("1 new problem")
         _send_failed(live, name)
         expect(pill).to_contain_text("new problem")
         expect(pill).to_contain_text("2 new problems")
@@ -252,7 +251,9 @@ def test_while_paused_in_the_problems_view_the_pill_counts_new_problems_and_name
 def _send_failed(live, run: str) -> None:
     import time
 
-    from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
+    from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
+        ExportTraceServiceRequest,
+    )
     from opentelemetry.proto.trace.v1.trace_pb2 import Status
 
     request = ExportTraceServiceRequest()

@@ -13,6 +13,8 @@ import urllib.request
 from pathlib import Path
 from unittest.mock import patch
 
+from _page_settle import count_pushes, pushes, wait_for_push
+
 ROOT = Path(__file__).resolve().parents[1]
 AXE = Path(__file__).resolve().parent / "vendor" / "axe.min.js"
 
@@ -47,8 +49,9 @@ def _workspace(base: Path) -> Path:
 
 def _seed(workspace: Path) -> None:
     """Three runs covering every row state, one of them blocked on a gate whose question is markdown — that gate is what puts the answer form on the page."""
-    from groom import state, store
     from groom.models import GateInfo, WorkflowState
+
+    from groom import state, store
 
     state.WORKFLOWS.clear()
     state.SCANNING = False
@@ -690,6 +693,8 @@ def test_new_telemetry_updates_the_open_overview_and_keeps_the_operators_place()
 
 
 def test_the_time_since_the_last_finished_turn_counts_up_every_second():
+    from playwright.sync_api import expect
+
     live = _live()
     assert live is not None, _UNAVAILABLE
     page = _open(live)
@@ -697,10 +702,7 @@ def test_the_time_since_the_last_finished_turn_counts_up_every_second():
         page.click("#runs-list .row.blocked")
         tile = page.locator("#detail-cost-tile .ss")
         first = tile.inner_text()
-        deadline = time.time() + 30
-        while time.time() < deadline and tile.inner_text() == first:
-            time.sleep(0.2)
-        assert tile.inner_text() != first
+        expect(tile).not_to_have_text(first)
     finally:
         page.close()
 
@@ -851,10 +853,7 @@ def test_the_strip_says_a_step_is_longer_than_usual_in_words_and_its_counts_tick
         expect(strip).to_contain_text("no agent in a step")
         assert _box(strip)["y"] < _box(page.get_by_role("table", name="Time and cost per flow"))["y"]
         first = strip.inner_text()
-        deadline = time.time() + 30
-        while time.time() < deadline and strip.inner_text() == first:
-            time.sleep(0.2)
-        assert strip.inner_text() != first
+        expect(strip).not_to_have_text(first)
         assert not _scan(page)
     finally:
         page.close()
@@ -965,6 +964,7 @@ def test_a_rejected_answer_toasts_the_reason_to_the_sending_tab_alone():
         return
     sender = _open(live)
     bystander = _open(live)
+    count_pushes(bystander)
     try:
         _drive(sender, "runs")
         sender.fill("form[data-answer] textarea", "sqlite")
@@ -972,9 +972,12 @@ def test_a_rejected_answer_toasts_the_reason_to_the_sending_tab_alone():
         toast = sender.wait_for_selector("#toasts .toast.blocked", timeout=30000)
         assert toast is not None
         assert toast.inner_text().splitlines() == ["✗ answer not taken", "gate file not found"]
-        bystander.wait_for_timeout(500)
+        sent = pushes(bystander)
+        _post_turn(live, "00000000000000e1", usd=0.01)
+        wait_for_push(bystander, sent)
         assert bystander.query_selector("#toasts .toast") is None
     finally:
+        _drop_turn("00000000000000e1")
         sender.close()
         bystander.close()
 

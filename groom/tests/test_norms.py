@@ -244,7 +244,7 @@ def test_the_store_is_read_once_per_node_and_again_only_when_the_run_moves(monke
     wf = _wf()
 
     async def settle() -> None:
-        await asyncio.sleep(0.2)
+        await asyncio.gather(*groom_app._NORM_TASKS)
 
     async def scenario() -> None:
         for _ in range(30):

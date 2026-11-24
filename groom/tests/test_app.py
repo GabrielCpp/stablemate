@@ -317,7 +317,9 @@ def test_a_quiet_open_pane_gets_no_detail():
         await groom_app._handle_command({"cmd": "watch", "run_id": "abc123"}, queue)
         opened = queue.get_nowait()
         live.snapshot()
-        await asyncio.sleep(0.5)
+        live.mark_run("abc123")
+        live.mark_fleet()
+        await settled()
         rest = [queue.get_nowait() for _ in range(queue.qsize())]
         state.remove_client(queue)
         return opened, rest
@@ -1347,7 +1349,7 @@ def test_spawn_scan_returns_before_discovery_completes():
 
     async def _slow_reconcile() -> int:
         order.append("scan-start")
-        await asyncio.sleep(0.02)
+        await asyncio.sleep(0)
         order.append("scan-done")
         return 0
 

@@ -10,6 +10,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
+from _page_settle import flush
 from test_a11y_dynamic import (
     _UNAVAILABLE,
     _box,
@@ -114,7 +115,7 @@ def _place(page) -> dict:
 
 def _scroll_overview(page, to: int) -> None:
     page.evaluate("(to) => { document.querySelector('#detail-panel > .ov').scrollTop = to; }", to)
-    page.wait_for_timeout(100)
+    flush(page)
 
 
 def _show_overview(page) -> None:
@@ -178,7 +179,7 @@ def test_a_gate_that_opens_while_the_operator_reads_leaves_the_text_where_it_was
             page.evaluate(WATCH)
             _open_gate(live, _gate_file(tmp, "1-one.md", FIRST), FIRST)
             expect(_strip(page)).to_contain_text("legacy CSV header order")
-            page.wait_for_timeout(300)
+            flush(page)
             _held(page, before)
             seen = page.evaluate("() => { cancelAnimationFrame(window.__frames); return window.__seen; }")
             assert seen and all(top is not None and abs(top - before["top"]) <= 1.5 for top in seen), seen
@@ -230,13 +231,13 @@ def test_the_strip_collapses_to_one_line_with_the_start_of_the_question_and_expa
             expect(strip).to_contain_text("Keep the legacy CSV header order")
             assert _box(strip)["height"] < full / 2, (_box(strip), full)
             assert not _scan(page)
-            page.wait_for_timeout(300)
+            flush(page)
             _held(page, before)
             strip.get_by_role("button", name="Answer", exact=True).click()
             textbox = strip.get_by_role("textbox")
             expect(textbox).to_have_value("half a thought")
             expect(textbox).to_be_focused()
-            page.wait_for_timeout(300)
+            flush(page)
             _held(page, before)
             assert _box(strip)["height"] == full
         finally:
@@ -323,14 +324,14 @@ def test_sending_an_answer_removes_that_gate_and_the_last_one_clears_the_strip_w
             expect(strip).to_contain_text("changelog mention")
             assert "keep it" in Path(first).read_text()
             expect(page.get_by_role("tab", name="Overview")).to_have_attribute("aria-selected", "true")
-            page.wait_for_timeout(300)
+            flush(page)
             _held(page, before)
             strip.get_by_role("textbox").fill("yes")
             strip.get_by_role("button", name="Send answer").click()
             expect(_strip(page)).to_have_count(0)
             assert "yes" in Path(second).read_text()
             expect(page.get_by_role("tab", name="Overview")).to_have_attribute("aria-selected", "true")
-            page.wait_for_timeout(300)
+            flush(page)
             _held(page, before)
             assert _place(page)["scrollTop"] >= 0
         finally:
@@ -418,7 +419,7 @@ def test_an_unsafe_question_is_sanitized_before_it_reaches_the_strip():
             _pick_run(page, RUN)
             strip = _strip(page)
             expect(strip.locator("strong")).to_have_text("one")
-            page.wait_for_timeout(300)
+            flush(page)
             assert strip.locator("script, iframe").count() == 0
             assert strip.locator("[onerror], [onclick]").count() == 0
             hrefs = strip.locator("a").evaluate_all("els => els.map(e => e.getAttribute('href'))")

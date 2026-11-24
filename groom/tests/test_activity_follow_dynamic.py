@@ -10,6 +10,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from _page_settle import flush
 from test_a11y_dynamic import (
     _UNAVAILABLE,
     AXE,
@@ -17,7 +18,14 @@ from test_a11y_dynamic import (
     _scan,
     teardown_module,  # noqa: F401
 )
-from test_activity_tab_dynamic import RUNNING, _open_activity, _pick, _rows, _run, _turn_attrs
+from test_activity_tab_dynamic import (
+    RUNNING,
+    _open_activity,
+    _pick,
+    _rows,
+    _run,
+    _turn_attrs,
+)
 from test_run_clock import span
 
 from groom import store
@@ -57,7 +65,9 @@ def _open_watched(live, height: int = 640):
 
 
 def _send(live, run: str, *, name: str = "agent_turn", node: str = "qa-story", usd: float | None = None, slug: str = "", attrs: dict | None = None) -> str:
-    from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
+    from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
+        ExportTraceServiceRequest,
+    )
 
     span_id = f"{next(_IDS):016x}"
     request = ExportTraceServiceRequest()
@@ -200,24 +210,22 @@ def test_a_running_turns_row_and_pane_show_new_messages_and_tool_calls_as_they_a
         assert ", running," in (row.get_attribute("aria-label") or "")
 
 
-def _activity_requests(page) -> list[str]:
-    return page.evaluate("() => performance.getEntriesByType('resource').map((entry) => entry.name).filter((name) => name.endsWith('/activity'))")
-
-
 def test_an_open_activity_pane_on_a_quiet_run_makes_no_request_and_one_ingest_makes_one(tmp_path):
     with _following(tmp_path, "fol-quiet", filler=3, running=True) as (live, page, name):
-        page.wait_for_timeout(1000)
-        settled = len(_activity_requests(page))
-        page.wait_for_timeout(5000)
-        assert len(_activity_requests(page)) == settled
-        _send(live, name, usd=0.5)
-        page.wait_for_function(
-            "([count]) => performance.getEntriesByType('resource').filter((entry) => entry.name.endsWith('/activity')).length > count",
-            arg=[settled],
-            timeout=30000,
-        )
-        page.wait_for_timeout(1500)
-        assert len(_activity_requests(page)) == settled + 1
+        asked: list[str] = []
+        page.on("request", lambda request: asked.append(request.url) if request.url.endswith("/activity") else None)
+        page.wait_for_load_state("networkidle")
+        settled = len(asked)
+        page.clock.install()
+        page.clock.run_for(6000)
+        flush(page)
+        assert len(asked) == settled
+        with page.expect_request(lambda request: request.url.endswith("/activity")):
+            _send(live, name, usd=0.5)
+        page.clock.run_for(1500)
+        page.wait_for_load_state("networkidle")
+        flush(page)
+        assert len(asked) == settled + 1
 
 
 def test_the_selected_row_stays_selected_while_new_rows_arrive_and_the_pane_does_not_change(tmp_path):
@@ -232,7 +240,7 @@ def test_the_selected_row_stays_selected_while_new_rows_arrive_and_the_pane_does
         head = page.locator(".rd .rd-head").inner_text()
         _arrive(live, name, 4)
         expect(_rows(page)).to_have_count(before + 4)
-        page.wait_for_timeout(600)
+        flush(page)
         current = page.locator(f'#detail-panel .tl button[data-slug="{slug}"]')
         expect(current).to_have_attribute("aria-current", "true")
         assert page.locator("#detail-panel .tl button[aria-current=true]").count() == 1
@@ -262,7 +270,7 @@ def test_while_paused_rows_already_in_view_stay_where_they_are(tmp_path):
         count = _rows(page).count()
         _arrive(live, name, 4)
         expect(_rows(page)).to_have_count(count + 4)
-        page.wait_for_timeout(600)
+        flush(page)
         assert page.locator(LIST).evaluate("el => el.scrollTop") == scroll_before
         assert abs(marked.bounding_box()["y"] - top_before) < 1
         expect(page.locator(CONTROL)).to_have_text("Paused")
@@ -279,7 +287,7 @@ def test_while_paused_a_group_that_finishes_stays_open_under_the_operators_eyes(
         assert opened > 0
         _end(live, name)
         expect(page.locator(CONTROL)).to_have_count(0, timeout=30000)
-        page.wait_for_timeout(500)
+        flush(page)
         assert heads.count() == opened
 
 
@@ -328,7 +336,7 @@ def test_scrolling_back_to_the_end_resumes_following(tmp_path):
         expect(page.locator(PILL)).to_have_count(0)
         _arrive(live, name, 1)
         expect(page.locator(PILL)).to_have_count(0)
-        page.wait_for_timeout(400)
+        flush(page)
         assert _bottom_gap(page) <= 4
 
 
@@ -368,11 +376,13 @@ def test_on_reconnect_the_timeline_fills_the_gap_and_the_mark_clears(tmp_path):
 
     with _following(tmp_path, "fol-gap") as (_live_, page, name):
         before = _rows(page).count()
+        page.clock.install()
         page.evaluate(DROP)
         control = page.locator(CONTROL)
         expect(control).to_have_text("Not connected", timeout=30000)
         span_id = _stored_turn(name)
-        page.wait_for_timeout(1500)
+        page.clock.run_for(1500)
+        flush(page)
         assert _rows(page).count() == before
         page.evaluate(RESTORE)
         expect(control).to_have_text("Following", timeout=30000)
@@ -439,14 +449,14 @@ def test_a_new_row_does_not_interrupt_a_focused_control_or_remount_an_open_readi
         page.evaluate("() => { const body = document.querySelector('#detail-panel .rd-body'); window.__body = body; body.dataset.mark = 'kept'; window.__focus = document.activeElement; }")
         _arrive(live, name, 3)
         expect(_rows(page)).to_have_count(before + 3)
-        page.wait_for_timeout(700)
+        flush(page)
         assert page.evaluate("() => document.activeElement === window.__focus && window.__focus.isConnected")
         assert page.evaluate("() => window.__body.isConnected && window.__body.dataset.mark") == "kept"
         control = page.locator(CONTROL)
         control.focus()
         _arrive(live, name, 2)
         expect(_rows(page)).to_have_count(before + 5)
-        page.wait_for_timeout(700)
+        flush(page)
         assert page.evaluate("() => document.activeElement.classList.contains('follow')")
 
 
@@ -519,10 +529,10 @@ def test_scrolling_back_to_the_end_leaves_the_selection_alone(tmp_path):
         expect(page.locator(PILL)).to_contain_text("2 new")
         page.locator(LIST).evaluate("el => { el.scrollTop = el.scrollHeight; }")
         expect(page.locator(CONTROL)).to_have_text("Following")
-        page.wait_for_timeout(400)
+        flush(page)
         assert _selected_slug(page) == older_slug
         _arrive(live, name, 1)
-        page.wait_for_timeout(600)
+        flush(page)
         assert _selected_slug(page) == older_slug
 
 
@@ -541,10 +551,10 @@ def test_pressing_the_control_to_resume_leaves_the_selection_alone(tmp_path):
         expect(page.locator(PILL)).to_contain_text("2 new")
         control.click()
         expect(control).to_have_text("Following")
-        page.wait_for_timeout(400)
+        flush(page)
         assert _selected_slug(page) == older_slug
         _arrive(live, name, 1)
-        page.wait_for_timeout(600)
+        flush(page)
         assert _selected_slug(page) == older_slug
 
 
@@ -568,14 +578,14 @@ def test_the_pill_brings_the_newest_row_into_view_when_a_later_group_sits_below_
         assert not (_newest(page).get_attribute("data-slug") or "").startswith("unmatched-"), "a later group must sit below the newest row for this test to mean anything"
         _arrive(live, name, 2)
         expect(page.locator(PILL)).to_have_count(0)
-        page.wait_for_timeout(600)
+        flush(page)
         assert _uncovered(page, page.locator("#detail-panel .tl button[data-slug^=unmatched-]").last)
 
 
 def test_the_flow_heading_sticks_exactly_under_the_group_heading_so_no_row_shows_between(tmp_path):
     with _following(tmp_path, "fol-stick", turns=True, running=True) as (_live_, page, _name):
         page.locator(LIST).evaluate("el => { el.scrollTop = 200; }")
-        page.wait_for_timeout(300)
+        flush(page)
         gap = page.evaluate(
             """(list) => {
               const sec = document.querySelector(list + ' .tl-sec');

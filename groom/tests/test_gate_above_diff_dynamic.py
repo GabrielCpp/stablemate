@@ -132,7 +132,7 @@ def _view(page) -> dict:
 
 def _scroll(page, to: int) -> None:
     page.evaluate("(to) => { document.querySelector('#detail-panel .fd-view').scrollTop = to; }", to)
-    _settle(page, 150)
+    _settle(page)
 
 
 def _read_diff(page) -> int:
@@ -213,7 +213,7 @@ def test_the_question_collapses_to_one_line_and_the_diff_keeps_scrolling():
             assert first >= 500
             page.locator("#detail-panel .fd-view").hover()
             page.mouse.wheel(0, -200)
-            _settle(page, 300)
+            page.wait_for_function("(first) => document.querySelector('#detail-panel .fd-view').scrollTop < first", arg=first)
             assert _view(page)["scrollTop"] < first
             assert not _scan(page)
         finally:
@@ -243,7 +243,7 @@ def test_answering_above_the_diff_sends_the_answer_removes_the_question_and_keep
             expect(_strip(page)).to_have_count(0)
             assert sidecar.answers == [(gate, "keep the legacy order")]
             expect(_tab(page, "Diff")).to_have_attribute("aria-selected", "true")
-            _settle(page, 500)
+            _settle(page)
             assert _selected_file(page) == file_before
             assert abs(_view(page)["scrollTop"] - before) <= 1
             assert len(reads) == 1 and sidecar.diff_reads == 1
@@ -276,7 +276,7 @@ def test_files_keeps_its_file_and_scroll_through_a_gate_and_an_answer_without_a_
             strip.get_by_role("button", name="Send answer").click()
             expect(_strip(page)).to_have_count(0)
             assert sidecar.answers == [(gate, "yes")]
-            _settle(page, 500)
+            _settle(page)
             expect(_tab(page, "Files")).to_have_attribute("aria-selected", "true")
             assert _selected_file(page) == file_before
             assert abs(_view(page)["scrollTop"] - before) <= 1

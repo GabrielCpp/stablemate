@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
+from _page_settle import flush
 from test_a11y_dynamic import (
     _UNAVAILABLE,
     _live,
@@ -50,10 +51,12 @@ async def _no_volumes(_container_id: str) -> None:
 
 @contextmanager
 def _run(run: str, tmp: Path, *, native: bool = True, turns: bool = True, running: bool = False, hostile: bool = False, rich: bool = False, old: bool = False, long_live: bool = False) -> Iterator[str]:
+    from groom.models import WorkflowState
+
     from groom import app as app_module
     from groom import state as groom_state
-    from groom import store, turns as turn_archive
-    from groom.models import WorkflowState
+    from groom import store
+    from groom import turns as turn_archive
 
     container = f"{run}-box"[:12].ljust(12, "x")
     base = time.time() - 4000.0
@@ -276,8 +279,9 @@ def test_a_run_with_no_telemetry_says_so_in_its_activity_tab(tmp_path):
 
 
 def test_a_run_with_telemetry_and_no_turn_says_it_has_no_activity_yet_and_that_it_is_alive(tmp_path):
-    from groom import state
     from groom.models import RunTelemetry
+
+    from groom import state
 
     live = _live()
     assert live is not None, _UNAVAILABLE
@@ -310,14 +314,13 @@ def test_a_turn_being_read_shows_a_reading_state_that_clears_when_it_appears(tmp
         page.route(re.compile(r"/activity/\d"), lambda route: held.append(route))
         try:
             _pick(page, run)
-            page.get_by_role("tab", name="Activity").click()
+            with page.expect_request(re.compile(r"/activity/\d")):
+                page.get_by_role("tab", name="Activity").click()
             reading = page.locator(".rd .detail-empty.loading")
             expect(reading).to_have_attribute("aria-busy", "true")
             expect(reading).to_contain_text("Reading this turn")
             expect(_rows(page)).to_have_count(2)
             page.wait_for_function("true")
-            while not held:
-                page.wait_for_timeout(50)
             held[0].continue_()
             expect(reading).to_have_count(0)
             expect(page.locator(".rd .rd-head")).to_be_visible()
@@ -399,7 +402,7 @@ def test_html_in_a_message_or_a_tool_line_renders_as_text_and_no_script_runs(tmp
             expect(page.locator(".rd .at-tool .at-tool-sum")).to_have_text(HTML_TEXT)
             expect(page.locator(".rd .at-msg .at-text")).to_contain_text(HTML_TEXT)
             expect(page.locator(".rd .at-msg .at-text")).to_contain_text("remote logo")
-            page.wait_for_timeout(300)
+            flush(page)
             assert page.evaluate("window.__pwned") is None
             assert page.locator(".rd img, .rd script, .rd picture, .rd source").count() == 0
             assert not [url for url in requested if "pixel.png" in url]
@@ -495,8 +498,9 @@ def test_a_turn_of_an_old_run_matches_its_one_archived_record_and_a_turn_with_no
 def test_a_finished_turn_whose_record_files_are_gone_says_no_record_not_an_empty_turn(tmp_path):
     import shutil
 
-    from groom import turns as turn_archive
     from playwright.sync_api import expect
+
+    from groom import turns as turn_archive
 
     live = _live()
     assert live is not None, _UNAVAILABLE

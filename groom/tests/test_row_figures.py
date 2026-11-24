@@ -8,6 +8,7 @@ import threading
 from pathlib import Path
 
 import pytest
+from _settle import until
 
 from groom import app as groom_app
 from groom import cli, figures, projection, state, store
@@ -146,7 +147,7 @@ def test_refreshes_coalesce_to_one_running_and_one_rerun(monkeypatch: pytest.Mon
 
     async def scenario() -> None:
         first = asyncio.create_task(groom_app._refresh_figures("r1"))
-        await asyncio.sleep(0.05)
+        await until(lambda: bool(calls), "the first refresh starting")
         for _ in range(5):
             await groom_app._refresh_figures("r1")
         gate.set()
@@ -172,9 +173,9 @@ def test_a_batch_refreshes_only_runs_without_figures_when_not_stale(monkeypatch:
 
     async def scenario() -> None:
         groom_app._schedule_figures([{"run_id": "fresh"}, {"run_id": "new"}], stale=False)
-        await asyncio.sleep(0.05)
+        await until(lambda: seen == ["new"], "the run without figures refreshing")
         groom_app._schedule_figures([{"run_id": "fresh"}], stale=True)
-        await asyncio.sleep(0.05)
+        await until(lambda: len(seen) == 2, "the stale run refreshing")
 
     try:
         asyncio.run(scenario())

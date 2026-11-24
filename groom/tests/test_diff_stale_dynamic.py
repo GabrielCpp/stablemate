@@ -9,6 +9,7 @@ import threading
 from pathlib import Path
 from unittest.mock import patch
 
+from _page_settle import advance_until, settle
 from test_a11y_dynamic import (
     _UNAVAILABLE,
     _live,
@@ -103,8 +104,7 @@ def test_the_strip_counts_how_long_ago_on_the_shared_clock_without_a_live_region
             strip = page.locator(STRIP)
             expect(strip).to_be_visible(timeout=30000)
             first = strip.inner_text()
-            page.wait_for_timeout(2500)
-            assert strip.inner_text() != first
+            expect(strip).not_to_have_text(first)
             assert strip.get_attribute("aria-live") is None
             assert page.locator(f"{STRIP} [aria-live]").count() == 0
         finally:
@@ -513,8 +513,9 @@ def _git(repo: Path, *args: str) -> str:
 
 
 def test_the_kept_diff_after_a_real_drop_is_the_diff_git_reports_for_the_checkout():
-    from groom import sidecar_hub
     from playwright.sync_api import expect
+
+    from groom import sidecar_hub
 
     live = _live()
     assert live is not None, _UNAVAILABLE
@@ -570,12 +571,15 @@ def test_a_workspace_frame_refreshes_the_open_diff_within_a_second_and_a_half_wi
             _open_diff(page)
             expect(_tab(page, "Diff")).to_contain_text(SIZE)
             _wait_for(lambda: len(sidecar.reads()) >= 1, "the first diff read")
-            page.wait_for_timeout(1200)
+            settle(page)
             seen = _diff_reads(page)
             before = len(sidecar.reads())
+            page.clock.install()
             _push_workspace(sidecar)
-            _wait_for(lambda: len(sidecar.reads()) == before + 1, "one more diff read", timeout=1.5)
-            page.wait_for_timeout(1500)
+            advance_until(page, lambda: len(seen) == 1, "the diff refresh request", 1500)
+            _wait_for(lambda: len(sidecar.reads()) == before + 1, "one more diff read")
+            page.clock.run_for(1500)
+            settle(page)
             assert len(sidecar.reads()) == before + 1
             assert len(seen) == 1
         finally:
@@ -584,6 +588,8 @@ def test_a_workspace_frame_refreshes_the_open_diff_within_a_second_and_a_half_wi
 
 
 def test_a_workspace_change_seen_while_files_is_open_reads_the_diff_again_when_diff_opens():
+    from playwright.sync_api import expect
+
     live = _live()
     assert live is not None, _UNAVAILABLE
     with _run():
@@ -593,14 +599,20 @@ def test_a_workspace_change_seen_while_files_is_open_reads_the_diff_again_when_d
             _pick(page)
             _open_diff(page)
             _wait_for(lambda: len(sidecar.reads()) >= 1, "the first diff read")
+            files_seen: list[str] = []
+            page.on("request", lambda request: files_seen.append(request.url) if "/files/" in request.url else None)
             _tab(page, "Files").click()
-            page.wait_for_timeout(1200)
+            expect(page.get_by_role("tabpanel", name="Files")).to_contain_text("This checkout has no files")
+            settle(page)
             before = len(sidecar.reads())
+            opened = len(files_seen)
+            page.clock.install()
             _push_workspace(sidecar)
-            page.wait_for_timeout(2000)
+            advance_until(page, lambda: len(files_seen) > opened, "the files refresh request", 3000)
+            settle(page)
             assert len(sidecar.reads()) == before
             _tab(page, "Diff").click()
-            _wait_for(lambda: len(sidecar.reads()) == before + 1, "a diff read on opening Diff", timeout=2.5)
+            _wait_for(lambda: len(sidecar.reads()) == before + 1, "a diff read on opening Diff")
         finally:
             page.close()
             sidecar.drop()

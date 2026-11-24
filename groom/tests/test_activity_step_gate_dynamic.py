@@ -7,8 +7,6 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from test_activity_groups import BASE, _attrs, _seed
-from test_activity_tab_dynamic import _open_activity, _pick, _rows, _run
 from test_a11y_dynamic import (
     _UNAVAILABLE,
     _live,
@@ -16,6 +14,8 @@ from test_a11y_dynamic import (
     _scan,
     teardown_module,  # noqa: F401
 )
+from test_activity_groups import BASE, _attrs, _seed
+from test_activity_tab_dynamic import _open_activity, _pick, _rows, _run
 from test_run_clock import span
 
 from groom import state, store
@@ -291,12 +291,12 @@ def test_a_step_being_read_shows_a_reading_state_that_clears_when_it_appears(tmp
             _pick(page, name)
             _open_activity(page)
             _reveal(page)
-            page.locator('#detail-panel .tl button[data-entry="failed:e1"]').click()
+            with page.expect_request(re.compile(r"/entry/")):
+                page.locator('#detail-panel .tl button[data-entry="failed:e1"]').click()
             reading = page.locator(".rd .detail-empty.loading")
             expect(reading).to_have_attribute("aria-busy", "true")
             expect(reading).to_contain_text("Reading this step")
-            while not held:
-                page.wait_for_timeout(50)
+            page.wait_for_function("true")
             held[0].continue_()
             expect(reading).to_have_count(0)
             expect(page.locator(".rd .rd-head")).to_contain_text("ensure_stack")

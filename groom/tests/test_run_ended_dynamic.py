@@ -7,6 +7,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from _page_settle import COUNT_PUSHES, pushes, settle, wait_for_push
 from test_a11y_dynamic import (
     _UNAVAILABLE,
     _export,
@@ -16,8 +17,8 @@ from test_a11y_dynamic import (
     teardown_module,  # noqa: F401
 )
 from test_history import refresh
-from test_history_open_dynamic import AXE
 from test_history_dynamic import _clear, _history, _row
+from test_history_open_dynamic import AXE
 
 from groom import alerts, history, state, store
 
@@ -29,7 +30,9 @@ FAILED = "groom.history.failed"
 
 
 def _post(live, run: str, spans: list[tuple[str, str, dict]], workflow: str = "coder", repo: str = "acme") -> None:
-    from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import ExportTraceServiceRequest
+    from opentelemetry.proto.collector.trace.v1.trace_service_pb2 import (
+        ExportTraceServiceRequest,
+    )
 
     request = ExportTraceServiceRequest()
     resource_spans = request.resource_spans.add()
@@ -238,12 +241,13 @@ def test_the_strip_stays_until_the_operator_selects_another_run():
     live = _live()
     assert live is not None, _UNAVAILABLE
     with _running(live, "end-st"):
-        page = _page(live, "end-st")
+        page = _page(live, "end-st", COUNT_PUSHES)
         try:
             _end(live, "end-st")
             page.wait_for_selector(STRIP, timeout=30000)
+            sent = pushes(page)
             _post_turn(live, "ab01", usd=0.1)
-            page.wait_for_timeout(1500)
+            wait_for_push(page, sent)
             kept = page.locator(STRIP).count()
             page.locator(ROW, has_text="run-running").first.click()
             page.wait_for_selector("#detail .detail-head", timeout=30000)
@@ -295,7 +299,7 @@ def test_a_run_that_fails_crashes_or_is_stopped_by_a_fatal_error_raises_the_hist
 def _fail_one(live, page, run: str, terminal: str = "fail", **attrs: str) -> None:
     _end(live, run, terminal, **attrs)
     page.wait_for_selector(f'{ROW}[data-state="finished"]', timeout=30000)
-    page.wait_for_timeout(300)
+    settle(page)
 
 
 def test_opening_history_clears_the_badge_and_the_count_survives_a_reload():
@@ -332,7 +336,7 @@ def test_a_success_a_stop_the_operator_asked_for_and_a_reload_raise_no_badge():
             _end(live, "bd-stop", "interrupted", **{"error.kind": "interrupt", "error.class": "KeyboardInterrupt"})
             _end(live, "bd-re", "reload")
             page.wait_for_function("() => document.querySelectorAll('#runs-list .row[data-state=finished]').length >= 3", timeout=30000)
-            page.wait_for_timeout(500)
+            settle(page)
             shown = _badge(page, "history")
         finally:
             page.close()
@@ -408,7 +412,7 @@ def test_a_run_that_ends_while_history_is_open_tops_the_table_the_totals_follow_
     live = _live()
     assert live is not None, _UNAVAILABLE
     with _running(live, "end-hi"), _history(_row("hist-a", 1)):
-        page = _page(live)
+        page = _page(live, init=COUNT_PUSHES)
         try:
             page.click(RAIL)
             page.wait_for_selector("#history table.ht", timeout=30000)
@@ -420,9 +424,11 @@ def test_a_run_that_ends_while_history_is_open_tops_the_table_the_totals_follow_
             after = _totals_runs(page)
             page.locator("#history tr.hrow", has_text="hist-a").first.click()
             page.wait_for_selector("#history-detail .detail-head", timeout=30000)
+            sent = pushes(page)
             _end(live, "end-hi", "fail", **{"error.kind": "fatal"})
             _announce("end-hi")
-            page.wait_for_timeout(800)
+            wait_for_push(page, sent)
+            settle(page)
             open_run = page.locator("#history .row.selected").get_attribute("data-run")
             badge = _badge(page, "history")
         finally:

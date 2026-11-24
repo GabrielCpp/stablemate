@@ -279,7 +279,6 @@ def test_boot_recovery_seeds_the_slot_so_the_cap_still_holds(
         ids = [item["item_id"] for item in items]
 
         _await(lambda: len(calls) == 1, "only one new item to launch alongside the orphan")
-        time.sleep(0.1)
         assert len(calls) == 1
         rows = {row["item_id"]: row["status"] for row in dispatch_ledger.dispatch_list("q")}
         assert sorted(rows[i] for i in ids) == [dispatch_ledger.DISPATCH_PENDING, dispatch_ledger.DISPATCH_RUNNING]

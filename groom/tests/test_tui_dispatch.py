@@ -158,7 +158,7 @@ def test_a_reply_for_a_queue_the_operator_has_left_is_dropped():
             dp.queue_list(screen).highlighted = 1
             await support.until(lambda: dp.ids(dp.item_list(screen)) == ["r-run"])
             link.holds[dp.items_path("plans")].set()
-            await dp.settle()
+            await dp.settle(app)
             await pilot.pause()
             assert dp.ids(dp.item_list(screen)) == ["r-run"]
             assert screen.queue == "reviews"
@@ -222,16 +222,16 @@ def test_the_screen_reloads_when_the_dispatch_revision_moves_and_not_otherwise()
         link = await stocked()
         async with dp.booted(link) as (app, pilot):
             await dp.open_dispatch(app, pilot, link)
-            await dp.settle()
+            await dp.settle(app)
             seen = len(link.gets)
-            await asyncio.sleep(0.4)
+            await support.reached(link, app, "quiet")
             assert len(link.gets) == seen
             link.push(_meta(50, 1))
             await support.until(lambda: len(link.gets) > seen)
-            await dp.settle()
+            await dp.settle(app)
             seen = len(link.gets)
             link.push(_meta(51, 1))
-            await asyncio.sleep(0.3)
+            await support.reached(link, app, "same revision")
             assert len(link.gets) == seen
             link.push(_meta(52, 2))
             await support.until(lambda: len(link.gets) > seen)
@@ -246,10 +246,10 @@ def test_the_screen_stops_following_when_it_closes():
             screen = await dp.open_dispatch(app, pilot, link)
             await pilot.press("escape")
             await support.until(lambda: app.screen is app.main)
-            await dp.settle()
+            await dp.settle(app)
             seen = list(link.gets)
             link.push(_meta(60, 9))
-            await asyncio.sleep(0.4)
+            await support.reached(link, app)
             assert link.gets == seen
             assert screen.is_attached is False
 
@@ -270,7 +270,7 @@ def test_a_poll_keeps_the_highlighted_queue_and_item_and_shows_no_loading_text()
             before = len(link.gets)
             screen.reload()
             await support.until(lambda: dp.ids(dp.item_list(screen)) == ["r-new", "r-run", "r-old"])
-            await dp.settle()
+            await dp.settle(app)
             assert dp.highlighted(dp.queue_list(screen)) == "reviews"
             assert dp.highlighted(dp.item_list(screen)) == "r-run"
             assert "r-run" in dp.detail(screen)
@@ -329,7 +329,7 @@ def test_a_long_queue_fills_in_chunks_and_a_poll_neither_truncates_nor_moves_the
             dp.item_list(screen).highlighted = 6
             await support.until(lambda: "q-1" in dp.detail(screen))
             screen.reload()
-            await dp.settle()
+            await dp.settle(app)
             assert dp.item_list(screen).option_count == 8
             assert dp.highlighted(dp.item_list(screen)) == "q-1"
 

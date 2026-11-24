@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 from pathlib import Path
 from typing import Any
@@ -157,8 +156,8 @@ def whole(screen: Any) -> str:
     ])
 
 
-async def settle() -> None:
-    await asyncio.sleep(0.05)
+async def settle(app: Any) -> None:
+    await support.until(lambda: all(w.is_finished for w in app.workers if (w.group or "").startswith("dispatch")))
 
 
 run = tr.run

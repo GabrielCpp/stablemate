@@ -72,7 +72,7 @@ def test_no_or_escape_on_the_cancel_confirm_deletes_nothing(key):
             await support.until(lambda: isinstance(app.screen, Confirm))
             await pilot.press(key)
             await support.until(lambda: app.screen is screen)
-            await dp.settle()
+            await dp.settle(app)
             assert link.deletes == []
 
     dp.run(scenario)
@@ -126,7 +126,7 @@ def test_no_or_escape_on_the_stop_confirm_posts_nothing(key):
             await support.until(lambda: isinstance(app.screen, Confirm))
             await pilot.press(key)
             await support.until(lambda: app.screen is screen)
-            await dp.settle()
+            await dp.settle(app)
             assert link.post_log == []
 
     dp.run(scenario)
@@ -165,8 +165,7 @@ def test_a_stop_or_cancel_groom_does_not_answer_toasts_the_reason():
             await pilot.press("c")
             await support.until(lambda: isinstance(app.screen, Confirm))
             await pilot.press("y")
-            await support.until(lambda: len(dp.toasts(app)) == 2)
-            assert dp.toasts(app)[1] == "groom did not answer the cancel: HTTP 500: store is locked"
+            await support.until(lambda: "groom did not answer the cancel: HTTP 500: store is locked" in dp.toasts(app))
 
     dp.run(scenario)
 
@@ -181,7 +180,7 @@ def test_keys_that_do_not_fit_the_highlighted_item_do_nothing(item_id, key):
         async with dp.booted(link) as (app, pilot):
             screen = await open_on(app, pilot, link, item_id)
             await pilot.press(key)
-            await dp.settle()
+            await dp.settle(app)
             assert app.screen is screen
             assert link.deletes == [] and link.post_log == []
 

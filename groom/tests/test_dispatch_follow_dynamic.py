@@ -4,11 +4,11 @@ from __future__ import annotations
 import json
 import os
 import re
-import time
 import urllib.request
 from pathlib import Path
 from unittest.mock import patch
 
+from _page_settle import flush
 from test_a11y_dynamic import (
     _DISPATCH_CONFIG,
     _UNAVAILABLE,
@@ -47,7 +47,9 @@ def test_the_dispatch_pane_makes_no_poll_and_shows_a_new_run_on_the_revision_pus
             page.wait_for_load_state("networkidle")
             seen: list[str] = []
             page.on("request", lambda request: seen.append(request.url) if "/api/dispatch" in request.url else None)
-            time.sleep(6)
+            page.clock.install()
+            page.clock.run_for(6000)
+            flush(page)
             assert seen == [], f"the pane polled: {seen}"
 
             item_id = _enqueue(live, "plans", "follow-me.md")["item"]["item_id"]

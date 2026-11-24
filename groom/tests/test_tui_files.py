@@ -91,8 +91,8 @@ def test_a_late_reply_for_an_earlier_file_never_replaces_the_later_one():
             tree.select_node(ch.tree_leaf(app, "src", "app.py"))
             await support.until(lambda: ch.text_of(app, "#file-head") == "src/app.py" and ch.code_of(app, "#file-view") == "print('a')")
             release.set()
+            await support.until(lambda: not release._waiters)
             await pilot.pause()
-            await asyncio.sleep(0.1)
             assert ch.text_of(app, "#file-head") == "src/app.py"
             assert ch.code_of(app, "#file-view") == "print('a')"
 

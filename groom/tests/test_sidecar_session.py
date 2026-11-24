@@ -11,6 +11,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+from _settle import until, watch_started
 from groom import cli, sidecar
 
 
@@ -371,11 +372,12 @@ def test_the_watch_reports_a_gate_written_after_it_started():
         with tempfile.TemporaryDirectory() as tmp:
             ws_dir = Path(tmp)
             with patch.object(sidecar, "WORKSPACE_DIR", ws_dir), \
-                 patch.object(sidecar, "RUNS_DIR", Path("/nonexistent-groom-test-xyz")):
+                 patch.object(sidecar, "RUNS_DIR", Path("/nonexistent-groom-test-xyz")), \
+                 watch_started(sidecar) as watching:
                 outbox: asyncio.Queue = asyncio.Queue()
                 stop = asyncio.Event()
                 watcher = asyncio.create_task(sidecar._watch_loop(outbox, stop))
-                await asyncio.sleep(0.5)
+                await watching.wait()
                 (ws_dir / "gate.md").write_text(
                     "STATUS: AWAITING_OPERATOR\n\n## Questions from the agent\n\nWhich one?\n"
                 )
@@ -514,9 +516,8 @@ def test_three_writes_inside_the_interval_send_one_workspace_frame_now_and_one_t
         throttle = sidecar._WorkspaceThrottle(outbox, 0.3)
         for _ in range(3):
             throttle.touch()
-            await asyncio.sleep(0.02)
         first = outbox.qsize()
-        await asyncio.sleep(0.5)
+        await until(lambda: outbox.qsize() == 2, "the trailing workspace frame")
         return first, outbox.qsize()
 
     first, total = asyncio.run(drive())
@@ -528,7 +529,8 @@ def test_a_write_after_a_quiet_interval_sends_at_once():
         outbox: asyncio.Queue = asyncio.Queue()
         throttle = sidecar._WorkspaceThrottle(outbox, 0.1)
         throttle.touch()
-        await asyncio.sleep(0.2)
+        loop = asyncio.get_running_loop()
+        await until(lambda: loop.time() >= throttle._last + 0.1, "the interval passing")
         throttle.touch()
         return outbox.qsize()
 
@@ -556,26 +558,23 @@ def test_the_watch_sends_workspace_for_a_git_index_write_and_none_for_the_object
             ws_dir = Path(tmp)
             (ws_dir / ".git" / "objects").mkdir(parents=True)
             with patch.object(sidecar, "WORKSPACE_DIR", ws_dir), \
-                 patch.object(sidecar, "RUNS_DIR", Path("/nonexistent-groom-test-xyz")):
+                 patch.object(sidecar, "RUNS_DIR", Path("/nonexistent-groom-test-xyz")), \
+                 watch_started(sidecar, passed) as watching:
                 outbox: asyncio.Queue = asyncio.Queue()
                 stop = asyncio.Event()
                 watcher = asyncio.create_task(sidecar._watch_loop(outbox, stop))
-                await asyncio.sleep(0.5)
+                await watching.wait()
                 try:
                     (ws_dir / ".git" / "objects" / "blob").write_bytes(b"\x00\xff")
-                    await asyncio.sleep(2.5)
-                    quiet = outbox.qsize()
                     (ws_dir / ".git" / "index").write_bytes(b"\xff\x00")
-                    frame = await asyncio.wait_for(outbox.get(), timeout=30)
-                    await asyncio.sleep(2.5)
-                    return quiet, frame, outbox.qsize()
+                    return await asyncio.wait_for(outbox.get(), timeout=30)
                 finally:
                     stop.set()
                     watcher.cancel()
                     with contextlib.suppress(asyncio.CancelledError):
                         await watcher
 
-    quiet, frame, rest = asyncio.run(drive())
-    assert quiet == 0
+    passed: list[str] = []
+    frame = asyncio.run(drive())
     assert frame == {"type": "workspace"}
-    assert rest == 0
+    assert [Path(path).name for path in passed] == ["index"]

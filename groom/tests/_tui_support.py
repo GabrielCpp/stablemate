@@ -189,6 +189,11 @@ class FakeLink:
         self._queue.put_nowait(None)
 
 
+async def reached(link: FakeLink, app: Any, message: str = "sentinel") -> None:
+    link.push({"type": "notify", "message": message})
+    await until(lambda: any(n.message == message for n in app._notifications))
+
+
 async def until(predicate: Callable[[], Any], timeout: float = 30.0) -> None:
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout

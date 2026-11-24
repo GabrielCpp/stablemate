@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+from _page_settle import flush
 from test_a11y_dynamic import (
     _UNAVAILABLE,
     _live,
@@ -13,7 +14,12 @@ from test_a11y_dynamic import (
     teardown_module,  # noqa: F401
 )
 from test_activity_tab_dynamic import _run
-from test_history_archives_dynamic import _archive_page, _open_archive, _telemetry, _wipe
+from test_history_archives_dynamic import (
+    _archive_page,
+    _open_archive,
+    _telemetry,
+    _wipe,
+)
 from test_history_open_dynamic import AXE, LONG_RUN
 from test_run_clock import span
 
@@ -147,11 +153,11 @@ def test_a_reading_state_shows_while_an_archived_turn_is_read_and_clears_when_it
         held = []
         page.route(TURN_API, lambda route: held.append(route))
         try:
-            _activity(page)
+            with page.expect_request(TURN_API):
+                _activity(page)
             reading = page.locator(f"{PANEL} .rd [role=status]")
             expect(reading).to_have_text("Reading this turn from the archive…")
-            while not held:
-                page.wait_for_timeout(50)
+            page.wait_for_function("true")
             for route in held:
                 route.continue_()
             expect(reading).to_have_count(0)
@@ -269,7 +275,7 @@ def test_an_archived_transcript_goes_through_the_sanitizer(tmp_path):
             _activity(page)
             page.locator(f"{PANEL} .tl button.ev").nth(1).click()
             expect(page.locator(f"{PANEL} .rd .at-msg .at-text").first).to_contain_text("remote logo")
-            page.wait_for_timeout(300)
+            flush(page)
             assert page.evaluate("window.__pwned") is None
             assert page.locator(f"{PANEL} .rd img, {PANEL} .rd script").count() == 0
             assert not [url for url in requested if "pixel.png" in url]

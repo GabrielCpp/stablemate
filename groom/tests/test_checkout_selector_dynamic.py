@@ -542,7 +542,7 @@ def test_j_and_k_with_the_selector_focused_do_not_move_the_run_selection():
             moved = set()
             for key in ("j", "k"):
                 page.keyboard.press(key)
-                _settle(page, 200)
+                _settle(page)
                 moved.add(page.locator(selected).get_attribute("data-worker-id"))
             assert moved != {CONTAINER}, "j and k move the selection when no control has focus"
             _pick(page, CONTAINER)
@@ -550,7 +550,7 @@ def test_j_and_k_with_the_selector_focused_do_not_move_the_run_selection():
             _select(page).focus()
             for key in ("j", "k", "j"):
                 page.keyboard.press(key)
-                _settle(page, 200)
+                _settle(page)
                 expect(page.locator(selected)).to_have_attribute("data-worker-id", CONTAINER)
         finally:
             page.close()

@@ -92,7 +92,7 @@ def test_ctrl_s_with_a_required_field_empty_names_the_field_and_posts_nothing():
             assert app.focused is form.query_one("#enqueue-0")
             form.query_one("#enqueue-0", Input).value = "   "
             await pilot.press("ctrl+s")
-            await dp.settle()
+            await dp.settle(app)
             assert link.post_log == []
 
     dp.run(scenario)
@@ -230,7 +230,7 @@ def test_no_or_escape_on_the_enqueue_confirm_posts_nothing(key):
             await support.until(lambda: isinstance(app.screen, Confirm))
             await pilot.press(key)
             await support.until(lambda: app.screen is screen)
-            await dp.settle()
+            await dp.settle(app)
             assert link.post_log == []
 
     dp.run(scenario)
@@ -247,7 +247,7 @@ def test_n_with_no_queue_selected_does_nothing(tmp_path):
             await support.until(lambda: dp.note(app.screen, "queues"))
             screen = app.screen
             await pilot.press("n")
-            await dp.settle()
+            await dp.settle(app)
             assert app.screen is screen
 
     dp.run(scenario)
