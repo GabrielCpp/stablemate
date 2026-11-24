@@ -501,6 +501,31 @@ def test_a_search_never_reads_a_turn_outside_its_run_and_an_empty_query_reads_no
     assert blank == {"run_id": RUN, "query": "", "matches": []}
 
 
+def test_a_search_cuts_a_long_query_to_its_bound_and_lowercases_it(tmp_path: Path) -> None:
+    with _DB():
+        _seed_run(tmp_path)
+        path = turns.transcripts_root() / RUN / f"{SLUG}__{SESSION}" / "transcript.jsonl"
+        _write(path, [_claude(110, "assistant", "ab" * 120)])
+        found = activity.search(RUN, "AB" * 250)
+    assert found["query"] == "ab" * (activity.SEARCH_QUERY_CHARS // 2)
+    assert [one["key"] for one in found["matches"]] == [SLUG]
+
+
+def test_a_search_does_not_read_another_runs_transcripts_that_hold_the_word(tmp_path: Path) -> None:
+    with _DB():
+        _seed_run(tmp_path)
+        other = turns.transcripts_root() / "other-run" / f"{SLUG}__{SESSION}"
+        _write(other / "transcript.jsonl", [_claude(110, "assistant", "pgbouncer is down")])
+        store.insert_turns([{
+            "run_id": "other-run", "node": "qa-story", "session_id": SESSION, "generation": 1, "seq": 2, "ts": BASE + 100,
+            "path": f"other-run/{SLUG}__{SESSION}",
+        }])
+        mine = activity.search(RUN, "pgbouncer")
+        theirs = activity.search("other-run", "pgbouncer")
+    assert mine["matches"] == []
+    assert theirs["matches"] == []
+
+
 def test_a_search_line_is_cut_and_keeps_markup_as_plain_text(tmp_path: Path) -> None:
     with _DB():
         _seed_run(tmp_path)
