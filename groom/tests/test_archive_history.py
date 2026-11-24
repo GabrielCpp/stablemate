@@ -431,3 +431,30 @@ def test_a_writer_failure_while_summarizing_still_archives_the_run_without_a_sum
         assert destination is not None
         first = archive.manifest(destination)
     assert "summary" not in first
+
+
+def test_a_summary_loop_that_stopped_leaves_no_wake_to_skip_the_next_pass_archives() -> None:
+    async def run_then_stop() -> None:
+        passed = asyncio.Event()
+
+        async def one_pass() -> int:
+            passed.set()
+            return 0
+
+        with patch.object(groom_app, "_summary_pass", one_pass):
+            loop_task = asyncio.create_task(groom_app._summary_loop())
+            await passed.wait()
+            loop_task.cancel()
+            await asyncio.gather(loop_task, return_exceptions=True)
+
+    asyncio.run(run_then_stop())
+    groom_app._wake_summaries()
+    archived: list[str] = []
+    with (
+        patch.object(history, "discover", lambda: []),
+        patch.object(history, "discover_archives", lambda: ["run-older"]),
+        patch.object(history, "compute_archive", archived.append),
+        patch.object(groom_app, "SUMMARY_PAUSE_S", 0.0),
+    ):
+        asyncio.run(groom_app._summary_pass())
+    assert archived == ["run-older"]

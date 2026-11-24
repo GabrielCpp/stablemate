@@ -1926,16 +1926,20 @@ async def _summary_loop() -> None:
     global _summary_wake
     wake = _summary_wake = asyncio.Event()
     wake.set()
-    while True:
-        try:
-            await asyncio.wait_for(wake.wait(), SUMMARY_EVERY_S)
-        except TimeoutError:
-            pass
-        wake.clear()
-        try:
-            await _summary_pass()
-        except Exception:  # noqa: BLE001
-            logger.warning("groom: run summaries could not be written", exc_info=True)
+    try:
+        while True:
+            try:
+                await asyncio.wait_for(wake.wait(), SUMMARY_EVERY_S)
+            except TimeoutError:
+                pass
+            wake.clear()
+            try:
+                await _summary_pass()
+            except Exception:  # noqa: BLE001
+                logger.warning("groom: run summaries could not be written", exc_info=True)
+    finally:
+        if _summary_wake is wake:
+            _summary_wake = None
 
 
 async def _spawn_summaries() -> None:
