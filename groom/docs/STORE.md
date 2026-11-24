@@ -450,5 +450,5 @@ The last one is why this stays local: `run_dir` is a resource attribute on every
 span, so a query hands you the path to the prompt and outputs on disk — a join a
 hosted trace backend cannot make.
 
-For what groom does, see `services/groom/` at the repo root. It is groom's own service
-book, searchable with `ostler book search <term> --service services.groom.http`.
+For what groom does, read groom's own service book with
+`ostler book search <term> --service services.stablemate.groom.http`.

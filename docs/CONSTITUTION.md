@@ -63,8 +63,10 @@ narrowing the check until it passes.
 
 ### 5. What it produces belongs to the user
 
-The artifacts are files in the user's own repository, intelligible with every stablemate
-package uninstalled. What the toolchain knows, it writes down where they can read it.
+The artifacts are plain files in git repositories the user owns: the code repository for
+what they review beside the code, and the artifacts folder for everything else, including
+the books. Both stay intelligible with every stablemate package uninstalled. What the
+toolchain knows, it writes down where they can read it.
 
 *Chooses:* a plain format over a tool-owned store. A file they already know how to read
 over one only we can parse.

@@ -537,4 +537,4 @@ complete one.
 Those commands, the schema and its one footgun, and worked SQL are in
 [docs/STORE.md](docs/STORE.md).
 
-See `services/groom/` at the repo root for the full design, groom's own book.
+Run `ostler book files services.stablemate.groom.http` for the full design, groom's own book.
