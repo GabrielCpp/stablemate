@@ -134,6 +134,8 @@ class DraftLoop(Workflow):
             PMReview, stage=self._kind.stage, subject=self.subject, epic=self.epic, prior=draft.prior
         )
         if verdict.passed:
+            if verdict.notes:
+                self.logger.info("the PM passed %s with notes:\n%s", self.subject, verdict.notes)
             return Done(DraftDone(reworks=draft.reworks, answers=draft.answers)).because("the PM passed it")
         return self._rework(draft, verdict.notes, verdict.notes)
 

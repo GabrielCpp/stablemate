@@ -21,13 +21,13 @@ from workhorse_workflows import author
 from workhorse_workflows.author.pm import GapAnswer, PMReview
 from workhorse_workflows.author.pm.angles import ANGLES, stage_prompt
 from workhorse_workflows.author.pm.answer import accepts, note_for
-from workhorse_workflows.author.pm.flow import complete
+from workhorse_workflows.author.pm.flow import complete, format_findings
 from workhorse_workflows.author.pm.receipt import (
     RECEIPT_NAME,
     pm_receipt_current,
     write_pm_receipt,
 )
-from workhorse_workflows.author.pm.schemas import Answer, GapAnswered, PMResult, Verdict
+from workhorse_workflows.author.pm.schemas import Answer, GapAnswered, PMFinding, PMResult, Verdict
 from workhorse_workflows.author.workflow import workflow
 from _epics import epics_root
 
@@ -93,6 +93,93 @@ def test_a_review_must_judge_every_angle_exactly_once() -> None:
     extra = Verdict(angles=[*good.angles, good.angles[0]])
     with pytest.raises(ValueError):
         check(extra)
+
+
+def _finding(weight: str | None) -> dict[str, str]:
+    finding = {"target": "the subject", "issue": "wording", "repair": "tighten it"}
+    return finding if weight is None else {**finding, "weight": weight}
+
+
+def _one_angle(status: str, findings: list[dict[str, str]]) -> Verdict:
+    entries = verdict("story")["angles"]
+    entries[0] = {"angle": entries[0]["angle"], "status": status, "findings": findings}
+    return Verdict.model_validate({"angles": entries})
+
+
+def test_a_passed_angle_may_list_only_notes() -> None:
+    complete(ANGLES["story"])(_one_angle("passed", [_finding("note")]))
+
+
+def test_a_failed_angle_needs_a_blocking_finding() -> None:
+    check = complete(ANGLES["story"])
+    with pytest.raises(ValueError, match="failed without a blocking finding"):
+        check(_one_angle("failed", [_finding("note"), _finding("note")]))
+    check(_one_angle("failed", [_finding("note"), _finding("blocking")]))
+
+
+def test_a_passed_angle_may_not_list_a_blocking_finding() -> None:
+    with pytest.raises(ValueError, match="passed but lists a blocking finding"):
+        complete(ANGLES["story"])(_one_angle("passed", [_finding("blocking")]))
+
+
+def test_a_finding_with_no_weight_is_blocking() -> None:
+    check = complete(ANGLES["story"])
+    unweighted = _one_angle("failed", [_finding(None)])
+    assert unweighted.angles[0].findings[0].weight == "blocking"
+    check(unweighted)
+    with pytest.raises(ValueError, match="passed but lists a blocking finding"):
+        check(_one_angle("passed", [_finding(None)]))
+
+
+def test_a_review_of_only_notes_passes_and_keeps_the_notes(repo: Path, tmp_path: Path) -> None:
+    story = _story(repo)
+    agent = _Agent([verdict("story", notes={"journey": "say it shorter"})])
+
+    result = drive(
+        PMReview(stage="story", subject=story, epic="accounts", repo_dir=str(repo)),
+        _env(tmp_path, agent),
+    )
+
+    assert isinstance(result, PMResult)
+    assert result.passed
+    assert (repo / story).with_name(RECEIPT_NAME).is_file()
+    assert "[journey] (note) the subject: say it shorter. Repair: tighten it" in result.notes
+
+
+def test_a_blocking_finding_fails_the_review_and_carries_the_notes(
+    repo: Path, tmp_path: Path
+) -> None:
+    story = _story(repo)
+    agent = _Agent(
+        [verdict("story", {"journey": "no outcome"}, notes={"grounding": "say it shorter"})]
+    )
+
+    result = drive(
+        PMReview(stage="story", subject=story, epic="accounts", repo_dir=str(repo)),
+        _env(tmp_path, agent),
+    )
+
+    assert isinstance(result, PMResult)
+    assert not result.passed
+    assert result.receipt_path == ""
+    assert "[journey] the subject: no outcome. Repair: repair it" in result.notes
+    assert "[grounding] (note) the subject: say it shorter. Repair: tighten it" in result.notes
+
+
+def test_format_findings_marks_a_note_and_leaves_a_blocking_line() -> None:
+    blocking = PMFinding(angle="a", target="t", issue="bad.", repair="fix")
+    note = PMFinding(angle="a", target="t", issue="meh", repair="fix", weight="note")
+
+    assert format_findings([blocking, note]) == (
+        "[a] t: bad. Repair: fix\n[a] (note) t: meh. Repair: fix"
+    )
+
+
+def test_the_story_stage_keeps_the_writer_out_of_two_sections() -> None:
+    text = (PM / stage_prompt("story")).read_text(encoding="utf-8")
+    assert "`## Dependencies` section belongs to the story split" in text
+    assert "`## Fixtures` section belongs to the coder" in text
+    assert "never targets either section" in text
 
 
 def test_a_passing_review_writes_a_receipt_and_a_failing_one_does_not(

@@ -10,6 +10,7 @@ from typing import Any
 from _fakes import StubRunner
 from _pm import answer, verdict
 from _milestones import write_milestone
+import pytest
 from git import Repo
 from ostler import Ostler, crud
 from ostler.model import load
@@ -47,6 +48,7 @@ class _Agent:
         self.calls: Counter[str] = Counter()
         self.notes: list[str] = []
         self.findings: list[str] = []
+        self.notes_on_pass: dict[str, str] = {}
 
     def __call__(self, node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
         stem = Path(node.prompt).stem
@@ -66,7 +68,7 @@ class _Agent:
             return "scripted", {"status": "complete", "notes": "split"}
         if stem == "review-inline":
             index = min(self.calls[stem], len(self.reviews)) - 1
-            return "scripted", verdict("epic-split", self.reviews[index])
+            return "scripted", verdict("epic-split", self.reviews[index], self.notes_on_pass)
         if stem == "answer":
             return "scripted", answer("sign-in first")
         raise AssertionError(stem)
@@ -212,3 +214,23 @@ def test_validation_rejects_seed_and_prose_authored_during_split(repo: Path) -> 
 
     assert not result.ok
     assert "authored prose" in result.errors
+
+
+def test_a_review_that_passes_with_notes_ends_without_a_rework(
+    repo: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    _planning_input(repo)
+    agent = _Agent(repo, [{}])
+    agent.notes_on_pass = {"order": "say the order shorter"}
+
+    with caplog.at_level(logging.INFO):
+        result = drive(
+            EpicSplit(repo_dir=str(repo)),
+            replace(_env(tmp_path), agent_runner=StubRunner(agent)),
+        )
+
+    assert isinstance(result, EpicSplitDone)
+    assert result.status == "accepted"
+    assert result.reworks == 0
+    assert agent.calls == {"split-epics": 1, "review-inline": 1}
+    assert "say the order shorter" in caplog.text

@@ -31,10 +31,11 @@ def complete(angles: Sequence[Angle]) -> Callable[[Verdict], None]:
         if repeated:
             problems.append(f"the angles {repeated} appear more than once")
         for entry in verdict.angles:
-            if entry.status == "failed" and not entry.findings:
-                problems.append(f"angle '{entry.angle}' failed without a finding to repair")
-            if entry.status == "passed" and entry.findings:
-                problems.append(f"angle '{entry.angle}' passed but lists findings")
+            blocking = [finding for finding in entry.findings if finding.weight == "blocking"]
+            if entry.status == "failed" and not blocking:
+                problems.append(f"angle '{entry.angle}' failed without a blocking finding to repair")
+            if entry.status == "passed" and blocking:
+                problems.append(f"angle '{entry.angle}' passed but lists a blocking finding")
             for number, finding in enumerate(entry.findings, start=1):
                 empty = [name for name in FINDING_FIELDS if not getattr(finding, name).strip()]
                 if empty:
@@ -52,8 +53,8 @@ def complete(angles: Sequence[Angle]) -> Callable[[Verdict], None]:
 def format_findings(findings: Sequence[PMFinding]) -> str:
     """One line per finding, as a writer reads them and as the next review verifies them."""
     return "\n".join(
-        f"[{finding.angle}] {finding.target}: {finding.issue.rstrip('. ')}. "
-        f"Repair: {finding.repair}"
+        f"[{finding.angle}]{' (note)' if finding.weight == 'note' else ''} "
+        f"{finding.target}: {finding.issue.rstrip('. ')}. Repair: {finding.repair}"
         for finding in findings
     )
 

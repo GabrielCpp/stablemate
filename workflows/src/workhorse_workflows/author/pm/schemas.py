@@ -14,6 +14,7 @@ class Finding(BaseModel):
     target: str
     issue: str
     repair: str
+    weight: Literal["blocking", "note"] = "blocking"
 
 
 class AngleVerdict(BaseModel):

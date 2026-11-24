@@ -10,3 +10,5 @@ Read:
 - The book of each service in the story's `services:`: the entries it changes, read with `ostler book explain`. Never write to a book.
 - The epic's `## Seeds` and `## Stories` sections in `epic.md`, which hold the scope this story claims. The story's own `## Dependencies` section names what blocks it.
 - `mockup.html` beside the story, when it exists.
+
+The story's `## Dependencies` section belongs to the story split and its `## Fixtures` section belongs to the coder. A finding may cite either as evidence. A finding never targets either section or asks for an edit there. When a defect shows in one of them, target the Context or the acceptance criterion where the writer can repair it. A defect the writer can repair in no section it owns is not a finding.

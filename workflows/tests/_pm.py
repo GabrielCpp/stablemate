@@ -7,9 +7,15 @@ from typing import Any
 from workhorse_workflows.author.pm.angles import ANGLES
 
 
-def verdict(stage: str, failing: dict[str, str] | None = None) -> dict[str, Any]:
-    """A complete review reply for *stage*: each angle passes unless *failing* names it."""
+def verdict(
+    stage: str, failing: dict[str, str] | None = None, notes: dict[str, str] | None = None
+) -> dict[str, Any]:
+    """A complete review reply for *stage*: each angle passes unless *failing* names it.
+
+    An angle *notes* names also lists that note, without the weight that fails an angle.
+    """
     failing = failing or {}
+    notes = notes or {}
     entries: list[dict[str, Any]] = []
     for angle in ANGLES[stage]:
         if angle.name in failing:
@@ -28,6 +34,15 @@ def verdict(stage: str, failing: dict[str, str] | None = None) -> dict[str, Any]
             )
         else:
             entries.append({"angle": angle.name, "status": "passed", "findings": []})
+        if angle.name in notes:
+            entries[-1]["findings"].append(
+                {
+                    "target": "the subject",
+                    "issue": notes[angle.name],
+                    "repair": "tighten it",
+                    "weight": "note",
+                }
+            )
     return {"angles": entries}
 
 

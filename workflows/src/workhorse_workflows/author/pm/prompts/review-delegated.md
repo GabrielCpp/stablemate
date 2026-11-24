@@ -14,7 +14,7 @@ You are the product manager. Judge the subject below from every angle listed. Yo
 
 ## Angles
 
-Spawn one subagent per angle below, all in parallel. Give each subagent the angle's instructions exactly as written, the inputs and the subject above, and the rules below. Tell it to edit nothing and to return its angle's verdict only: the status and the findings, each with a `target`, an `issue` and a `repair`.
+Spawn one subagent per angle below, all in parallel. Give each subagent the angle's instructions exactly as written, the inputs and the subject above, and the rules below. Tell it to edit nothing and to return its angle's verdict only: the status and the findings, each with a `target`, an `issue`, a `repair` and a `weight`.
 {% for angle in angles %}
 ### Angle `{{ angle.name }}`
 
@@ -29,7 +29,7 @@ Collect the verdict of every subagent. Add no finding of your own and drop none,
 
 ## Final response (REQUIRED, exact shape)
 
-Return one entry for each angle above and no other. An angle that fails lists its findings. An angle that passes lists none and may carry a one-line `note`.
+Return one entry for each angle above and no other. An angle that fails lists its findings, at least one of them blocking. An angle that passes lists no blocking finding and may list notes and carry a one-line `note`.
 
 ```json
 {
@@ -41,7 +41,8 @@ Return one entry for each angle above and no other. An angle that fails lists it
         {
           "target": "<the section, criterion, line or element this is against>",
           "issue": "<what is wrong with it>",
-          "repair": "<what would make it right>"
+          "repair": "<what would make it right>",
+          "weight": "blocking" | "note"
         }
       ],
       "note": "<optional one line>"
