@@ -83,6 +83,7 @@ packages = ["workhorse"]
 include = ["workhorse", "README.md", "LICENSE", "docs"]
 
 [tool.pytest.ini_options]
+pythonpath = ["../scripts/pytest_plugins"]
 testpaths = ["tests"]
 # Autoclean. These tests drive whole runs against sandbox repos, and a run writes one
 # artifact set per node step. pytest's default (`all`) keeps a passing test's sandbox and

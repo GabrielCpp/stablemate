@@ -14,6 +14,8 @@ import pytest
 
 from ostler import index, registry
 
+pytest_plugins = ["private_tmp"]
+
 
 FOO_ID = "t-01foo"
 BAR_ID = "t-01bar"

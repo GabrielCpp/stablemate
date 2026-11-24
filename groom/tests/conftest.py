@@ -9,6 +9,8 @@ from collections.abc import Iterator
 
 import pytest
 
+pytest_plugins = ["private_tmp"]
+
 for _name in [name for name in os.environ if name.startswith("GROOM_")]:
     del os.environ[_name]
 

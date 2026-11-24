@@ -22,6 +22,8 @@ from saddlebag.models import Secret, Tag
 from saddlebag.protocol import Reply, Request
 from saddlebag.store import StoreHealth
 
+pytest_plugins = ["private_tmp"]
+
 
 class FakeVault:
     """An in-memory :class:`~saddlebag.store.SecretStore`."""

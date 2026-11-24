@@ -6,6 +6,8 @@ import pytest
 
 from stablemate_core import base_cache, config
 
+pytest_plugins = ["private_tmp"]
+
 
 @pytest.fixture(autouse=True)
 def _no_real_cache(tmp_path_factory, monkeypatch):

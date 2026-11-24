@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+pytest_plugins = ["private_tmp"]
+
 
 @pytest.fixture(autouse=True)
 def _artifacts_dir_is_per_test(tmp_path_factory, monkeypatch):

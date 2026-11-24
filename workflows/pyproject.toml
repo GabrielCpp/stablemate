@@ -130,7 +130,7 @@ testpaths = ["tests"]
 # has an `__init__.py`), so what pytest prepends for them is `tests/` — but only once
 # something has been collected from there, which makes an implicit version of this
 # depend on collection order.
-pythonpath = ["tests"]
+pythonpath = ["tests", "../scripts/pytest_plugins"]
 tmp_path_retention_policy = "failed"
 # The limit only catches a hung test and sits many times above the slowest test here. A
 # drive that reaches a gate the stub cannot satisfy ends in an operator `await`, and the

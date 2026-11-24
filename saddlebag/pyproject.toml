@@ -50,6 +50,7 @@ packages = ["saddlebag"]
 include = ["saddlebag", "README.md", "LICENSE"]
 
 [tool.pytest.ini_options]
+pythonpath = ["../scripts/pytest_plugins"]
 testpaths = ["tests"]
 # Discard a passing test's tmp_path immediately; keep it only for a failure. pytest's
 # default (`all`) retains three whole runs' worth of sandboxes.
