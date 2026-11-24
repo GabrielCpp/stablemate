@@ -174,6 +174,9 @@ groom profile --run RUN      # disjoint wall-clock buckets for one run
   and a handful take twenty" want opposite fixes. Act on `excess$` (money spent on every
   lap after the first). `at-max` carries no verdict: a pile there *suggests* a `MAX_*`
   budget was exhausted, so go read the workflow's constant rather than concluding.
+  `retries` counts the turns that ended on an error, such as a usage cap, and ran again.
+  They are no laps and enter no other column, so a node that waited out a cap does not
+  read as a loop that failed to converge.
 - **`profile`** partitions observed wall time into disjoint buckets — agent turns,
   deterministic nodes, infrastructure, explicit waits, cross-generation gaps, unclassified
   — and separates **workflow visits** (one parent node span) from **backend retries**
