@@ -43,6 +43,43 @@ TABLE = "Runs that ended, newest first"
 READING = "Reading the archive for the first time. This takes a few seconds once, then it is instant."
 
 
+HOLD_THE_FIRST_ANSWER = """
+(pattern) => {
+  const real = window.fetch.bind(window);
+  const held = (window.__held = { release: null, read: false });
+  let taken = false;
+  window.fetch = (url, ...rest) => {
+    if (taken || !String(url).includes(pattern)) return real(url, ...rest);
+    taken = true;
+    return new Promise((resolve) => {
+      held.release = () =>
+        real(url, ...rest).then((response) => {
+          const json = response.json.bind(response);
+          response.json = () => {
+            held.read = true;
+            return json();
+          };
+          resolve(response);
+        });
+    });
+  };
+}
+"""
+TWO_FRAMES = "() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))"
+
+
+def _hold_the_first_answer(page, pattern: str) -> None:
+    page.evaluate(HOLD_THE_FIRST_ANSWER, pattern)
+
+
+def _wait_until_asked(page) -> None:
+    page.wait_for_function("() => window.__held.release !== null", timeout=10000)
+
+
+def _release(page) -> None:
+    page.evaluate("() => window.__held.release()")
+
+
 def _telemetry(run: str) -> Path:
     folder = archive.exact_dir(run)
     assert folder is not None
@@ -206,10 +243,9 @@ def test_an_unreadable_summary_shows_the_row_with_no_figures_says_so_and_retry_n
 def test_the_first_open_of_an_archive_says_it_is_reading_then_shows_the_overview_with_an_activity_tab_and_no_files_or_diff_tab() -> None:
     live = _live()
     assert live is not None, _UNAVAILABLE
-    held: list = []
     with _archived("arch-a"):
         page = _archive_page(live, "arch-a")
-        page.route("**/api/archive/**", lambda route: held.append(route))
+        _hold_the_first_answer(page, "/api/archive/")
         try:
             _open_archive(page, "arch-a")
             page.wait_for_selector(f"{DETAIL} .loading", timeout=30000)
@@ -224,7 +260,7 @@ def test_the_first_open_of_an_archive_says_it_is_reading_then_shows_the_overview
         finally:
             page.close()
     assert reading == READING
-    assert problems_during == 0
+    assert (problems_during, problems_after) == (0, 1)
     assert [tab.split()[0] for tab in tabs] == ["Overview", "Activity"]
     assert "archived" in head
     assert "problem" in attention
@@ -328,11 +364,19 @@ def test_a_live_ended_run_still_shows_its_overview_and_activity_tabs_when_everyt
 def test_the_archive_surfaces_pass_an_axe_scan() -> None:
     live = _live()
     assert live is not None, _UNAVAILABLE
-    with _archived("arch-a", "arch-b"):
+    with _archived("arch-a", "arch-b", "arch-c", "arch-d"):
         _telemetry("arch-b").unlink()
+        for run in ("arch-c", "arch-d"):
+            folder = archive.exact_dir(run)
+            assert folder is not None
+            _without_summary(folder)
+        history.discover_archives()
+        _telemetry("arch-d").write_text("not a manifest\n", encoding="utf-8")
+        history.compute_archive("arch-d")
         page = _archive_page(live, "arch-a")
         try:
             page.add_script_tag(path=str(AXE))
+            texts = page.locator("#history tr.hrow").all_inner_texts()
             table = _scan(page)
             _open_archive(page, "arch-a")
             page.wait_for_selector(f"{DETAIL} .ov", timeout=30000)
@@ -346,6 +390,8 @@ def test_the_archive_surfaces_pass_an_axe_scan() -> None:
             failed = _scan(page)
         finally:
             page.close()
+    assert any("reading its summary" in text for text in texts)
+    assert any("could not be read" in text for text in texts)
     assert not failed, json.dumps(failed, indent=1)
     assert not table, json.dumps(table, indent=1)
     assert not overview, json.dumps(overview, indent=1)
@@ -382,7 +428,6 @@ def test_a_long_run_id_and_repo_label_keep_the_archived_row_inside_the_table_and
 def test_a_slow_answer_for_the_old_range_does_not_replace_the_list_of_the_range_chosen_after_it() -> None:
     live = _live()
     assert live is not None, _UNAVAILABLE
-    held: list = []
     with _archived("arch-a"):
         page = _everything(live)
         try:
@@ -406,7 +451,7 @@ def test_an_archive_that_gets_its_row_later_appears_in_the_table_without_a_reloa
     live = _live()
     assert live is not None, _UNAVAILABLE
     with _archived("arch-a", summarized=False):
-        page = _everything(live)
+        page = _open_history(live)
         try:
             settle(page)
             history.discover_archives()
