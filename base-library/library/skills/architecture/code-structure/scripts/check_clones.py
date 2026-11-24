@@ -43,7 +43,7 @@ TEST_PATHS = (
     "**/*_test.py", "**/*_test.dart", "**/*.test.*", "**/*.spec.*", "**/*Test.kt", "**/*Test/**",
 )
 ALWAYS_IGNORE = (
-    ".git/**", ".agents/**", ".claude/**", ".github/**", "docs/**", "**/*.md",
+    ".git/**", ".agents/**", ".claude/**", ".github/**", "docs/**", "**/mockups/**", "**/*.md",
     "**/package-lock.json", "**/npm-shrinkwrap.json", "**/pnpm-lock.yaml", "**/*.lock", "**/go.sum",
 )
 
