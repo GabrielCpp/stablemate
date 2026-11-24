@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from workhorse_workflows.coder.shared import paths
+from workhorse_workflows.coder.shared import paths, resolution
 from _epics import epics_root
 
 
@@ -32,13 +32,13 @@ def test_the_operator_dir_files_are_still_excused_from_the_dirty_check(tmp_path:
         assert paths.is_gate_context(paths.operator_context_path(tmp_path, gate, "e"))
 
 
-def test_decisions_land_in_the_artifacts_folder_not_in_the_code_repository(
+def test_the_product_pages_sit_in_the_product_folder_of_a_repository_that_keeps_its_book(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A decision record is a document a person reads, so it sits under `docs/` of the artifacts folder rather than in the code repository."""
-    artifacts = tmp_path / "artifacts"
-    monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(artifacts))
+    monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(tmp_path / "artifacts"))
     repo = tmp_path / "repo"
     repo.mkdir()
-    assert paths.decisions_dir(repo) == artifacts.resolve() / "docs" / "decisions"
-    assert paths.decisions_dir(repo).name == "decisions"
+    (repo / "agents.yml").write_text("book:\n  home: repo\n", encoding="utf-8")
+    assert resolution.product_dir(str(repo)) == repo.resolve() / "product"
+    assert not hasattr(paths, "decisions_dir")
+    assert not hasattr(resolution, "decisions_dir")

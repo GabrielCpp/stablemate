@@ -83,11 +83,6 @@ def story_context_path(story_path: str, repo_dir: str | Path = "") -> Path:
     return launch_repo_root(repo_dir) / "context.md"
 
 
-def decisions_dir(docs_root: Path) -> Path:
-    """Where the operator's standing decisions live: the root ostler resolves for *docs_root*, in the artifacts folder."""
-    return okf_path.decisions_root_in(docs_root)
-
-
 def is_gate_context(path: str | Path) -> bool:
     """Is *path* a file an operator gate wrote, rather than work a story produced?"""
     name = Path(path).name

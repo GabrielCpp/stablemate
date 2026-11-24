@@ -8,12 +8,11 @@ from typing import Any
 from workhorse.pyflow import AgentTimeout, Workflow
 from workhorse._vendor.stablemate_core import books
 
-from workhorse_workflows.coder.shared import paths
 from workhorse_workflows.coder.shared.owner import cut_notes
 from workhorse_workflows.coder.shared.schemas.dev import OperatorResolution
 from workhorse_workflows.kit.schema import schema_block
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
-from workhorse_workflows.kit import find_book_package, find_book_root, find_docs_root, find_repo_root
+from workhorse_workflows.kit import find_book_package, find_book_root, find_repo_root
 
 RESOLVER_POWER = "max"
 
@@ -68,20 +67,19 @@ def resolver_args(
     return {
         "story_path": ident.story_path,
         "spec_dir": ident.spec_dir,
-        "decisions_dir": str(decisions_dir(flow.repo_dir)),
         "book_root": str(find_book_root(flow.repo_dir)),
         "service_package": find_book_package(flow.repo_dir),
         "service_books": str(find_book_root(flow.repo_dir) / books.package_folder(find_book_package(flow.repo_dir))),
-        "product_dir": str(books.product_folder(find_repo_root(flow.repo_dir)) or find_book_root(flow.repo_dir) / "product"),
+        "product_dir": str(product_dir(flow.repo_dir)),
         "block_kind": block_kind,
         "block_notes": notes,
         "result_schema": schema_block(OperatorResolution),
     }
 
 
-def decisions_dir(repo_dir: str) -> Path:
-    """Where this run's standing decisions live, absolute — see `paths.decisions_dir`."""
-    return paths.decisions_dir(find_docs_root(repo_dir))
+def product_dir(repo_dir: str) -> Path:
+    """The folder of this run's product pages: the repository's `product/` when it keeps its book, else its product folder in the artifacts folder."""
+    return books.product_folder(find_repo_root(repo_dir)) or find_book_root(repo_dir) / "product"
 
 
 def answered(flow: Workflow, result: OperatorResolution, block_kind: str) -> bool:
@@ -109,6 +107,6 @@ __all__ = [
     "ResolverCut",
     "Resolving",
     "answered",
-    "decisions_dir",
+    "product_dir",
     "resolver_args",
 ]

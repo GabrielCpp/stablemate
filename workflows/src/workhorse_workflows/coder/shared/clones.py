@@ -30,7 +30,7 @@ REPAIR = (
 CROSS_BUILD_REPAIR = (
     "extract the repeated code to a library the repository's workspace lists and each build "
     "declares, in this change (code-structure rule 2.13). When the repository has no workspace, "
-    "or a build context, CI path filter or deploy has to widen, and no docs/decisions record "
+    "or a build context, CI path filter or deploy has to widen, and no product page or service decision "
     "covers it, propose the library and return blocked instead. When the two change for "
     f"different reasons, add a [[check-clones.coincidence]] entry to {COINCIDENCE_CONFIG} naming "
     "both files and two different reasons instead."

@@ -1422,7 +1422,7 @@ def test_the_plan_turn_on_a_fresh_conversation_carries_the_full_rules(
     assert "## Commit Identity" in text, text
 
 
-def test_the_opening_brief_records_an_operator_answer_where_the_resolver_reads_decisions(
+def test_the_opening_brief_records_an_operator_answer_as_a_product_page(
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
@@ -1433,11 +1433,11 @@ def test_the_opening_brief_records_an_operator_answer_where_the_resolver_reads_d
     drive_flow(_dev(docs), env(), agent)
 
     (plan,) = agent.args_for("dev-plan")
-    decisions = str(plan["decisions_dir"])
-    assert decisions.endswith("docs/decisions"), decisions
+    product = str(plan["product_dir"])
+    assert "decisions_dir" not in plan, plan
     text = Path(str(plan["brief_path"])).read_text(encoding="utf-8")
-    assert "ostler decisions add <short-kebab-slug> --summary" in text, text
-    assert f"`{decisions}`" in text, text
+    assert "ostler decisions add" not in text, text
+    assert f"{product}/<slug>.md" in text, text
     assert "code-structure rule 2.13" in " ".join(text.split()), text
 
 

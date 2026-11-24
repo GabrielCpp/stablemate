@@ -220,7 +220,7 @@ class OperatorResolution(CoderResult):
 
     record: str = Field(
         default="",
-        description="The decision-record slug you wrote, or the one you cited. Empty when "
+        description="The product page or service decision slug you wrote, or the one you cited. Empty when "
         "escalating.",
     )
 

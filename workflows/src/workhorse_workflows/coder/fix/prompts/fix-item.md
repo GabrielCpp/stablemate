@@ -130,7 +130,7 @@ yourself before you return `done`, and leave them green.
 Return `blocked` only for a decision an operator alone can make: a product or scope call
 written down nowhere, a credential, a spend, or behaviour the item describes that does not
 exist in these repositories. First try every route the repo offers: its docs, its
-`docs/decisions/*/decision.md` records, its skills. On `blocked`, `notes` holds the one question that
+book's decisions and product pages (`ostler book search <term> --kind decision|product`), its skills. On `blocked`, `notes` holds the one question that
 would unblock you and what you ruled out. A block loses no work. The answer comes back to
 this session.
 

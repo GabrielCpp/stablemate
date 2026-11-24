@@ -18,20 +18,16 @@ testing-design rule 14 says.
 When the clone check says the two copies sit in separate builds, the owner is a library the
 repository's workspace lists and each build declares, as code-structure rule 2.13 says. The
 library's manifest, its workspace entry and each build's dependency on it are in scope. Build it
-without asking when a record in `{{ decisions_dir }}/*/decision.md` says where such code lives, or when the
+without asking when a product page or service decision (`ostler book search <term> --kind product`, `--kind decision`) says where such code lives, or when the
 workspace already exists and every build context, image, CI path filter and deploy stays as it
 was. Otherwise return `blocked`. `notes` then holds one concrete library: its folder, its name,
 its manifest, its workspace entry, each build that declares it, each build context or filter it
 widens, and your recommendation. When the operator's answer settles it, write that answer to
-a decision before you build, so the next story follows it without asking. Run
-`ostler decisions add <short-kebab-slug> --summary "<the question, in one line>"`. It prints the
-path of the new `decision.md`, under `{{ decisions_dir }}`. It refuses a slug that is already
-taken, so read that decision and pick another slug. Fill the four headings in the printed file:
-
-- `## Question`: where does code two services share live?
-- `## Decided`: the operator's answer, in one or two sentences.
-- `## Grounded in`: the operator's answer to <story slug>, dev stage.
-- `## Context`: the copy that raised it, and what was at stake.
+a product page before you build, so the next story follows it without asking. Write it as
+`{{ product_dir }}/<slug>.md`. Pick a slug no page there uses. The file starts with the line
+`date: <YYYY-MM-DD>`, then `sources: operator, <date>`, then a blank line, then the rule in prose. Its
+first prose line is the rule: where code two services share lives, in one or two sentences. Then say
+the operator's answer to <story slug>, dev stage, the copy that raised it, and what was at stake.
 
 A follow-up is undone product work on this story's feature that the working slice does not
 need: a refactor, a wider surface, a polish the criteria do not ask for. A copy that predates
@@ -63,7 +59,7 @@ review phases change nothing there. A claim in it you cannot meet is a block tha
 
 Return `blocked` only for a decision an operator alone can make: a product call the story
 and the repo's decisions leave open, a credential, a real deploy, a spend, a change to how the
-code ships. First try every route the repo offers: its docs, its `{{ decisions_dir }}/*/decision.md` records,
+code ships. First try every route the repo offers: its docs, its book's decisions and product pages (`ostler book search <term> --kind decision|product`),
 its skills, its fixtures.
 A missing fixture, seed, migration or data row is not a block. Building it is in scope. On
 `blocked`, `notes` holds the one question that would unblock you and what you ruled out.

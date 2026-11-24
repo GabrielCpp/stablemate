@@ -26,7 +26,7 @@ limit — take the time you need), with full tool access: read, edit, run comman
   `ci` (an epic branch's CI stays red).
 - Story: `{{ story_path }}`
 - Spec dir: `{{ spec_dir }}`
-- Standing decisions: `{{ decisions_dir }}`
+- Product pages: `{{ product_dir }}`
 - The blocking question / notes from the producer:
 
 {{ block_notes }}
@@ -50,9 +50,9 @@ found, not just that you looked.
 
 Then check whether the question is already decided. In descending order of authority:
 
-1. **Standing decisions.** `{{ decisions_dir }}/*/decision.md` holds those a human made, or a previous
-   resolver recorded on their behalf. The company, team and product pages and the book's
-   `{{ service_books }}/<name>/decisions/*.md` stand with them, before the story. Their order of authority is company, team,
+1. **Standing decisions.** The company, team and product pages and the book's
+   `{{ service_books }}/<name>/decisions/*.md` hold those a human made, or a previous resolver
+   recorded on their behalf. They stand before the story. Their order of authority is company, team,
    product, service decision, story. Search them first, from `{{ book_root }}`, once for each main noun of the
    question: `ostler book search <term> --kind company`, `ostler book search <term> --kind team`,
    `ostler book search <term> --kind product` and `ostler book search <term> --kind decision`. A record or a
@@ -115,29 +115,17 @@ a resolver has said exactly that and then written the file out at five lines.
 - `## Grounded in` — one bullet per source that decided it, each naming the file and
   quoting the line. If you cannot write this section, you are not answering; escalate.
 
-Then record it, so the next run does not pay for it again. If no record in
-`{{ decisions_dir }}/*/decision.md` already covers this question, run
-`ostler decisions add <short-kebab-slug> --summary "<the question, in one line>"`. It prints the
-path of the new `decision.md`, under `{{ decisions_dir }}`. It refuses a slug that is already
-taken, so read that decision and pick another slug if it is a different question. Fill the four
-headings in the printed file:
-
-- `## Question`: the question, as a question.
-- `## Decided`: the ruling, in one or two sentences.
-- `## Grounded in`: the file and line that determined it.
-- `## Context`: the block that raised it, with the story slug and stage, and what was at stake.
-
-If a record *does* cover it, leave it alone and cite it. A record is amended only by a
-human, or by a resolver a human's own answer has just overruled it with.
+Then record it, so the next run does not pay for it again. If a page or a service decision already
+covers this question, leave it alone and cite it. A page or a decision is amended only by a human, or by a
+resolver a human's own answer has just overruled it with.
 
 When the operator's answer states a rule that outlives the story, such as the meaning of a word, a constraint
-or the source of truth for a calculation, also write it in this turn as `{{ product_dir }}/<slug>.md`. The
+or the source of truth for a calculation, write it in this turn as `{{ product_dir }}/<slug>.md`. The
 file starts with the line `date: <YYYY-MM-DD>`, then `sources: operator, <date>`, then a blank line, then the rule
-in prose. Its first prose line is the page's statement. It names no story and no element. Write it in addition to
-what you write above. When the answer reads as a rule for more than this product, still write the product page,
-and make its second line `sources: operator, <date>; may belong to the team book` so a person can move it. You
-never write a team or a company page. An answer that explains one element becomes a line in that service's
-decision instead.
+in prose. Its first prose line is the page's statement. It names no story and no element. When the answer reads
+as a rule for more than this product, still write the product page, and make its second line
+`sources: operator, <date>; may belong to the team book` so a person can move it. You never write a team or a
+company page. An answer that explains one element becomes a line in that service's decision instead.
 
 ### If you are escalating
 

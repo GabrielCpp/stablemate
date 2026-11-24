@@ -58,8 +58,8 @@ from workhorse_workflows.coder.shared.plan import record_plan, resolve_impl_cont
 from workhorse_workflows.coder.shared.resolution import (
     ResolverCut,
     answered,
-    decisions_dir,
     Resolving,
+    product_dir,
 )
 from workhorse_workflows.coder.shared.reach import resolve_check_set
 from workhorse_workflows.coder.shared.review import (
@@ -196,7 +196,7 @@ class Dev(Resolving):
             "branch": self.branch,
             "spec_book_paths": list(self.spec_book_paths),
             "book_services": covered,
-            "decisions_dir": str(decisions_dir(self.repo_dir)),
+            "product_dir": str(product_dir(self.repo_dir)),
             "docs_root": str(find_docs_root(self.repo_dir)),
             "book_root": str(find_book_root(self.repo_dir)),
             "service_package": find_book_package(self.repo_dir),
