@@ -1,12 +1,11 @@
 # review_debt
 
 The `review-debt` workflow. It reads the whole debt register, has one agent turn group the
-records by shared cause, proves the report covers every record, writes `trends.md`, and
-proposes a decision for each cluster big enough to need one.
+records by shared cause, proves the report covers every record, and writes `trends.md`.
 
 ```bash
 workhorse-review-debt run
-workhorse-review-debt run --dry-run   # walks to a filed decision, no agent CLI needed
+workhorse-review-debt run --dry-run   # walks every state, no agent CLI needed
 ```
 
 ## States
@@ -15,13 +14,8 @@ workhorse-review-debt run --dry-run   # walks to a filed decision, no agent CLI 
    "register is empty": no agent turn and no `trends.md`.
 2. `group` renders `review-register.md` with the listing lines and the shelf path, and
    gets a `TrendReport` back. `account` compares the ids of the report with the ids of the
-   read. A passing report goes to `write_trends`, then to `plan_decisions`.
-3. `plan_decisions` calls `select_candidates` with `decision_threshold` (default 3). With no
-   cluster at the threshold the run ends as `Done` with an empty `Proposed`.
-4. `draft` takes one candidate at a time. `narrow_candidate` re-reads the shelf and drops
-   records a decision has bound since the plan. A candidate still at the threshold gets one
-   `draft-decision.md` turn, and `file_decision` calls ostler's `propose_decision` with the
-   draft, whose `slug` names the ADR folder. The run ends as `Done` with a `Proposed` that names every decision id it filed.
+   read. A passing report goes to `write_trends`, and the run ends as `Done` with the
+   `TrendsWritten` it returns. The review files no decision.
 
 ## Inputs
 
@@ -50,16 +44,3 @@ line starting `- <id> `. Rendering is deterministic, so a resume that renders th
 commits nothing. The one file is committed in the artifacts repo as
 `chore: review the debt register`. The shelf glob is `*/*/*/record.md`, so the file at the
 shelf root is never read back as a record.
-
-## Decisions
-
-The evidence of a cluster is its ids whose record has an empty `decision`. A cluster whose
-evidence reaches `decision_threshold` yields one `adr/<id>.md` in the artifacts dir with
-`status: proposed`, the sorted `repos` of the evidence and the evidence ids. Each evidence
-record gets `decision: <id>` and stays open. The adr file and the records are one artifacts
-commit, `chore: propose <id> from <n> records`. A cluster below the threshold yields nothing.
-
-A rerun or a resume over the same report proposes nothing twice. Bound records drop out of
-the evidence count, so a cluster that a decision already holds falls under the threshold, and
-`draft` narrows its candidate again before it spends a turn. A refusal from ostler (an
-unknown id, a record bound to another decision) ends the run with `WorkflowFailed` naming it.

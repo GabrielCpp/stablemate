@@ -135,3 +135,19 @@ def test_an_empty_register_ends_without_a_turn_or_a_file(
     assert result.ids == [], result
     assert not _trends(artifacts).exists()
     assert Ostler(repo).records().records == ()
+
+
+def test_a_passing_report_ends_done_with_trends_and_no_decision_turn(
+    shelf: list[str],
+    artifacts: Path,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = ScriptedReports(report(["api-cart", "api-auth", "web-cart"], ["api-old", "web-nav"]))
+
+    result = drive_flow(ReviewDebt(), env(), agent)
+
+    assert agent.turns == 1
+    assert "draft-decision" not in " ".join(str(a) for a in agent.args)
+    assert sorted(trend_ids(_trends(artifacts).read_text(encoding="utf-8"))) == sorted(shelf)
+    assert type(result).__name__ == "TrendsWritten", result
