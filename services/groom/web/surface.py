@@ -5,18 +5,23 @@ from __future__ import annotations
 
 import json
 import secrets
+import sqlite3
+import time
 import urllib.request
+from contextlib import closing
 from typing import Any
 
 from ostler.book import Browser, Done, Environment, PageSurface, Refusal, answer
 from ostler.book.screen import Interaction
 
-from ..fixtures import Push, Query, Reply, Settings
+from ..fixtures import Judged, Push, Query, Reply, Settings
 from ..model.actions import handle
 from ..model.records import Ack, Line, Panel
+from ..stack import DB
 from .activity import Note
+from .median import EachCell, MedianCell
 from .interactions import (
-    AnswerTheGate, FilterTheList, ReadActivity, OpenAttendant, OpenDispatch, OpenHistory, OpenRun, OpenRuns, OpenSettings, ReportExit,
+    AnswerTheGate, FilterTheList, ReadActivity, ReadTheMedian, OpenAttendant, OpenDispatch, OpenHistory, OpenRun, OpenRuns, OpenSettings, ReportExit,
     ReportGate, ReportProgress, SwitchTheAttendant,
 )
 from .screens import ALL as SCREENS
@@ -80,6 +85,21 @@ READ = """
   return { rows, mode: mode ? mode.textContent : '' };
 }
 """
+
+EACH = """
+([run]) => {
+  const th = document.querySelector('#history table.ht th[title^="Per finished item"]');
+  const row = [...document.querySelectorAll('#history tr.hrow')].find((r) => r.innerText.includes(run));
+  return row && th ? row.cells[th.cellIndex].innerText : null;
+}
+"""
+
+MEDIAN = '#history .h-sum span[title^="Successful runs of this workflow"]'
+
+SUMMARY = (
+    "run_id", "workflow", "repo", "branch", "state", "ending", "ended_ts", "last_ts", "active_s", "wall_s",
+    "cost_usd", "est_usd", "priced_turns", "turns", "items_done", "items_total",
+)
 
 PUSHES = {ReportProgress: "progress", ReportGate: "blocked", ReportExit: "exited"}
 FIELDS = ("name", "repo_name", "repo_branch", "current_node", "file_path", "question", "exit_code")
@@ -171,6 +191,8 @@ class GroomDashboard(PageSurface):
             self.open_run(step.of)
         elif isinstance(step, ReadActivity):
             return self.activity()
+        elif isinstance(step, ReadTheMedian):
+            return self.median(step.of)
         elif isinstance(step, AnswerTheGate):
             return self.answer(step.of)
         elif isinstance(step, OpenHistory):
@@ -202,6 +224,38 @@ class GroomDashboard(PageSurface):
         text = note.inner_text().strip()
         self.settle()
         return Done(self.rows(), (Note(text),))
+
+    def summaries(self, judged: Judged, workflow: str, own: str) -> None:
+        now = time.time()
+        each = [(f"{own}-peer{n}", cost, False, 2, 1) for n, cost in enumerate(judged.peers)]
+        each.append((own, judged.each, judged.estimate, judged.items, 0 if judged.estimate else 1))
+        rows = []
+        for n, (run, cost, estimate, items, priced) in enumerate(each):
+            ended = now - 3600 * (n + 1)
+            ending = judged.ending if run == own else "success"
+            spent = None if estimate else cost * items
+            guess = cost * items if estimate else None
+            rows.append((run, workflow, "acme", "main", "ready", ending, ended, ended, 3600.0, 7200.0, spent, guess, 4 * priced, 4, items, items))
+        marks = ", ".join("?" for _ in SUMMARY)
+        with closing(sqlite3.connect(DB, timeout=10)) as conn, conn:
+            conn.executemany(f"INSERT INTO run_summary ({', '.join(SUMMARY)}) VALUES ({marks})", rows)  # noqa: S608
+
+    def median(self, judged: Judged) -> Done:
+        tag = secrets.token_hex(3)
+        workflow, own = f"{judged.workflow}-{tag}", f"judged-{tag}"
+        self.summaries(judged, workflow, own)
+        self.browser.page.click("#activitybar .act-btn[data-mode=runs]")
+        self.pane("history", History.root)
+        self.browser.wait_for(History.workflow)
+        self.browser.fill(History.workflow, "")
+        self.browser.page.wait_for_selector(f"#history tr.hrow:has-text('{own}')")
+        self.browser.fill(History.workflow, workflow)
+        cell = self.browser.page.locator(MEDIAN)
+        cell.wait_for()
+        each = self.browser.page.evaluate(EACH, [own])
+        totals = " ".join(cell.inner_text().split())
+        self.settle()
+        return Done(self.rows(), (EachCell(" ".join(each.split())), MedianCell(totals.replace(workflow, judged.workflow))))
 
     def answer(self, reply: Reply) -> Done | Refusal:
         self.open_run(Push(container_id=reply.container_id))

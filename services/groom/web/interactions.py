@@ -1,8 +1,9 @@
 from ostler.book import Interaction
 
-from ..fixtures import Push, Query, Reply, Settings
+from ..fixtures import Judged, Push, Query, Reply, Settings
 from ..model.actions import AnswerFromPage, FilterRuns, Navigate, OpenRun as SelectRun, PushBlocked, PushExited, PushProgress, SwitchAttendant
 from .activity import ReadActivityTab
+from .median import JudgeRun
 from .screens import Attendant, Dispatch, History, RunDetail, Runs
 from .screens import Settings as SettingsScreen
 
@@ -70,6 +71,13 @@ class ReadActivity(Interaction[Push]):
     carries = ReadActivityTab
 
 
+class ReadTheMedian(Interaction[Judged]):
+    source = ("groom/groom/assets/dashboard.js", "groom/groom/medians.py")
+    screen = History
+    does = "chooses the workflow of ended runs in History. The run's cell under $/item vs median and the median cell of the totals say how the run compares with the other successful runs of its workflow"
+    carries = JudgeRun
+
+
 class AnswerTheGate(Interaction[Reply]):
     source = ("groom/groom/assets/dashboard.js", "groom/groom/app.py")
     screen = RunDetail
@@ -103,5 +111,5 @@ class OpenDispatch(Interaction[object]):
 
 ALL = (
     ReportProgress, ReportGate, ReportExit, FilterTheList, OpenSettings, OpenRuns, SwitchTheAttendant,
-    OpenRun, ReadActivity, AnswerTheGate, OpenHistory, OpenAttendant, OpenDispatch,
+    OpenRun, ReadActivity, ReadTheMedian, AnswerTheGate, OpenHistory, OpenAttendant, OpenDispatch,
 )

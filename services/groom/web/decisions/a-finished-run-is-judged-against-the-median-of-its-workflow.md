@@ -21,4 +21,4 @@ By node of an ended run reads the medians of per-run node means from the stored 
 
 A difference is a signed percent with a true minus sign and never a color alone.
 
-The elements are declared and not played, because the book's groom holds only pushed runs, which report no telemetry and so never reach History. The tests in `groom/tests/test_medians.py` and `groom/tests/test_history_median_dynamic.py` play them against stored summaries.
+The book's groom holds only pushed runs, which report no telemetry and so never reach History. The `ReadTheMedian` interaction therefore writes the stored summaries of the judged run and its peers straight into groom's sqlite file, and plays the History table cell and the totals cell against them. The Work items tile and By node of an opened run read spans and turns that no pushed run has, so the book declares them and does not play them. The tests in `groom/tests/test_medians.py` and `groom/tests/test_history_median_dynamic.py` play those against stored summaries.

@@ -8,11 +8,11 @@ from typing import Callable, cast
 
 from ostler.book import Axes, Impossible, Scene
 
-from ..fixtures import Push, Query, Settings, blocked, finished, replying, running
+from ..fixtures import Push, Query, Settings, blocked, finished, judging, replying, running
 from ..model.records import Run
 from ..model.state import Dashboard
 from .interactions import (
-    AnswerTheGate, FilterTheList, ReadActivity, OpenAttendant, OpenDispatch, OpenHistory, OpenRun, OpenRuns, OpenSettings, ReportExit,
+    AnswerTheGate, FilterTheList, ReadActivity, ReadTheMedian, OpenAttendant, OpenDispatch, OpenHistory, OpenRun, OpenRuns, OpenSettings, ReportExit,
     ReportGate, ReportProgress, SwitchTheAttendant,
 )
 
@@ -82,9 +82,21 @@ ATTEND_ACTIONS: dict[str, Callable[[Dashboard], object]] = {
     "open dispatch": lambda m: OpenDispatch(),
 }
 
+HISTORY_SCENES = (Scene("(none)", "History holds the ended runs of a workflow no earlier cell made", lambda today: ()),)
+
+HISTORY_ACTIONS: dict[str, Callable[[Dashboard], object]] = {
+    "judge a run that cost more": lambda m: ReadTheMedian(judging()),
+    "judge a run that cost less": lambda m: ReadTheMedian(judging(each=0.5)),
+    "judge a run with four other runs": lambda m: ReadTheMedian(judging(peers=(1.0, 2.0, 3.0, 4.0))),
+    "judge a run that failed": lambda m: ReadTheMedian(judging(ending="failed")),
+    "judge a run whose cost is an estimate": lambda m: ReadTheMedian(judging(estimate=True)),
+    "judge a run with no finished item": lambda m: ReadTheMedian(judging(items=0)),
+}
+
 MATRICES = (
     Axes[Dashboard]("run", TODAY, RUN_SCENES, RUN_ACTIONS, run_state,
                     state_of=lambda m, r: "blocked" if cast(Run, r).gates else cast(Run, r).state, entities=lambda m: m.runs),
+    Axes[Dashboard]("history", TODAY, HISTORY_SCENES, HISTORY_ACTIONS, lambda m: "(none)", state_of=lambda m, _: "(none)"),
     Axes[Dashboard]("attendant", TODAY, ATTEND_SCENES, ATTEND_ACTIONS, lambda m: type(m).__name__,
                     state_of=lambda m, _: type(m).__name__),
 )
