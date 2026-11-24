@@ -151,6 +151,17 @@ def test_the_logs_of_the_step_show_time_level_node_and_message(tmp_path):
     _with(tmp_path, "step-logs", "failed:e1", check)
 
 
+def test_the_logs_of_the_step_sit_in_a_bordered_monospace_block(tmp_path):
+    def check(page, pane):
+        block = pane.locator(".log-trail")
+        style = block.evaluate("(el) => { const css = getComputedStyle(el); return [css.borderTopWidth, css.fontFamily, css.overflowY] }")
+        assert style[0] != "0px"
+        assert "mono" in style[1].lower() or "menlo" in style[1].lower() or "consolas" in style[1].lower()
+        assert style[2] == "auto"
+
+    _with(tmp_path, "step-logs-box", "failed:e1", check)
+
+
 def test_an_error_log_line_differs_from_the_others_by_more_than_its_color(tmp_path):
     from playwright.sync_api import expect
 

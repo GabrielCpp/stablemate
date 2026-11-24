@@ -159,6 +159,8 @@ body {
 .at-msg.plan { border-left-color:var(--idle); }
 details.at-msg summary { cursor:pointer; }
 /* ---- raw records ---- */
+.log-trail { background:var(--bg-0); border:1px solid var(--border); border-radius:5px;
+  max-height:340px; overflow:auto; font-family:var(--mono); font-size:11.5px; }
 .log-line { display:grid; grid-template-columns:112px 72px 130px minmax(0, 1fr); gap:8px; padding:2px 8px;
   border-bottom:1px solid var(--bg-2); color:var(--text-1); }
 .log-line:last-child { border-bottom:0; }
