@@ -9,7 +9,7 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from groom import projection, state
+from groom import projection, state, tasks
 from groom.models import RunTelemetry, WorkflowContainer
 
 logger = logging.getLogger(__name__)
@@ -209,7 +209,8 @@ def _start_details() -> None:
     loop = _running()
     if loop is None:
         return
-    _detail_task = loop.create_task(_drain_details())
+    _detail_task = loop.create_task(_drain_details(), name="live-detail-drain")
+    _detail_task.add_done_callback(tasks.report)
 
 
 async def _drain_details() -> None:

@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import urllib.request
+
+logger = logging.getLogger(__name__)
 
 PUSH_TIMEOUT_S = float(os.environ.get("GROOM_NOTIFY_TIMEOUT", "5.0"))
 
@@ -14,7 +17,7 @@ def _post(url: str, data: bytes, headers: dict[str, str]) -> None:
     try:
         urllib.request.urlopen(request, timeout=PUSH_TIMEOUT_S).close()  # noqa: S310
     except Exception:
-        pass
+        logger.exception("notify: a push failed")
 
 
 def push(title: str, message: str) -> None:

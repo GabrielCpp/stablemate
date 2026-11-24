@@ -18,7 +18,7 @@ from websockets.exceptions import ConnectionClosed
 
 from workhorse import control
 
-from groom import gitdiff
+from groom import gitdiff, tasks
 from groom.checkpoints import parse_position
 from groom.gates import AWAITING, extract_question, status_of
 from groom.relpath import safe_relpath
@@ -514,7 +514,7 @@ async def _run_session(ws) -> None:
 
     outbox: asyncio.Queue = asyncio.Queue()
     stop = asyncio.Event()
-    watcher = asyncio.create_task(_watch_loop(outbox, stop))
+    watcher = tasks.spawn(_watch_loop(outbox, stop), name="sidecar-watch")
     sender = asyncio.create_task(_sender_loop(ws, outbox))
     try:
         async for raw in ws:

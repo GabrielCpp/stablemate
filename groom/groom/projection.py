@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from datetime import datetime
@@ -12,6 +13,8 @@ from typing import Any
 from groom import attend, attend_ledger, gates, localfs, norms, sidecar_hub, state, store
 from groom.attention import RULE_EVENTS, AttentionEvent
 from groom.models import GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
+
+logger = logging.getLogger(__name__)
 
 STATE_ORDER = {
     WorkflowState.BLOCKED: 0,
@@ -341,6 +344,7 @@ def attend_summary() -> dict[str, Any]:
     try:
         latest = attend_ledger.attend_latest_by_run()
     except Exception:
+        logger.exception("attend: could not read the latest attendant rows")
         latest = {}
     by_run = {
         run_id: {

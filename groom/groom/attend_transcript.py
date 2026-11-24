@@ -37,7 +37,7 @@ def copy_session(session_id: str) -> int:
     try:
         sources = capture._claude_store(session_id)  # noqa: SLF001 - the one resolver
     except Exception:
-        logger.debug("attend: could not resolve the store for %s", session_id)
+        logger.exception("attend: could not resolve the store for %s", session_id)
         return 0
     if not sources:
         return 0

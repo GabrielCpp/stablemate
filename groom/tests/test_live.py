@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import tempfile
 import threading
 import time
@@ -496,7 +497,7 @@ def test_a_transcript_line_reaches_the_open_run_through_its_follower(tmp_path):
     assert after > opened
 
 
-def test_a_transcript_line_reaches_the_open_run_when_the_os_refuses_the_file_watch(tmp_path, monkeypatch):
+def test_a_transcript_line_reaches_the_open_run_when_the_os_refuses_the_file_watch(tmp_path, monkeypatch, caplog):
     _, path = _native(tmp_path)
     asked: list[str] = []
 
@@ -523,9 +524,12 @@ def test_a_transcript_line_reaches_the_open_run_when_the_os_refuses_the_file_wat
         await until(follower.done, "the transcript follower ending")
         return opened, sent[-1]["detail"]["activity_rev"]
 
-    opened, after = asyncio.run(drive())
+    with caplog.at_level(logging.ERROR, logger="groom.app"):
+        opened, after = asyncio.run(drive())
     assert asked == [str(tmp_path)]
     assert after > opened
+    refusals = [r for r in caplog.records if r.levelno == logging.ERROR and "no file watch" in r.getMessage()]
+    assert len(refusals) == 1
 
 
 def test_lines_read_by_the_activity_request_still_push_a_detail(tmp_path):

@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import os
 import subprocess
 import tempfile
@@ -389,6 +390,53 @@ def test_the_watch_reports_a_gate_written_after_it_started():
 
     frame = asyncio.run(_drive())
     assert frame == {"type": "blocked", "file_path": "gate.md", "question": "Which one?"}
+
+
+def test_a_watcher_the_os_refuses_is_logged_at_error(caplog):
+    async def refuse(*_paths, **_options):
+        for _ in ():
+            yield set()
+        raise OSError("Too many open files")
+
+    class _Dies(logging.Handler):
+        def __init__(self, event: asyncio.Event) -> None:
+            super().__init__(logging.ERROR)
+            self.event = event
+
+        def emit(self, record: logging.LogRecord) -> None:
+            self.event.set()
+
+    async def drive():
+        died = asyncio.Event()
+        handler = _Dies(died)
+        logging.getLogger("groom.tasks").addHandler(handler)
+
+        class _WaitsForTheDeath(_FakeWS):
+            def __aiter__(self):
+                async def _gen():
+                    await asyncio.wait_for(died.wait(), timeout=30)
+                    return
+                    yield
+
+                return _gen()
+
+        try:
+            with tempfile.TemporaryDirectory() as tmp, \
+                 patch.object(sidecar, "WORKSPACE_DIR", Path(tmp)), \
+                 patch.object(sidecar, "RUNS_DIR", Path("/nonexistent-groom-test-xyz")), \
+                 patch.object(sidecar, "awatch", refuse), \
+                 patch.object(sidecar, "snapshot", return_value={"current_node": "", "terminal": "", "gates": []}):
+                with contextlib.suppress(OSError):
+                    await sidecar._run_session(_WaitsForTheDeath())
+        finally:
+            logging.getLogger("groom.tasks").removeHandler(handler)
+
+    with caplog.at_level(logging.ERROR, logger="groom.tasks"):
+        asyncio.run(drive())
+    records = [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert len(records) == 1
+    assert "sidecar-watch" in records[0].getMessage()
+    assert "Too many open files" in str(records[0].exc_info[1])
 
 
 def test_run_session_advertises_hello_then_reload_raises():

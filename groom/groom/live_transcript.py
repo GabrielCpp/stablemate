@@ -58,4 +58,4 @@ async def tail(conn: Any, history: LiveHistory, run: str) -> None:
             if sizes[picked[slug]] > history.offsets.get(slug, 0):
                 await _read_new(conn, history, remote_run, slug, picked[slug])
     except Exception:  # noqa: BLE001 - a container whose transcript did not arrive is not a broken groom
-        logger.debug("transcript tail failed for %s", conn.container_id, exc_info=True)
+        logger.exception("transcript tail failed for %s", conn.container_id)

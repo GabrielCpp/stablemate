@@ -54,6 +54,7 @@ from groom import (
     sidecar_turns,
     state,
     store,
+    tasks,
     turns,
 )
 from groom.attention import RULE_EVENTS, AttentionEvent, AttentionFrame, DigestFrame, EventFrame
@@ -127,7 +128,7 @@ def _queue_norms(wf: WorkflowContainer, tel: RunTelemetry | None) -> None:
     workflow = projection.run_workflow(wf, tel)
     if not norms.needs_read(projection.run_id_of(wf), workflow, node):
         return
-    task = asyncio.create_task(_read_norms(wf.container_id, workflow, node))
+    task = tasks.spawn(_read_norms(wf.container_id, workflow, node), name="read-norms")
     _NORM_TASKS.add(task)
     task.add_done_callback(_NORM_TASKS.discard)
 
@@ -185,13 +186,13 @@ async def _follow_transcript(wf: WorkflowContainer) -> None:
                 continue
             await _tail_transcript(wf)
     except Exception:  # noqa: BLE001 - a run whose files cannot be watched is still followed by reading them
-        logger.warning("groom: no file watch for %s, reading its transcript every %s s", wf.container_id, TRANSCRIPT_POLL_S, exc_info=True)
+        logger.error("groom: no file watch for %s, reading its transcript every %s s", wf.container_id, TRANSCRIPT_POLL_S, exc_info=True)
     while True:
         await asyncio.sleep(TRANSCRIPT_POLL_S)
         try:
             await _tail_transcript(wf)
         except Exception:  # noqa: BLE001 - one failed read must not end the follow
-            logger.debug("transcript read failed for %s", wf.container_id, exc_info=True)
+            logger.exception("transcript read failed for %s", wf.container_id)
 
 
 def _watch_transcript(wf: WorkflowContainer) -> None:
@@ -201,7 +202,7 @@ def _watch_transcript(wf: WorkflowContainer) -> None:
         return
     if not _native_run_dir(wf):
         return
-    state.TRANSCRIPT_TASKS[key] = asyncio.create_task(_follow_transcript(wf))
+    state.TRANSCRIPT_TASKS[key] = tasks.spawn(_follow_transcript(wf), name="follow-transcript")
 
 
 _TAILS: dict[str, dict[str, bool]] = {}
@@ -224,7 +225,7 @@ async def _tail_until_quiet(container_id: str) -> None:
                 return
             flags["again"] = False
     except Exception:  # noqa: BLE001 - a pane that missed a transcript pass is not a broken groom
-        logger.debug("transcript tail failed for %s", container_id, exc_info=True)
+        logger.exception("transcript tail failed for %s", container_id)
     finally:
         _TAILS.pop(container_id, None)
 
@@ -238,7 +239,7 @@ def _schedule_tail(container_id: str) -> None:
         flags["again"] = True
         return
     _TAILS[container_id] = {"again": False}
-    task = asyncio.create_task(_tail_until_quiet(container_id))
+    task = tasks.spawn(_tail_until_quiet(container_id), name="tail-transcript")
     _TAIL_TASKS.add(task)
     task.add_done_callback(_TAIL_TASKS.discard)
 
@@ -402,7 +403,7 @@ def _schedule_figures(records: list, *, stale: bool) -> None:
         run = state.RUNS.get(run_id)
         if run is None or (not stale and run.figures is not None):
             continue
-        task = asyncio.create_task(_refresh_figures(run_id))
+        task = tasks.spawn(_refresh_figures(run_id), name="refresh-figures")
         _FIGURES_TASKS.add(task)
         task.add_done_callback(_FIGURES_TASKS.discard)
 
@@ -1762,7 +1763,7 @@ async def _rules_loop() -> None:
                 await asyncio.to_thread(store.prune, store.RETENTION_DAYS, None, archived)
                 last_prune = time.monotonic()
         except Exception:  # noqa: BLE001
-            pass
+            logger.exception("groom: alert rules tick failed")
 
 
 async def _backfill_wait_gate(run: RunTelemetry) -> bool:
@@ -1803,7 +1804,7 @@ async def _backfill_until_found(run: RunTelemetry) -> None:
             try:
                 found = await _backfill_wait_gate(run)
             except Exception:  # noqa: BLE001 - a failed ask is retried, not fatal
-                logger.debug("gate backfill failed for %s", run.run_id, exc_info=True)
+                logger.exception("gate backfill failed for %s", run.run_id)
                 found = False
             if found:
                 fired: list[alerts.Alert] = []
@@ -1821,7 +1822,7 @@ async def _backfill_until_found(run: RunTelemetry) -> None:
 def _ensure_gate_backfill(run: RunTelemetry) -> None:
     if not run.native or run.run_id in _BACKFILLS or not _awaits_gate_path(run):
         return
-    task = asyncio.create_task(_backfill_until_found(run))
+    task = tasks.spawn(_backfill_until_found(run), name="gate-backfill")
     _BACKFILLS[run.run_id] = task
 
 
@@ -1847,7 +1848,7 @@ async def _heartbeat_loop() -> None:
 async def _spawn_heartbeat() -> None:
     """on_startup hook: start the ping that keeps an idle dashboard socket from reading stale."""
     global _heartbeat_task
-    _heartbeat_task = asyncio.create_task(_heartbeat_loop())
+    _heartbeat_task = tasks.spawn(_heartbeat_loop(), name="heartbeat")
 
 
 async def _stop_heartbeat() -> None:
@@ -1934,7 +1935,7 @@ async def _summary_loop() -> None:
 async def _spawn_summaries() -> None:
     """on_startup hook: start the worker that writes run summaries."""
     global _summary_task
-    _summary_task = asyncio.create_task(_summary_loop())
+    _summary_task = tasks.spawn(_summary_loop(), name="summaries")
 
 
 async def _stop_summaries() -> None:
@@ -1945,7 +1946,7 @@ async def _stop_summaries() -> None:
 async def _spawn_archive() -> None:
     """on_startup hook: start the archival ticker."""
     global _archive_task
-    _archive_task = asyncio.create_task(_archive_loop())
+    _archive_task = tasks.spawn(_archive_loop(), name="archive")
 
 
 async def _stop_archive() -> None:
@@ -1956,7 +1957,7 @@ async def _stop_archive() -> None:
 async def _spawn_rules() -> None:
     """on_startup hook: start the alert-rule ticker, and nothing else."""
     global _rules_task
-    _rules_task = asyncio.create_task(_rules_loop())
+    _rules_task = tasks.spawn(_rules_loop(), name="alert-rules")
 
 
 async def _stop_rules() -> None:
@@ -1998,7 +1999,7 @@ async def _recover_dispatch() -> None:
 async def _spawn_scan() -> None:
     """on_startup hook: only *schedule* discovery and return immediately, so uvicorn finishes lifespan-startup and binds the port right away instead of blocking on the whole docker scan (the old _startup_scan did the latter)."""
     global _scan_task
-    _scan_task = asyncio.create_task(_background_scan())
+    _scan_task = tasks.spawn(_background_scan(), name="discovery-scan")
 
 
 def create_app() -> Litestar:

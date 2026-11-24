@@ -10,7 +10,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from groom import turns
+from groom import tasks, turns
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +91,7 @@ async def _pull_until_quiet(conn: Any, run: str, run_id: str, workflow: str) -> 
                 return
             flags["again"] = False
     except Exception:  # noqa: BLE001 - a container whose records did not arrive is not a broken groom
-        logger.debug("turn pull failed for %s", container, exc_info=True)
+        logger.exception("turn pull failed for %s", container)
     finally:
         try:
             if flags["final"]:
@@ -116,7 +116,7 @@ def schedule(
         flags["final"] = flags["final"] or final
         return
     _IN_FLIGHT[container] = {"again": False, "final": final}
-    task = asyncio.create_task(_pull_until_quiet(conn, run, run_id, workflow))
+    task = tasks.spawn(_pull_until_quiet(conn, run, run_id, workflow), name="sidecar-turn-pull")
     _TASKS.add(task)
     task.add_done_callback(_TASKS.discard)
 
