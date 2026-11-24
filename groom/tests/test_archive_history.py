@@ -122,6 +122,22 @@ def test_one_background_read_fills_the_pending_row_without_rewriting_the_frozen_
     assert after == frozen
 
 
+def test_an_archive_summary_read_once_is_listed_at_once_on_later_visits() -> None:
+    now = time.time()
+    with _DB():
+        folder = _archived("run-older", now, costs=(2.0, 1.0))
+        _without_summary(folder)
+        history.discover_archives()
+        assert history.compute_archive("run-older", now) is True
+        with patch.object(archive, "build_index", side_effect=AssertionError("read again")):
+            queued = history.discover_archives()
+            listing = history.listing(set(), now, archives=True)
+    item = listing["runs"][0]
+    assert queued == []
+    assert (item["run_id"], item["ready"], item["cost_usd"]) == ("run-older", True, 3.0)
+    assert (listing["unlisted"], listing["totals"]["reading"]) == (0, 0)
+
+
 def test_an_archive_that_cannot_be_read_keeps_its_row_marked_unreadable_and_a_retry_asks_again() -> None:
     now = time.time()
     with _DB():
