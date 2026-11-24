@@ -111,6 +111,7 @@ def _run(run: str, tmp: Path, *, native: bool = True, turns: bool = True, runnin
         yield run
     finally:
         groom_state.WORKFLOWS.pop(container, None)
+        groom_state.evict_runs([run])
         store.delete_run_telemetry(run)
         patched.stop()
 
