@@ -149,6 +149,26 @@ def book_product(start: Path) -> str | None:
     return book_settings(start).product
 
 
+def product_home(start: Path, artifacts: Path | None = None) -> Path | None:
+    """The folder of the product of the code at ``start`` in the artifacts folder, None when ``start`` has no product; ``book.home: repo`` does not move it."""
+    product = book_product(start)
+    if product is None:
+        return None
+    return (artifacts or config.resolve_artifacts_dir()) / "products" / product
+
+
+def milestones_home(start: Path, artifacts: Path | None = None) -> Path | None:
+    """Where the milestones of the product of the code at ``start`` live, None when ``start`` has no product."""
+    home = product_home(start, artifacts)
+    return None if home is None else home / "milestones"
+
+
+def designs_home(start: Path, artifacts: Path | None = None) -> Path | None:
+    """Where the design notes of the product of the code at ``start`` live, None when ``start`` has no product."""
+    home = product_home(start, artifacts)
+    return None if home is None else home / "designs"
+
+
 def product_folder(start: Path) -> Path | None:
     """The folder holding the product pages of the code at ``start``, None when ``start`` is in the artifacts folder."""
     if _under(start, config.resolve_artifacts_dir()):
