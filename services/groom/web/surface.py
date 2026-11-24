@@ -26,7 +26,7 @@ from .activity import ArchiveGone, ArchivedRecords, ArchivedTab, Note
 from .archive_seed import SEED
 from .median import ITEMS, PEER_VISIT, EachCell, MedianCell, NodeCells, TileCell
 from .interactions import (
-    AnswerTheGate, FilterTheList, ReadActivity, ReadAnArchivedActivity, ReadTheMedian, ReadTheRecordsOfAnArchive, ReadTheOpenedRun, OpenAttendant, OpenDispatch, OpenHistory, OpenRun, OpenRuns, OpenSettings, ReportExit,
+    AnswerTheGate, FilterTheList, ReadActivity, ReadArchiveActivity, ReadTheMedian, ReadArchiveRecords, ReadTheOpenedRun, OpenAttendant, OpenDispatch, OpenHistory, OpenRun, OpenRuns, OpenSettings, ReportExit,
     ReportGate, ReportProgress, SwitchTheAttendant,
 )
 from .screens import ALL as SCREENS
@@ -213,9 +213,9 @@ class GroomDashboard(PageSurface):
             self.open_run(step.of)
         elif isinstance(step, ReadActivity):
             return self.activity()
-        elif isinstance(step, ReadAnArchivedActivity):
+        elif isinstance(step, ReadArchiveActivity):
             return self.archived(step.of)
-        elif isinstance(step, ReadTheRecordsOfAnArchive):
+        elif isinstance(step, ReadArchiveRecords):
             return self.records(step.of)
         elif isinstance(step, ReadTheMedian):
             return self.median(step.of)

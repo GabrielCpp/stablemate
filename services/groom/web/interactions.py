@@ -71,14 +71,14 @@ class ReadActivity(Interaction[Push]):
     carries = ReadActivityTab
 
 
-class ReadAnArchivedActivity(Interaction[Archived]):
+class ReadArchiveActivity(Interaction[Archived]):
     source = ("groom/groom/assets/dashboard.js", "groom/groom/app.py", "groom/groom/archive.py")
     screen = RunDetail
     does = "opens an archived run from History with the range set to 'Everything, archives included' and reads its Activity tab. The tab holds the timeline, the Problems, Steps, Info logs and Raw controls and the keys of an ended run, a selected turn reads from the archive's frozen file, and the Overview's problem count opens the tab on the same number the control and the tab show. An archive whose files are gone says 'Activity cannot be read' in place of the timeline, and its Overview still shows the stored summary"
     carries = ReadArchivedActivityTab
 
 
-class ReadTheRecordsOfAnArchive(Interaction[Archived]):
+class ReadArchiveRecords(Interaction[Archived]):
     source = ("groom/groom/assets/dashboard.js", "groom/groom/app.py", "groom/groom/archive.py")
     screen = RunDetail
     does = "opens an archived run from History and presses Raw in its Activity tab, reads the stored records newest first with the counts above them, asks for the metric samples and for older records, then types in the search box and reads which rows and which transcripts match. Every read comes from the archive's frozen file"
@@ -132,5 +132,5 @@ class OpenDispatch(Interaction[object]):
 
 ALL = (
     ReportProgress, ReportGate, ReportExit, FilterTheList, OpenSettings, OpenRuns, SwitchTheAttendant,
-    OpenRun, ReadActivity, ReadAnArchivedActivity, ReadTheRecordsOfAnArchive, ReadTheMedian, ReadTheOpenedRun, AnswerTheGate, OpenHistory, OpenAttendant, OpenDispatch,
+    OpenRun, ReadActivity, ReadArchiveActivity, ReadArchiveRecords, ReadTheMedian, ReadTheOpenedRun, AnswerTheGate, OpenHistory, OpenAttendant, OpenDispatch,
 )

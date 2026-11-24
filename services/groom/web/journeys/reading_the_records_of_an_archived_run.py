@@ -3,7 +3,7 @@ from datetime import date
 from ostler.book import Journey
 
 from ...fixtures import archived
-from ..interactions import OpenHistory, ReadTheRecordsOfAnArchive
+from ..interactions import OpenHistory, ReadArchiveRecords
 
 
 class ReadingTheRecordsOfAnArchivedRun(Journey):
@@ -13,4 +13,4 @@ class ReadingTheRecordsOfAnArchivedRun(Journey):
 
     def steps(self, today: date):
         yield OpenHistory()
-        yield ReadTheRecordsOfAnArchive(archived())
+        yield ReadArchiveRecords(archived())
