@@ -2976,14 +2976,15 @@ function DetailBody({ ended }) {
   const detail = ended ? snap.history.detail : snap.detail;
   useHoldPlace();
   const row = ended ? null : runs.find((run) => run.id === selected);
-  const container = !!row && !row.native && row.state !== "finished";
-  const live = container && row.sidecar;
+  const running = !!row && row.state !== "finished";
+  const container = running && !row.native;
+  const live = running && (row.checkout || row.sidecar);
   const stale = container && !row.sidecar && !!snap.diffKept[selected];
   const hasDiff = live || stale;
   const mark = stale
     ? { lostAt: snap.sidecarLost[selected] || Date.now(), still: !!snap.stillDown[selected], anyRead: Object.keys(snap.diffKept[selected].entries).length > 0 }
     : null;
-  const workspaceRev = !ended && detail && detail.id === selected ? detail.workspace_rev || 0 : null;
+  const workspaceRev = !ended && detail && detail.id === selected ? (row && row.native ? detail.activity_rev : detail.workspace_rev) || 0 : null;
   useRunDiff(ended ? null : selected, live, stale, runDiff.id, runDiff.shownKept);
   useRunFiles(ended ? null : selected, live, chosen === "files", runFiles.id);
   useWorkspaceRefresh(ended ? null : selected, live, workspaceRev, chosen, runDiff.id, runFiles.id);
@@ -4439,7 +4440,7 @@ wireDispatchEnqueueForm();
 startConnection();
 
 // --------------------------------------------------------------------------- //
-// Run Diff tab — a connected container run's uncommitted change
+// Run Diff tab — a live run's uncommitted change, read through its sidecar or from groom's own disk
 // --------------------------------------------------------------------------- //
 // The read is driven by the selection and the sidecar's presence, not by the tab
 // being open: the tab's size shows before it is opened, and the one read serves both.

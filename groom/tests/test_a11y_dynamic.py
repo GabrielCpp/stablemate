@@ -363,7 +363,7 @@ def test_the_run_shows_loading_then_its_tabs_without_a_telemetry_feed():
             expect(page.get_by_role("status", name="Loading the run")).to_be_visible()
             release.set()
             expect(page.get_by_role("tab", name="Overview")).to_have_attribute("aria-selected", "true")
-            expect(page.get_by_role("tab")).to_have_text([re.compile("^Overview$"), re.compile("^Activity")])
+            expect(page.get_by_role("tab")).to_have_text([re.compile("^Overview$"), re.compile("^Activity"), re.compile("^Files$"), re.compile("^Diff")])
             expect(page.get_by_role("log", name="Telemetry history")).to_have_count(0)
             assert not _scan(page)
     finally:

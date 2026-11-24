@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import PurePath
 from typing import Any
 
-from groom import attend, attend_ledger, gates, norms, sidecar_hub, state, store
+from groom import attend, attend_ledger, gates, localfs, norms, sidecar_hub, state, store
 from groom.attention import RULE_EVENTS, AttentionEvent
 from groom.models import GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
 
@@ -290,6 +290,7 @@ def run_row(
         "pid": tel.pid if (tel and tel.pid) else wf.pid,
         "native": bool(wf.native),
         "sidecar": not wf.native and sidecar_hub.get(wf.container_id) is not None,
+        "checkout": bool(wf.native) and localfs.is_local_dir(wf.workspace_volume),
         "figures": tel.figures if tel else None,
         "ended": ended_of(tel),
         "rank": fleet_rank_for(state, live_cls),

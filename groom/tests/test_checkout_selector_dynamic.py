@@ -607,18 +607,34 @@ def test_a_pane_that_no_longer_exists_lands_on_runs_and_never_on_a_blank_pane():
         page.close()
 
 
-def test_a_native_run_has_no_route_to_files_or_a_diff_and_the_rail_offers_none():
+def test_a_running_native_run_shows_its_files_and_its_change_from_groom_disk(tmp_path):
+    import subprocess
+
     from playwright.sync_api import expect
 
     live = _live()
     assert live is not None, _UNAVAILABLE
-    with _container_run("nativebox789", native=True, run_id="native-run"):
+    repo = tmp_path / "acme"
+    repo.mkdir()
+
+    def git(*args: str) -> None:
+        subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
+
+    git("init", "-q", "-b", "main")
+    (repo / "sign_in.py").write_text("def sign_in():\n    return None\n")
+    git("add", "sign_in.py")
+    git("-c", "user.email=qa@example.com", "-c", "user.name=qa", "commit", "-qm", "seed")
+    (repo / "sign_in.py").write_text("def sign_in():\n    return True\n")
+    with _container_run("nativebox789", native=True, run_id="native-run", workspace=str(repo)):
         page = _open(live)
         try:
             _pick(page, "nativebox789")
-            expect(page.get_by_role("tab", name="Overview")).to_be_visible()
-            expect(_tab(page, "Files")).to_have_count(0)
-            expect(_tab(page, "Diff")).to_have_count(0)
+            expect(_tab(page, "Files")).to_be_visible()
+            _show(page, "Diff")
+            expect(page.locator("#detail-panel .fd-tree")).to_contain_text("sign_in.py")
+            expect(page.locator("#detail-panel")).to_contain_text("return True")
+            _show(page, "Files")
+            expect(page.locator("#detail-panel .fd-tree")).to_contain_text("sign_in.py")
             expect(_select(page)).to_have_count(0)
             expect(page.locator('.act-btn[data-mode="files"], .act-btn[data-mode="diff"]')).to_have_count(0)
         finally:
@@ -661,8 +677,6 @@ def test_a_native_run_shows_its_checkout_path_on_overview_before_and_after_its_f
             _pick(page, "nativenew901")
             expect(page.get_by_role("tabpanel")).to_contain_text("Figures appear when the first node finishes")
             expect(page.locator("#detail-facts")).to_contain_text("/nonexistent/acme")
-            expect(_tab(page, "Files")).to_have_count(0)
-            expect(_tab(page, "Diff")).to_have_count(0)
         finally:
             page.close()
     _seed_finished_node("native-done")
@@ -672,8 +686,6 @@ def test_a_native_run_shows_its_checkout_path_on_overview_before_and_after_its_f
             _pick(page, "nativedone902")
             expect(page.locator("#detail-cost-tile")).to_be_visible()
             expect(page.locator("#detail-facts")).to_contain_text("/nonexistent/acme")
-            expect(_tab(page, "Files")).to_have_count(0)
-            expect(_tab(page, "Diff")).to_have_count(0)
         finally:
             page.close()
 

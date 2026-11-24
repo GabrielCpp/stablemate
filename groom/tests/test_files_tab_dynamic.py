@@ -140,12 +140,12 @@ def _open_file(page, name: str) -> None:
     page.locator("#detail-panel .fd-tree").get_by_role("button", name=name, exact=True).click()
 
 
-def test_a_run_that_shows_a_diff_tab_shows_a_files_tab_before_it_and_other_runs_show_neither():
+def test_a_run_that_shows_a_diff_tab_shows_a_files_tab_before_it_and_other_runs_show_neither(tmp_path):
     from playwright.sync_api import expect
 
     live = _live()
     assert live is not None, _UNAVAILABLE
-    with _container_run(CONTAINER), _container_run("nativebox456", native=True, run_id="native-run"), \
+    with _container_run(CONTAINER), _container_run("nativebox456", native=True, run_id="native-run", workspace=str(tmp_path / "removed")), \
             _container_run(OTHER, run_id="ended-run"), _container_run("quietbox5678", run_id="quiet-run"):
         sidecar = _connect(live)
         ended = _connect(live, OTHER)

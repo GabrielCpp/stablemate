@@ -98,6 +98,7 @@ HARVEST_EVERY_S = float(os.environ.get("GROOM_HARVEST_EVERY_S", "300"))
 ARCHIVE_EVERY_S = archive.ARCHIVE_EVERY_S
 SERVED_BY_SIDECAR = "sidecar"
 SERVED_BY_VOLUME = "volume"
+SERVED_BY_HOST = "host"
 
 
 def _all_workflows() -> list:
@@ -473,9 +474,10 @@ async def files(
     volume = wf.workspace_volume if wf else ""
     if not volume:
         return {"paths": [], "failed": True, "reported": True, "served": SERVED_BY_VOLUME}
-    reader = localfs.read_tree if wf and wf.native else docker_io.read_tree
+    native = bool(wf and wf.native)
+    reader = localfs.read_tree if native else docker_io.read_tree
     read = await asyncio.to_thread(reader, volume, repo)
-    return {"paths": list(read["paths"]), "failed": read["failed"], "reported": True, "served": SERVED_BY_VOLUME}
+    return {"paths": list(read["paths"]), "failed": read["failed"], "reported": True, "served": SERVED_BY_HOST if native else SERVED_BY_VOLUME}
 
 
 @get("/file/{container_id:str}", include_in_schema=False)
@@ -519,7 +521,8 @@ async def file_content(
         return unread()
     if text is None:
         return unread()
-    return {"path": path, "content": text, "lang": lang, "failed": False, "reported": True, "served": SERVED_BY_VOLUME}
+    served_by = SERVED_BY_HOST if wf and wf.native else SERVED_BY_VOLUME
+    return {"path": path, "content": text, "lang": lang, "failed": False, "reported": True, "served": served_by}
 
 
 async def _run_facts(wf: WorkflowContainer) -> tuple:
@@ -621,10 +624,15 @@ async def diff(
 
     wf = state.WORKFLOWS.get(container_id)
     volume = wf.workspace_volume if wf else ""
+    if wf and wf.native and volume:
+        if branch:
+            read_branch = await asyncio.to_thread(localfs.read_branch_diff, volume, repo)
+            return {**read_branch, "based": True, "reported": True, "served": SERVED_BY_HOST}
+        read = await asyncio.to_thread(localfs.read_diff, volume, repo)
+        return {**read, "reported": True, "served": SERVED_BY_HOST}
     if not volume or branch:
         return {**gitdiff.unreadable(), "reported": True, "served": SERVED_BY_VOLUME}
-    reader = localfs.read_diff if wf and wf.native else docker_io.read_diff
-    read = await asyncio.to_thread(reader, volume, repo)
+    read = await asyncio.to_thread(docker_io.read_diff, volume, repo)
     return {**read, "reported": True, "served": SERVED_BY_VOLUME}
 
 

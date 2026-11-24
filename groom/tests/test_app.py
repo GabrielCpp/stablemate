@@ -785,7 +785,7 @@ def test_file_endpoint_reads_a_native_runs_workspace_by_gate_path(tmp_path):
         client.__exit__(None, None, None)
 
     assert resp.json() == {
-        "path": "docs/context.md", "content": gate.read_text(), "lang": "markdown", "failed": False, "reported": True, "served": "volume",
+        "path": "docs/context.md", "content": gate.read_text(), "lang": "markdown", "failed": False, "reported": True, "served": "host",
     }
 
 
@@ -836,10 +836,33 @@ def test_diff_endpoint_reads_a_native_run_from_local_disk():
          patch.object(groom_app.docker_io, "read_diff") as docker:
         body = _get_diff()
 
-    assert body == {"diff": "d", "untracked": ["u.py"], "failed": False, "reported": True, "served": "volume"}
+    assert body == {"diff": "d", "untracked": ["u.py"], "failed": False, "reported": True, "served": "host"}
     docker.assert_not_called()
     assert local.call_args[0] == ("/tmp/ws", "")
 
+
+def test_diff_endpoint_reads_a_native_runs_branch_since_it_left_the_default_branch(tmp_path):
+    import subprocess
+
+    def git(*args):
+        subprocess.run(["git", "-C", str(tmp_path), *args], check=True, capture_output=True)
+
+    git("init", "-q", "-b", "main")
+    git("-c", "user.email=a@example.com", "-c", "user.name=a", "commit", "-q", "--allow-empty", "-m", "base")
+    git("switch", "-q", "-c", "run/coder-x")
+    (tmp_path / "a.py").write_text("x\n")
+    git("add", "a.py")
+    git("-c", "user.email=a@example.com", "-c", "user.name=a", "commit", "-q", "-m", "work")
+    _reset()
+    state.WORKFLOWS["run-9"] = WorkflowContainer(
+        container_id="run-9", name="w", run_id="run-9", native=True, workspace_volume=str(tmp_path)
+    )
+
+    body = _get_diff("run-9", view="branch")
+
+    assert body["served"] == "host" and body["based"] is True and body["failed"] is False
+    assert body["base_branch"] == "main" and body["base"]
+    assert "a/a.py b/a.py" in body["diff"]
 
 def _served(reply: dict):
     sent: list[dict] = []
@@ -1447,7 +1470,7 @@ def test_files_endpoint_reads_a_native_checkout_from_local_disk(tmp_path):
         container_id="run-9", name="w", run_id="run-9", native=True, workspace_volume=str(checkout)
     )
 
-    assert _get("/files/run-9") == {"paths": ["src/a.py"], "failed": False, "reported": True, "served": "volume"}
+    assert _get("/files/run-9") == {"paths": ["src/a.py"], "failed": False, "reported": True, "served": "host"}
 
 
 def test_files_endpoint_says_failed_for_a_native_checkout_that_is_gone(tmp_path):
@@ -1456,7 +1479,7 @@ def test_files_endpoint_says_failed_for_a_native_checkout_that_is_gone(tmp_path)
         container_id="run-9", name="w", run_id="run-9", native=True, workspace_volume=str(tmp_path / "gone")
     )
 
-    assert _get("/files/run-9") == {"paths": [], "failed": True, "reported": True, "served": "volume"}
+    assert _get("/files/run-9") == {"paths": [], "failed": True, "reported": True, "served": "host"}
 
 
 def test_file_relays_a_sidecar_that_says_its_read_failed():

@@ -102,7 +102,9 @@ def _wait_for(check, what: str, timeout: float = 10.0) -> None:
 
 
 @contextmanager
-def _container_run(container: str = CONTAINER, *, native: bool = False, run_id: str = RUN) -> Iterator[None]:
+def _container_run(
+    container: str = CONTAINER, *, native: bool = False, run_id: str = RUN, workspace: str = "/nonexistent/acme",
+) -> Iterator[None]:
     from groom import app as app_module
     from groom import sidecar_hub, state
     from groom.models import WorkflowState
@@ -114,7 +116,7 @@ def _container_run(container: str = CONTAINER, *, native: bool = False, run_id: 
         state.upsert_workflow(
             container, name="coder-acme", workflow_type="coder", repo_name="acme", repo_branch="main",
             current_node="build", activity="building", run_id=run_id, state=WorkflowState.RUNNING,
-            native=native, workspace_volume="/nonexistent/acme",
+            native=native, workspace_volume=workspace,
         )
         try:
             yield
@@ -231,18 +233,17 @@ def test_rows_that_are_not_selected_cost_no_diff_read():
             other.drop()
 
 
-def test_a_native_run_an_ended_run_and_a_run_without_a_sidecar_have_no_diff_tab():
+def test_an_ended_run_and_a_run_without_a_sidecar_have_no_diff_tab():
     from playwright.sync_api import expect
 
     live = _live()
     assert live is not None, _UNAVAILABLE
-    with _container_run("nativebox123", native=True, run_id="native-run"), _container_run(OTHER, run_id="ended-run"), \
-            _container_run("quietbox1234", run_id="quiet-run"):
+    with _container_run(OTHER, run_id="ended-run"), _container_run("quietbox1234", run_id="quiet-run"):
         ended = _connect(live, OTHER)
         _push_exited(live, OTHER)
         page = _open(live)
         try:
-            for container in ("nativebox123", OTHER, "quietbox1234"):
+            for container in (OTHER, "quietbox1234"):
                 _pick(page, container)
                 expect(page.get_by_role("tab", name="Overview")).to_be_visible()
                 expect(_tab(page, "Diff")).to_have_count(0)

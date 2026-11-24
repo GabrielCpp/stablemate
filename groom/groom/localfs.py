@@ -114,6 +114,17 @@ def read_diff(base: str, /, repo_dir: str = "") -> gitdiff.DiffRead:
     return gitdiff.read_local(root, DOCKER_TIMEOUT)
 
 
+def read_branch_diff(base: str, /, repo_dir: str = "") -> gitdiff.BranchRead:
+    """Working-tree diff against where the checkout's branch started, with the untracked files and the base, run locally (no docker)."""
+    root = _base(base, repo_dir)
+    if root is None and not repo_dir:
+        repo_dir = find_repo_dir(base)
+        root = _base(base, repo_dir)
+    if root is None:
+        return {**gitdiff.unreadable(), "base": "", "base_ref": "", "base_branch": "", "base_reason": ""}
+    return gitdiff.read_branch_local(root, DOCKER_TIMEOUT)
+
+
 def read_file(base: str, /, rel_path: str) -> str | None:
     """Text of one file under ``base``, or None when missing/unreadable."""
     if not base:
