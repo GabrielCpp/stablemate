@@ -215,6 +215,24 @@ def test_the_listing_reads_no_telemetry_file_per_row() -> None:
     assert len(body["runs"]) == 5
 
 
+def test_the_listing_of_hundreds_of_archives_opens_no_telemetry_file_and_comes_in_under_two_seconds() -> None:
+    now = time.time()
+    with _DB():
+        for index in range(300):
+            run = f"run-{index:03d}"
+            folder = archive.archives_root() / run
+            folder.mkdir(parents=True)
+            (folder / archive.TELEMETRY_FILE).write_text("{}\n", encoding="utf-8")
+            history._write(_summary(run, now - (40 + index) * 3600.0))
+        with patch.object(archive, "build_index", side_effect=AssertionError("opened")), patch.object(archive, "manifest", side_effect=AssertionError("opened")):
+            began = time.perf_counter()
+            body = history.listing(set(), now, archives=True)
+            took = time.perf_counter() - began
+    assert len(body["runs"]) == 300
+    assert (body["unlisted"], body["totals"]["ready"]) == (0, 300)
+    assert took < 2.0
+
+
 def _summary(run: str, ended: float, cost: float = 4.0) -> dict:
     return {
         "run_id": run, "workflow": "coder", "repo": "acme", "branch": "main", "state": "ready", "ending": "success",
@@ -327,10 +345,33 @@ def test_a_summary_pass_reads_the_older_archives_on_the_archive_pool() -> None:
     with _DB():
         folder = _archived("run-older", now)
         _without_summary(folder)
-        with patch.object(groom_app, "SUMMARY_PAUSE_S", 0.0), patch.object(groom_app, "_summary_wake", None):
+        with (
+            patch.object(groom_app, "SUMMARY_PAUSE_S", 0.0),
+            patch.object(groom_app, "_summary_wake", None),
+            patch.object(pools.ARCHIVE, "run", wraps=pools.ARCHIVE.run) as archive_run,
+            patch.object(pools.QUERY, "run", wraps=pools.QUERY.run) as query_run,
+        ):
             asyncio.run(groom_app._summary_pass())
         row = history.stored("run-older")
     assert row is not None and row["state"] == history.READY
+    assert [call.args[0] for call in archive_run.call_args_list] == [history.compute_archive]
+    assert query_run.call_count == 0
+
+
+def test_the_archive_overview_is_read_on_the_archive_pool_and_never_on_the_query_pool() -> None:
+    now = time.time()
+    with _DB():
+        _archived("run-route", now)
+        state.RUNS.clear()
+        with (
+            patch.object(pools.ARCHIVE, "run", wraps=pools.ARCHIVE.run) as archive_run,
+            patch.object(pools.QUERY, "run", wraps=pools.QUERY.run) as query_run,
+            TestClient(app=groom_app.create_app()) as client,
+        ):
+            answer = client.get("/api/archive/run-route/overview")
+    assert answer.status_code == 200
+    assert [call.args[0] for call in archive_run.call_args_list] == [groom_app._archive_overview]
+    assert groom_app._archive_overview not in [call.args[0] for call in query_run.call_args_list]
 
 
 def test_archive_reads_have_a_pool_of_their_own_so_the_dashboard_queries_never_wait_on_them() -> None:
