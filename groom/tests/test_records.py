@@ -54,6 +54,9 @@ def test_a_span_record_is_written_when_the_span_ends_with_its_duration_and_cost(
     with _DB():
         _seed()
         spans = [one for one in records.page(RUN)["records"] if one["kind"] == "SPAN"]
+        stored = {f"SPAN:{one['row_id']}": float(one["end_ts"]) for one in store.run_turn_spans(RUN)}
+    assert sorted(one["key"] for one in spans) == sorted(stored)
+    assert all(one["ts"] == stored[one["key"]] for one in spans)
     turn = next(one for one in spans if one["text"].startswith("agent_turn ended, 1m 40s"))
     assert turn["text"] == "agent_turn ended, 1m 40s, $2.00"
     failed = next(one for one in spans if one["node"] == "test")
