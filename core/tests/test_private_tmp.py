@@ -77,3 +77,28 @@ def test_red_run_keeps_the_folder_and_prints_its_path(pytester, outer):
     kept = [entry for entry in outer.iterdir() if entry.name.startswith("sm-t-")]
     assert len(kept) == 1
     result.stdout.fnmatch_lines([f"private temp folder kept: {kept[0]}"])
+
+
+def test_a_test_that_leaves_the_working_directory_fails_and_the_next_starts_where_the_run_began(pytester, outer):
+    pytester.makepyfile(
+        test_inner="""
+import os
+import shutil
+import tempfile
+
+START = os.getcwd()
+
+
+def test_leaves_a_deleted_folder():
+    folder = tempfile.mkdtemp()
+    os.chdir(folder)
+    shutil.rmtree(folder)
+
+
+def test_starts_where_the_run_began():
+    assert os.getcwd() == START
+"""
+    )
+    result = pytester.runpytest_subprocess("-p", "private_tmp", "-p", "no:cacheprovider")
+    result.assert_outcomes(passed=2, errors=1)
+    result.stdout.fnmatch_lines(["*left the working directory at a folder since deleted*"])

@@ -1,4 +1,4 @@
-"""Pytest plugin: the run owns a private temp folder and removes it when it passes."""
+"""Pytest plugin: the run owns a private temp folder and removes it when it passes. Each test leaves the working directory where it found it."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import os
 import shutil
 import tempfile
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -64,6 +65,19 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         _state["kept"] = folder
     _state.pop("folder")
     _restore()
+
+
+@pytest.fixture(autouse=True)
+def _working_directory_restored() -> Iterator[None]:
+    before = os.getcwd()
+    yield
+    try:
+        after = os.getcwd()
+    except FileNotFoundError:
+        after = "a folder since deleted"
+    if after != before:
+        os.chdir(before)
+        pytest.fail(f"the test left the working directory at {after} instead of {before}", pytrace=False)
 
 
 def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
