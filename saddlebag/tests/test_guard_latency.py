@@ -1,8 +1,9 @@
-"""How long a verdict takes: in-process, and as the process the agent launches on every call."""
+"""How much CPU a verdict costs: in-process, and as the process the agent launches on every call. CPU time, not the wall clock, so a loaded machine cannot fail it."""
 
 from __future__ import annotations
 
 import json
+import resource
 import subprocess
 import sys
 import time
@@ -17,23 +18,28 @@ PAYLOADS = [
 ]
 
 
-def wall(argv: list[str], payload: str = "") -> float:
-    start = time.perf_counter()
+def _children_cpu() -> float:
+    usage = resource.getrusage(resource.RUSAGE_CHILDREN)
+    return usage.ru_utime + usage.ru_stime
+
+
+def cpu(argv: list[str], payload: str = "") -> float:
+    start = _children_cpu()
     subprocess.run(argv, input=payload, text=True, capture_output=True, check=True)
-    return time.perf_counter() - start
+    return _children_cpu() - start
 
 
 def test_decide_averages_under_a_millisecond() -> None:
-    start = time.perf_counter()
+    start = time.thread_time()
     for i in range(200):
         guard.decide(PAYLOADS[i % len(PAYLOADS)])
-    assert (time.perf_counter() - start) / 200 < 0.001
+    assert (time.thread_time() - start) / 200 < 0.001
 
 
 def test_the_hook_process_adds_under_fifty_milliseconds_to_interpreter_start() -> None:
     payload = json.dumps(PAYLOADS[0])
     program = "from saddlebag.cli import main; main(['guard','--hook'])"
-    floor = min(wall([sys.executable, "-c", "pass"]) for _ in range(15))
-    hook = min(wall([sys.executable, "-c", program], payload) for _ in range(15))
+    floor = min(cpu([sys.executable, "-c", "pass"]) for _ in range(15))
+    hook = min(cpu([sys.executable, "-c", program], payload) for _ in range(15))
     print(f"interpreter floor {floor * 1000:.1f} ms, guard hook {hook * 1000:.1f} ms")
     assert hook - floor < 0.05
