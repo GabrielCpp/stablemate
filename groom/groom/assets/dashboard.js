@@ -2679,6 +2679,7 @@ function ActivityTab({ detail }) {
   }, [lost]);
   useLayoutEffect(() => {
     const list = listRef.current;
+    const from = list ? list.scrollTop : 0;
     if (list) placeHeadings(list);
     if (list && shownProblems.current !== activity.problems) {
       shownProblems.current = activity.problems;
@@ -2689,7 +2690,7 @@ function ActivityTab({ detail }) {
       list.scrollTop = list.scrollHeight;
       keepInView(list, newestKey(activity.rows, activity.items, activity.problems));
     }
-    if (list) lastTop.current = list.scrollTop;
+    if (list && list.scrollTop !== from) lastTop.current = list.scrollTop;
   });
   const silent = !!(detail.metrics && detail.metrics.empty);
   if (!runId && silent) return html`<div class="empty-big" role="status">${NO_TELEMETRY}</div>`;

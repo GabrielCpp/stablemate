@@ -551,6 +551,19 @@ def test_scrolling_back_to_the_end_leaves_the_selection_alone(tmp_path):
         assert _selected_slug(page) == older_slug
 
 
+def test_scrolling_to_the_end_resumes_following_when_the_list_redraws_before_the_scroll_lands(tmp_path):
+    from playwright.sync_api import expect
+
+    with _following(tmp_path, "fol-redraw") as (live, page, name):
+        _rows(page).nth(1).click()
+        _wheel_up(page)
+        expect(page.locator(CONTROL)).to_have_text("Paused")
+        _arrive(live, name, 2)
+        expect(page.locator(PILL)).to_contain_text("2 new")
+        page.locator(LIST).evaluate("el => { el.scrollTop = el.scrollHeight; el.querySelector('button[aria-current=true]').click(); }")
+        expect(page.locator(CONTROL)).to_have_text("Following")
+
+
 def test_pressing_the_control_to_resume_leaves_the_selection_alone(tmp_path):
     from playwright.sync_api import expect
 
