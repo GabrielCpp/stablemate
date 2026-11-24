@@ -344,6 +344,7 @@ class ResidentReader:
         self._launch = launch
         self._serial = serial
         self._session: McpSession | None = None
+        self._exit_hook_registered = False
 
     def __call__(self, timeout: float) -> str:
         deadline = time.monotonic() + timeout
@@ -368,6 +369,9 @@ class ResidentReader:
 
     def _open(self, deadline: float) -> McpSession:
         process = self._launch()
+        if not self._exit_hook_registered:
+            atexit.register(self.shutdown)
+            self._exit_hook_registered = True
         session = McpSession(process)
         try:
             session.serial = self._serial(max(0.001, min(SERIAL_TIMEOUT_S, deadline - time.monotonic())))
@@ -395,8 +399,6 @@ class ResidentReader:
 
 
 RESIDENT = ResidentReader()
-
-atexit.register(RESIDENT.shutdown)
 
 
 def resident_reader(timeout: float) -> str:

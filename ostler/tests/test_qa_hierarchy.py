@@ -415,6 +415,28 @@ def test_a_released_reader_stops_its_process_and_the_next_read_starts_a_fresh_on
     assert processes == []
 
 
+def test_a_reader_that_never_started_registers_no_exit_hook(monkeypatch: pytest.MonkeyPatch) -> None:
+    registered: list[object] = []
+    monkeypatch.setattr(hierarchy.atexit, "register", registered.append)
+
+    hierarchy.ResidentReader(lambda: _Process(_answers()), lambda timeout: "serial")
+
+    assert registered == []
+
+
+def test_a_reader_that_started_registers_one_exit_hook_however_often_it_reads(monkeypatch: pytest.MonkeyPatch) -> None:
+    registered: list[object] = []
+    monkeypatch.setattr(hierarchy.atexit, "register", registered.append)
+    processes = [_Process(_answers("one")), _Process(_answers("two"))]
+    reader = hierarchy.ResidentReader(lambda: processes.pop(0), lambda timeout: "serial")
+
+    reader(5)
+    reader.shutdown()
+    reader(5)
+
+    assert registered == [reader.shutdown]
+
+
 def test_releasing_the_device_shuts_the_run_resident_reader_down(monkeypatch: pytest.MonkeyPatch) -> None:
     stopped: list[str] = []
     monkeypatch.setattr(hierarchy.RESIDENT, "shutdown", lambda: stopped.append("shutdown"))

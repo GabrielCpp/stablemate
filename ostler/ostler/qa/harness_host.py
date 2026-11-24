@@ -22,6 +22,8 @@ def load_harness_module(name: str) -> ModuleType:
     cached = sys.modules.get(name)
     if cached is not None:
         return cached
+    if str(HARNESS_DIR) not in sys.path:
+        sys.path.insert(0, str(HARNESS_DIR))
     spec = importlib.util.spec_from_file_location(name, source)
     if spec is None or spec.loader is None:  # pragma: no cover - a corrupt installation
         raise ImportError(f"harness module {name!r} is not installed at {source}")

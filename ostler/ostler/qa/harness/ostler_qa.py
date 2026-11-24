@@ -26,8 +26,6 @@ from pathlib import Path
 from types import CodeType, FunctionType
 from typing import Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-
 import ostler_qa_transfer
 from ostler_qa_elements import choose, maestro_pattern, name_pattern, template_pattern
 from ostler_qa_files import checkout_files

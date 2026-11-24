@@ -2,26 +2,16 @@
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import re
-import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from urllib.parse import urlsplit
 
+import ostler_qa_browser
 import pytest
-
-_HARNESS = Path(__file__).resolve().parents[1] / "ostler/qa/harness"
-sys.path.insert(0, str(_HARNESS))
-
-_SOURCE = _HARNESS / "ostler_qa_browser.py"
-_spec = importlib.util.spec_from_file_location("ostler_qa_browser_under_test", _SOURCE)
-assert _spec is not None and _spec.loader is not None
-ostler_qa_browser = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(ostler_qa_browser)
-Browser = ostler_qa_browser.Browser
+from ostler_qa_browser import Browser
 
 
 def _browser(tmp_path: Path, at_ms: int = 0, secrets: Any = (), **target: object) -> Any:
