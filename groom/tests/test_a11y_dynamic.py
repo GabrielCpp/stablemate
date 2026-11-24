@@ -13,6 +13,7 @@ import urllib.request
 from pathlib import Path
 from unittest.mock import patch
 
+import _quiet_chromium
 from _page_settle import count_pushes, pushes, wait_for_push
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -213,7 +214,7 @@ class _Live:
         from playwright.sync_api import sync_playwright
 
         self.pw = sync_playwright().start()
-        self.browser = self.pw.chromium.launch()
+        self.browser = _quiet_chromium.launch(self.pw)
 
     def _await_port(self, timeout: float = 30.0) -> None:
         deadline = time.time() + timeout
