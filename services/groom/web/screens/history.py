@@ -22,6 +22,8 @@ class History(Screen):
         "groom/groom/assets/dashboard.js::HistoryNarrowRow",
         "groom/groom/assets/dashboard.js::retryHistoryRun",
         "groom/groom/assets/dashboard.js::setMode",
+        "groom/groom/assets/dashboard.js::openInHistory",
+        "groom/groom/assets/dashboard.js::onSummary",
         "groom/groom/history.py::LABELS",
         "groom/groom/history.py::listing",
         "groom/groom/history.py::discover_archives",
@@ -41,7 +43,7 @@ class History(Screen):
     sends = (request("GET", "/api/history"), request("GET", "/api/state"), request("GET", "/api/settings/attend"), request("GET", "/api/run/{id}/overview"), request("POST", "/api/history/{id}/retry"))
     root = Text(
         "#history-pane",
-        does="the history pane. Its filters, the open run and the narrowed list survive leaving History for another rail tab and coming back, and filtering makes no request except when the range adds or drops the archives",
+        does="the history pane. Its filters, the open run and the narrowed list survive leaving History for another rail tab and coming back, and filtering makes no request except when the range adds or drops the archives. A run that ends while History is open appears at the top of the table without a reload, the totals follow, and an open run stays open",
     )
     title = Text("#history-title", "History: runs that ended", does="the pane's title")
     empty = Text("#history .empty-big", does="the line shown when no run ended in the last 30 days")

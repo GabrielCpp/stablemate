@@ -1,5 +1,5 @@
 from ostler.book import Field as Wire, Str, request
-from ostler.book.screen import Button, Field, Screen, Select, Text
+from ostler.book.screen import Button, Field, Link, Screen, Select, Text
 
 
 class RunDetail(Screen):
@@ -11,6 +11,14 @@ class RunDetail(Screen):
         "groom/groom/assets/dashboard.js::Overview",
         "groom/groom/assets/dashboard.js::ArchiveGone",
         "groom/groom/assets/dashboard.js::runApi",
+        "groom/groom/assets/dashboard.js::EndedStrip",
+        "groom/groom/assets/dashboard.js::EndedAgo",
+        "groom/groom/assets/dashboard.js::liveEndedHead",
+        "groom/groom/assets/dashboard.js::openInHistory",
+        "groom/groom/assets/dashboard.js::onSummary",
+        "groom/groom/assets/dashboard.js::EndingBanner",
+        "groom/groom/assets/dashboard.js::endedDetail",
+        "groom/groom/projection.py::ended_of",
         "groom/groom/assets/dashboard.js::markIndexed",
         "groom/groom/assets/dashboard.js::TurnReading",
         "groom/groom/assets/dashboard.js::StepReading",
@@ -85,7 +93,22 @@ class RunDetail(Screen):
     name = "Run detail"
     api = "/api"
     sends = (request("GET", "/api/run/{id}/overview"), request("GET", "/api/archive/{id}/overview"), request("GET", "/api/run/{id}/activity"), request("GET", "/api/archive/{id}/activity"), request("GET", "/api/archive/{id}/activity/{turn}"), request("GET", "/api/archive/{id}/entry/{key}"), request("GET", "/api/archive/{id}/records"), request("GET", "/api/archive/{id}/search"), request("GET", "/api/state"), request("GET", "/api/settings/attend"))
-    root = Text("#detail .detail-head", does="the selected run's header: its state dot, repo and branch, id and state, the note of what the run is doing and, when an attendant has worked on it, the attendant link")
+    root = Text("#detail .detail-head", does="the selected run's header: its state dot, repo and branch, id and state, the note of what the run is doing and, when an attendant has worked on it, the attendant link. Once the run has ended the header reads done, and its note reads 'ended <time> ago · <ending>'")
+    ended_strip = Text(
+        "#ended-strip",
+        "Run ended",
+        does="a polite status under the header of a selected run that ended while it was open. It reads 'This run ended <span> ago: <how>.' and then 'It stays open here.' The how names the ending, and adds 'at <node>' when the ending is not success. A run that failed carries the failure colour on the strip's edge, and the words carry the ending too, so colour is never the only sign. The span ticks every second. The strip belongs to the open run and not to its row, so it stays when the row is evicted from the list and leaves only when the operator selects another run. The run's row and header change to ended in the same update, and the Files and Diff tabs leave",
+    )
+    ended_link = Link(
+        "#ended-strip a",
+        "Open it in History",
+        does="the link in the strip. It opens History, clears a kept filter that would hide the run, and selects the run there once the list has loaded. It works from the keyboard",
+    )
+    ending_banner = Text(
+        "#detail-ending",
+        "How this run ended",
+        does="the banner of the Overview, under the strip. It appears without a reload once the run's summary is written, and says where and why the run ended. It offers 'Open this moment in Activity' and, beside the command to continue the run from a terminal, a copy button. A run that gave up shows no command. A run that ran in a container says the command runs inside the container. A run whose folder is gone, or that recorded no launch command, says so",
+    )
     repo = Text("#detail .repo-branch", "repo", does="the repo and branch of the run")
     run_id = Text("#detail .run-id", "run id", does="the whole id of the run")
     gate_strip = Text(

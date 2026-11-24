@@ -20,5 +20,5 @@ class Settings(Screen):
     runs_badge = Text(
         "#runs-badge",
         "blocked runs",
-        does="the number of blocked runs, on the Runs button of the left bar while another pane is open. It counts runs, so a run with two open gates counts once. It is hidden on the run list and when no run is blocked. The number is text, and the button's name carries it for a screen reader",
+        does="the number of blocked runs, on the Runs button of the left bar while another pane is open, History included. It counts runs, so a run with two open gates counts once. It is hidden on the run list and when no run is blocked. The number is text, and the button's name carries it for a screen reader",
     )

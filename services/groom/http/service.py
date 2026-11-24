@@ -48,6 +48,7 @@ DIVERGES = (
 )
 
 NEVER_PUSHED = "a pushed run carries none of the telemetry a workhorse sidecar adds to its row"
+ENDED_FIELDS = ("ending", "ending_label", "ended_ts", "node", "error_class", "failed")
 
 UNSEEN = (
     *GAPS,
@@ -69,6 +70,7 @@ UNSEEN = (
             *(f"runs[].figures.{name}" for name in (
                 "finished", "reports_cost", "cost_usd", "turns", "priced_turns", "active_s", "items_done", "items_total",
             )),
+            *(f"runs[].ended.{name}" for name in ENDED_FIELDS),
         )
     ),
     Unseen(ReadFleet, "200: store.last_error", Because.NEVER_FILLED, "the book's database never fails"),
@@ -78,7 +80,7 @@ UNSEEN = (
         for field in (
             "gates[].kind", "running.wait_kind", "strip.wait_kind", "strip.idle_since_ts", "strip.beat_ts", "strip.norm",
             "strip.norm.median_s", "strip.norm.runs",
-            "ended", "head.type", "head.pid", "head.cli", "head.activity", "head.worktree", "head.checkout",
+            "ended", *(f"ended.{name}" for name in ENDED_FIELDS), "head.type", "head.pid", "head.cli", "head.activity", "head.worktree", "head.checkout",
             "metrics.cells", "metrics.alerts", "metrics.run_dir", "logs", "history",
         )
     ),

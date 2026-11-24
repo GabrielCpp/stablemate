@@ -68,6 +68,18 @@ _ROW_FIGURE_FIELDS = dict(
 
 ROW_FIGURES = Object("RowFigures", **_ROW_FIGURE_FIELDS)
 
+ENDED_NOTE = "how the run ended, read through the History ending mapping; null while the run runs or continues through a reload"
+
+ENDED = Object(
+    "Ended",
+    ending=Field(Enum(("success", "gave-up", "failed", "interrupted", "crashed"))),
+    ending_label=Field(Str()),
+    ended_ts=Field(Num(), does="the unix time the run's terminal was recorded"),
+    node=Field(Str(), nullable=True, does="the node the run was at when it ended"),
+    error_class=Field(Str(), nullable=True),
+    failed=Field(Bool(), does="true for a failure, a gave-up, a crash and an interruption by a fatal error; false for a success and a stop the operator asked for"),
+)
+
 ROW = Object(
     "Row",
     id=Field(RUN_ID, does="the run's container id"),
@@ -107,7 +119,7 @@ ROW = Object(
         nullable=True,
         does="cost with priced and total turns, active time and items done, cached from the run's telemetry; null until groom hears from the run",
     ),
-    ended=Field(Map(Str()), nullable=True),
+    ended=Field(ENDED, nullable=True, does=ENDED_NOTE),
     rank=Field(Int(), does="blocked 0, running 2, finished 3; the fleet is ordered by rank, then name"),
 )
 
@@ -239,7 +251,7 @@ WORKER = Object(
     gates=Field(List(GATE), required=False, does="one entry per gate, in path order"),
     running=Field(RUNNING, required=False, nullable=True, does="null once the run is finished or has no node"),
     strip=Field(STRIP, required=False, nullable=True, does="null once the run is finished or has no node"),
-    ended=Field(Map(Str()), required=False, nullable=True),
+    ended=Field(ENDED, required=False, nullable=True, does=ENDED_NOTE),
     head=Field(HEAD, required=False),
     metrics=Field(METRICS, required=False),
     logs=Field(List(Str()), required=False),
