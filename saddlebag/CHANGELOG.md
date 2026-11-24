@@ -1,5 +1,39 @@
 # Changelog
 
+## [3.0.0](https://github.com/GabrielCpp/stablemate/compare/saddlebag-v2.1.0...saddlebag-v3.0.0) (2026-11-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* **core:** QaTool, QaTable.tools and HomeConfig.qa_tools are removed from the schema.
+
+### Features
+
+* **core:** let a power tier name its compaction window ([0e06e1d](https://github.com/GabrielCpp/stablemate/commit/0e06e1de7fc328a2c4dea65918bffc250995ec99))
+* **core:** name the folder of a repository's service books ([1796703](https://github.com/GabrielCpp/stablemate/commit/1796703bf800844e3d0b2b36fb20e08f0f04b80c))
+* **core:** open and land a book branch in the artifacts repository ([5a7a818](https://github.com/GabrielCpp/stablemate/commit/5a7a818447780f8d6b9202c6461333cb253d4c7f))
+* **core:** resolve the book home from agents.yml and the artifacts repo ([b94c7f9](https://github.com/GabrielCpp/stablemate/commit/b94c7f9609aa52312206f58bc651c73ca791cef4))
+* **farrier:** merge library settings files into ~/.claude/settings.json ([3e134f1](https://github.com/GabrielCpp/stablemate/commit/3e134f1d44ab0833e39cd5305b3d909cdc03aaae))
+* **farrier:** ship the base library inside the farrier wheel ([9c71dba](https://github.com/GabrielCpp/stablemate/commit/9c71dba3f1a202a3c5fd470c82305e56f4461e6d))
+* **ostler:** read product, team and company books beside services ([a5ae8fe](https://github.com/GabrielCpp/stablemate/commit/a5ae8fe2f81ec551a0c6dfe62f1889411ba18f34))
+* **saddlebag:** change a secret's username, description or var ([8387866](https://github.com/GabrielCpp/stablemate/commit/838786626a40a9e15e9cc2b3f388d4816f4d8f2c))
+
+
+### Bug Fixes
+
+* **core:** let a test forget remembered warnings and cached reads ([1bfe2c5](https://github.com/GabrielCpp/stablemate/commit/1bfe2c5557c5968cdbe793c6d9e8615e7b9f47e4))
+
+
+### Performance Improvements
+
+* keep a folder's repository identity while its git layout holds ([0a31568](https://github.com/GabrielCpp/stablemate/commit/0a31568c543351e4b2b2be60b33ca686a3835fa2))
+
+
+### Code Refactoring
+
+* **core:** drop config.book_home for books.book_home ([5086eb5](https://github.com/GabrielCpp/stablemate/commit/5086eb5268247be2ab8ee7eefe9675ef62d9f0f7))
+* **core:** drop the qa tools keys from both config schemas ([bd68e8c](https://github.com/GabrielCpp/stablemate/commit/bd68e8c9f4826cc155bf7c2bb31d7b81ad1a9c93))
+
 ## [2.1.0](https://github.com/GabrielCpp/stablemate/compare/saddlebag-v2.0.0...saddlebag-v2.1.0) (2026-10-29)
 
 

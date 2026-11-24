@@ -1,5 +1,50 @@
 # Changelog
 
+## [6.0.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-agent-v5.1.0...workhorse-agent-v6.0.0) (2026-11-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* **core:** QaTool, QaTable.tools and HomeConfig.qa_tools are removed from the schema.
+
+### Features
+
+* **core:** let a power tier name its compaction window ([0e06e1d](https://github.com/GabrielCpp/stablemate/commit/0e06e1de7fc328a2c4dea65918bffc250995ec99))
+* **core:** name the folder of a repository's service books ([1796703](https://github.com/GabrielCpp/stablemate/commit/1796703bf800844e3d0b2b36fb20e08f0f04b80c))
+* **core:** open and land a book branch in the artifacts repository ([5a7a818](https://github.com/GabrielCpp/stablemate/commit/5a7a818447780f8d6b9202c6461333cb253d4c7f))
+* **core:** resolve the book home from agents.yml and the artifacts repo ([b94c7f9](https://github.com/GabrielCpp/stablemate/commit/b94c7f9609aa52312206f58bc651c73ca791cef4))
+* **farrier:** merge library settings files into ~/.claude/settings.json ([3e134f1](https://github.com/GabrielCpp/stablemate/commit/3e134f1d44ab0833e39cd5305b3d909cdc03aaae))
+* **farrier:** ship the base library inside the farrier wheel ([9c71dba](https://github.com/GabrielCpp/stablemate/commit/9c71dba3f1a202a3c5fd470c82305e56f4461e6d))
+* **ostler:** read product, team and company books beside services ([a5ae8fe](https://github.com/GabrielCpp/stablemate/commit/a5ae8fe2f81ec551a0c6dfe62f1889411ba18f34))
+* **workhorse:** cut a lone repository's book worktree beside its own ([eb2e862](https://github.com/GabrielCpp/stablemate/commit/eb2e862b5ceaf4fbcd591bd63654716f447116be))
+* **workhorse:** cut an agent turn at a wall-clock deadline ([f9b21f2](https://github.com/GabrielCpp/stablemate/commit/f9b21f2786f6913aa9eebcf5b46ee8631e7bebe2))
+* **workhorse:** draw each transition once and say why on the arrow ([53e096f](https://github.com/GabrielCpp/stablemate/commit/53e096ffa48d8b3532ff046b4bece0103b328450))
+* **workhorse:** name a native run's worktree in its telemetry resource ([26debf3](https://github.com/GabrielCpp/stablemate/commit/26debf36c92807166a06250df8a4c2558c39d512))
+* **workhorse:** report each auto-compaction of a claude turn ([32a34e0](https://github.com/GabrielCpp/stablemate/commit/32a34e0061950669a5639b77e95f2a4929da3dd7))
+* **workhorse:** run delegates as the operator's agents, with a proof ([9cce970](https://github.com/GabrielCpp/stablemate/commit/9cce970f2a0110a39f93cfe55d9772557a54ba4a))
+* **workhorse:** state each claude turn's compaction window ([6b78771](https://github.com/GabrielCpp/stablemate/commit/6b7877159135c5838e8a059599ea12a48c669104))
+
+
+### Bug Fixes
+
+* **core:** let a test forget remembered warnings and cached reads ([1bfe2c5](https://github.com/GabrielCpp/stablemate/commit/1bfe2c5557c5968cdbe793c6d9e8615e7b9f47e4))
+* **workhorse:** end a run killed by sigterm as interrupted ([bf1f63d](https://github.com/GabrielCpp/stablemate/commit/bf1f63dea455052d2ad71f604e4b3734b574b82d))
+* **workhorse:** keep a node stand-in for a registry's own sub-flows ([046815f](https://github.com/GabrielCpp/stablemate/commit/046815f4cc5519cbdb9ba0c66d5f5450c8c7f19b))
+* **workhorse:** leave template warnings to the configured logger ([0b13ab0](https://github.com/GabrielCpp/stablemate/commit/0b13ab0c4950829b2a19117fb477683ef3a468d4))
+* **workhorse:** pass the effort to codex as written ([06bdd06](https://github.com/GabrielCpp/stablemate/commit/06bdd06e62c48a5d714e7404f8b054e50805deef))
+* **workhorse:** zero the compaction count between turns ([cd10987](https://github.com/GabrielCpp/stablemate/commit/cd10987eab4ba454de7a4ccbbe35a1f37aba3f52))
+
+
+### Performance Improvements
+
+* keep a folder's repository identity while its git layout holds ([0a31568](https://github.com/GabrielCpp/stablemate/commit/0a31568c543351e4b2b2be60b33ca686a3835fa2))
+
+
+### Code Refactoring
+
+* **core:** drop config.book_home for books.book_home ([5086eb5](https://github.com/GabrielCpp/stablemate/commit/5086eb5268247be2ab8ee7eefe9675ef62d9f0f7))
+* **core:** drop the qa tools keys from both config schemas ([bd68e8c](https://github.com/GabrielCpp/stablemate/commit/bd68e8c9f4826cc155bf7c2bb31d7b81ad1a9c93))
+
 ## [5.1.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-agent-v5.0.0...workhorse-agent-v5.1.0) (2026-10-29)
 
 

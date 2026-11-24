@@ -1,5 +1,56 @@
 # Changelog
 
+## [6.0.0](https://github.com/GabrielCpp/stablemate/compare/farrier-v5.0.0...farrier-v6.0.0) (2026-11-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* **core:** QaTool, QaTable.tools and HomeConfig.qa_tools are removed from the schema.
+
+### Features
+
+* **base-library:** limit the clone check to given paths in range mode ([603a8ea](https://github.com/GabrielCpp/stablemate/commit/603a8ea6deb44f9f9ab78a457b63fb2d6b8353a0))
+* **core:** let a power tier name its compaction window ([0e06e1d](https://github.com/GabrielCpp/stablemate/commit/0e06e1de7fc328a2c4dea65918bffc250995ec99))
+* **core:** name the folder of a repository's service books ([1796703](https://github.com/GabrielCpp/stablemate/commit/1796703bf800844e3d0b2b36fb20e08f0f04b80c))
+* **core:** open and land a book branch in the artifacts repository ([5a7a818](https://github.com/GabrielCpp/stablemate/commit/5a7a818447780f8d6b9202c6461333cb253d4c7f))
+* **core:** resolve the book home from agents.yml and the artifacts repo ([b94c7f9](https://github.com/GabrielCpp/stablemate/commit/b94c7f9609aa52312206f58bc651c73ca791cef4))
+* **farrier:** bring copilot's home to parity with claude ([d430058](https://github.com/GabrielCpp/stablemate/commit/d43005845cc51e437515c38194e14874c5d2a711))
+* **farrier:** bundle the flaky-shape table with the library ([8a21b66](https://github.com/GabrielCpp/stablemate/commit/8a21b660bba5a46d446b01e54b6b8dac772363b4))
+* **farrier:** give a helper agent its own MCP servers ([e19a2e1](https://github.com/GabrielCpp/stablemate/commit/e19a2e19581ac63d416d06b42042de3376d7c4d9))
+* **farrier:** let an agent call the tools of a session server ([fd5249e](https://github.com/GabrielCpp/stablemate/commit/fd5249e29a9294b6a78e32d12390581f79a357ca))
+* **farrier:** let an agent record grant built-in tools on claude ([b71dc27](https://github.com/GabrielCpp/stablemate/commit/b71dc27de09fcb6c1459de093be4fb639409ab42))
+* **farrier:** merge codex settings into its config.toml ([27a338d](https://github.com/GabrielCpp/stablemate/commit/27a338d06bdec3c315bcf1ed31e1519cd577d493))
+* **farrier:** merge library settings files into ~/.claude/settings.json ([3e134f1](https://github.com/GabrielCpp/stablemate/commit/3e134f1d44ab0833e39cd5305b3d909cdc03aaae))
+* **farrier:** run a guard when the agent ends its turn ([7946a23](https://github.com/GabrielCpp/stablemate/commit/7946a2340168cd0746eb719a218d5d4cc7213efb))
+* **farrier:** ship the base library inside the farrier wheel ([9c71dba](https://github.com/GabrielCpp/stablemate/commit/9c71dba3f1a202a3c5fd470c82305e56f4461e6d))
+* **ostler:** let a stack's secrets file name the code repository ([ad95b9a](https://github.com/GabrielCpp/stablemate/commit/ad95b9ad92a33631611ad60ee883b78c18a89142))
+* **ostler:** read product, team and company books beside services ([a5ae8fe](https://github.com/GabrielCpp/stablemate/commit/a5ae8fe2f81ec551a0c6dfe62f1889411ba18f34))
+* **ostler:** search business pages beside the service books ([660e488](https://github.com/GabrielCpp/stablemate/commit/660e488a7185c5ffbefae1e528a9d193b6474008))
+
+
+### Bug Fixes
+
+* **core:** let a test forget remembered warnings and cached reads ([1bfe2c5](https://github.com/GabrielCpp/stablemate/commit/1bfe2c5557c5968cdbe793c6d9e8615e7b9f47e4))
+* **farrier:** resolve the hook cache dir when the hook runs ([55c3d5d](https://github.com/GabrielCpp/stablemate/commit/55c3d5d931d02ed50f8c938fded2e5c2fdf9d54f))
+* **farrier:** skip the sync check outside a git work tree ([c15b22c](https://github.com/GabrielCpp/stablemate/commit/c15b22c26ac2994cd3b25fa5c20ead90f97d4be5))
+* **ostler:** load only the stacks of the repositories a command knows ([1b17877](https://github.com/GabrielCpp/stablemate/commit/1b178777c4a351836c7eb0fce03bd58015fffe27))
+* **ostler:** name a stack copy after its code repository ([3c65e8f](https://github.com/GabrielCpp/stablemate/commit/3c65e8ff84bc5acac6ac84f30d80d0d067761a68))
+* **ostler:** read a repo secrets file from the main checkout ([c0d06fa](https://github.com/GabrielCpp/stablemate/commit/c0d06fa834c89a54956a023bccc45f6f0cf25023))
+* **ostler:** read the code checkout when a book's root is its own tree ([49afcac](https://github.com/GabrielCpp/stablemate/commit/49afcac60219eb0e8d3fa4843deb27619831d605))
+* **ostler:** say what shows that a book of an outside system still holds ([facdc45](https://github.com/GabrielCpp/stablemate/commit/facdc4543f3a1ad6b7aaa4e3fccd7c7ad27e0178))
+
+
+### Performance Improvements
+
+* keep a folder's repository identity while its git layout holds ([0a31568](https://github.com/GabrielCpp/stablemate/commit/0a31568c543351e4b2b2be60b33ca686a3835fa2))
+
+
+### Code Refactoring
+
+* **core:** drop config.book_home for books.book_home ([5086eb5](https://github.com/GabrielCpp/stablemate/commit/5086eb5268247be2ab8ee7eefe9675ef62d9f0f7))
+* **core:** drop the qa tools keys from both config schemas ([bd68e8c](https://github.com/GabrielCpp/stablemate/commit/bd68e8c9f4826cc155bf7c2bb31d7b81ad1a9c93))
+* move the commit-and-push policy into the repo group ([ffdecbc](https://github.com/GabrielCpp/stablemate/commit/ffdecbc7c815ee6d8b88f06bc9d6f488562f9b8f))
+
 ## [5.0.0](https://github.com/GabrielCpp/stablemate/compare/farrier-v4.0.0...farrier-v5.0.0) (2026-10-29)
 
 
