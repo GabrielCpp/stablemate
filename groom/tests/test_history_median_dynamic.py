@@ -198,6 +198,20 @@ def test_the_tile_of_a_run_with_no_other_comparable_run_says_none_exists_yet_and
     assert "$6.00 per item, no comparison: no other comparable coder run yet, and it takes 5" in tile
 
 
+def test_by_node_of_a_successful_run_with_no_other_comparable_run_says_how_many_exist_and_that_it_takes_five():
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    with _judged(others=()):
+        page = _overview(live, "By node")
+        try:
+            heading = page.get_by_role("table", name=NODES).locator("thead th").all_inner_texts()
+            cells = [row[5] for row in _node_cells(page).values()]
+        finally:
+            page.close()
+    assert "vs median: 0 runs, under five" in [text.strip().lower() for text in heading]
+    assert set(cells) == {"—"}
+
+
 def test_a_run_that_did_not_end_in_success_shows_no_comparison_in_the_tile_or_by_node():
     live = _live()
     assert live is not None, _UNAVAILABLE

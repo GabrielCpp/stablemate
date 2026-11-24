@@ -123,7 +123,7 @@ def tile_cell(judged: Judged) -> str:
 
 def node_cells(judged: Judged) -> NodeCells:
     others = len(judged.peers)
-    if not comparable(judged) or not others:
+    if not comparable(judged):
         return NodeCells("vs median", "—", "—")
     if others < FLOOR:
         return NodeCells(f"vs median: {plural(others, 'run', 'runs')}, under five", "—", "—")

@@ -914,6 +914,10 @@ function CostTile({ figures, asOf, ended }) {
 
 const COMPARABLE = "Successful runs of this workflow with a reported cost and a finished item";
 
+function isCompared(compare) {
+  return compare.ending === "success" && compare.per_item_usd !== null;
+}
+
 function notCompared(compare) {
   if (compare.ending === "none") return "no ending recorded";
   return compare.ending === "success" ? "an estimate has no median" : "the run " + compare.ending_label;
@@ -1161,7 +1165,7 @@ function NodeTable({ data, running, sort }) {
       <th scope="col">Visits</th>
       <th scope="col">Time</th>
       <th scope="col">Mean</th>
-      <th scope="col" title=${data.compare ? "Mean visit against the same node across successful runs of this workflow" : null}>${data.compare && !data.norm_runs ? "vs median" : medianHeading(data.norm_runs)}</th>
+      <th scope="col" title=${data.compare ? "Mean visit against the same node across successful runs of this workflow" : null}>${data.compare && !isCompared(data.compare) ? "vs median" : medianHeading(data.norm_runs)}</th>
       <th scope="col">Longest</th>
       <th scope="col">${reports ? "Cost" : "Output"}</th>
       <th scope="col">Cost %</th>
