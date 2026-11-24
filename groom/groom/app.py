@@ -673,19 +673,23 @@ async def run_overview(run_id: Annotated[str, PathParameter()]) -> dict:
     return await pools.QUERY.run(_overview_with_ending, run_id)
 
 
-def _archive_overview(run_id: str) -> dict | None:
-    """An archived run's Overview, read from its frozen archive, or from its stored summary when the archive's files are gone. None when the run is not an archive. The run is resolved by exact id before anything is read, because ``run_source`` falls back to the live store and ``archive_dir`` to a prefix."""
+def _archived(run_id: str) -> tuple[dict | None, Path | None]:
+    """The stored row of an archived run and the folder holding its archive under its exact id. The row is None when the run is not an archive, and the folder is None when the archive's files are gone."""
     row = history.stored(run_id)
     if row is None or not row["archived"]:
+        return None, None
+    return row, archive.exact_dir(run_id)
+
+
+def _archive_overview(run_id: str) -> dict | None:
+    """An archived run's Overview, read from its frozen archive, or from its stored summary when the archive's files are gone. None when the run is not an archive. The run is resolved by exact id before anything is read, because ``run_source`` falls back to the live store and ``archive_dir`` to a prefix."""
+    row, folder = _archived(run_id)
+    if row is None:
         return None
-    folder = archive.exact_dir(run_id)
     if folder is None:
         return overview.stored_overview(row, history.comparison(run_id))
-    try:
+    with archive.dropping_an_unreadable_index(folder):
         found = _overview_with_ending(run_id)
-    except sqlite3.DatabaseError:
-        (folder / archive.INDEX_FILE).unlink(missing_ok=True)
-        raise
     if found["ending"]:
         found["ending"]["moment"] = ""
     return {**found, "archive": "ready"}
@@ -767,18 +771,13 @@ def _gate_reader(run_id: str):
 
 def _archive_read(run_id: str, read: Callable, *args):
     """``read(*args)`` over one archived run's frozen file. The run is resolved by exact id before anything is read, and ``run_source`` is entered here because the pool does not copy the context variable that redirects the reads."""
-    row = history.stored(run_id)
-    if row is None or not row["archived"]:
+    row, folder = _archived(run_id)
+    if row is None:
         raise NotFoundException(f"no archived run {run_id}")
-    folder = archive.exact_dir(run_id)
     if folder is None:
         raise HTTPException(status_code=410, detail="this archive's files are gone")
-    try:
-        with archive.run_source(run_id):
-            return read(*args)
-    except sqlite3.DatabaseError:
-        (folder / archive.INDEX_FILE).unlink(missing_ok=True)
-        raise
+    with archive.dropping_an_unreadable_index(folder), archive.run_source(run_id):
+        return read(*args)
 
 
 def _in_archive(run_id: str) -> Callable:

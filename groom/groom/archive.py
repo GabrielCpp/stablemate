@@ -357,6 +357,16 @@ def run_source(run: str) -> Iterator[None]:
         yield
 
 
+@contextmanager
+def dropping_an_unreadable_index(folder: Path) -> Iterator[None]:
+    """Delete ``folder``'s index when the read inside fails on it, so the next read builds it again from the telemetry file."""
+    try:
+        yield
+    except sqlite3.DatabaseError:
+        (folder / INDEX_FILE).unlink(missing_ok=True)
+        raise
+
+
 def _fsync_dir(path: Path) -> None:
     """Persist a rename, not just the bytes it moved."""
     try:
