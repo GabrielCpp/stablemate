@@ -28,6 +28,7 @@ from paddock.tasks import inputs
 from workhorse.config_run import AgentResilience
 from workhorse.runner import extract as wh_extract
 from workhorse.runner.backends.registry import get_backend
+from paddock._vendor.stablemate_core import books
 from paddock._vendor.stablemate_core.clock import SYSTEM_CLOCK
 from paddock._vendor.stablemate_core.config import ARTIFACTS_DIR_ENV
 
@@ -43,7 +44,6 @@ LEVELS = {
 MAX_LEVEL = 3
 
 
-MILESTONES_DIR = "docs/milestones"
 
 MILESTONE_FILE = "milestone.md"
 
@@ -126,6 +126,14 @@ def artifacts_of(run: Run) -> Path:
 def home_of(run: Run) -> Path:
     """Where the docs, milestones and epics live: the one repo, or a folder's docs home."""
     return tree.witness_docs(run, run.stage)
+
+
+def milestone_folder(run: Run, fixture: Fixture) -> Path:
+    """Where the round's milestone lives: under its product in the artifacts folder."""
+    home = books.milestones_home(home_of(run), artifacts_of(run))
+    if home is None:
+        raise TrialError(f"no product for {home_of(run)} — the round has nowhere to keep its milestone")
+    return home / fixture.slug
 
 
 def repos_of(run: Run) -> list[Path]:
@@ -312,7 +320,7 @@ def seed_milestone(run: Run, fixture: Fixture) -> None:
     home = home_of(run)
     if not (home / "docs").is_dir():
         raise TrialError(f"no {home / 'docs'} — genesis did not scaffold the docs tree")
-    shutil.copytree(source, home / MILESTONES_DIR / fixture.slug, dirs_exist_ok=True)
+    shutil.copytree(source, milestone_folder(run, fixture), dirs_exist_ok=True)
     for surface in fixture.surfaces:
         book = home / BOOKS_DIR / surface.repo / surface.service if tree.stage_members(run) else home / BOOKS_DIR / surface.service
         book.mkdir(parents=True, exist_ok=True)
@@ -512,7 +520,7 @@ def is_done(status: str) -> bool:
 
 
 def produced_milestone(run: Run, fixture: Fixture) -> Path:
-    return home_of(run) / MILESTONES_DIR / fixture.slug / MILESTONE_FILE
+    return milestone_folder(run, fixture) / MILESTONE_FILE
 
 
 def listed_epics(run: Run, fixture: Fixture) -> set[str]:

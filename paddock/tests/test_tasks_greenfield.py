@@ -39,7 +39,10 @@ def test_the_milestone_is_copied_from_beside_the_tasks_module(tmp_path: Path) ->
 
     greenfield.seed_milestone(run, FIXTURE)
 
-    assert (run.stage / greenfield.MILESTONES_DIR / "m1" / greenfield.MILESTONE_FILE).is_file()
+    kept = list(greenfield.artifacts_of(run).glob(f"products/*/milestones/m1/{greenfield.MILESTONE_FILE}"))
+    assert len(kept) == 1, kept
+    assert kept[0] == greenfield.produced_milestone(run, FIXTURE)
+    assert not (run.stage / "docs" / "milestones").exists()
     assert (run.stage / BOOKS_DIR / "api").is_dir()
 
 
@@ -122,10 +125,13 @@ def test_genesis_scaffolds_each_surface_in_its_member(tmp_path: Path, monkeypatc
     for argv, cwd in calls:
         assert json.loads(argv[argv.index("--params") + 1])["target"] == str(cwd)
     home = run.stage / DOCS
-    assert (home / greenfield.MILESTONES_DIR / "m1" / greenfield.MILESTONE_FILE).is_file()
+    kept = list(home.glob(f"products/*/milestones/m1/{greenfield.MILESTONE_FILE}"))
+    assert len(kept) == 1, kept
+    assert kept[0] == greenfield.produced_milestone(run, FOLDER_FIXTURE)
+    assert not (home / "docs" / "milestones").exists()
     assert (home / BOOKS_DIR / PRODUCTS[1] / "web").is_dir()
     assert (home / "docs" / "decisions" / "0001.md").is_file()
-    assert not (run.stage / PRODUCTS[0] / greenfield.MILESTONES_DIR).exists()
+    assert not (run.stage / PRODUCTS[0] / "docs" / "milestones").exists()
 
 
 def test_a_phase_runs_in_the_docs_home_on_the_workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
