@@ -193,7 +193,7 @@ class ReadArchiveOverview(Endpoint):
     method = "GET"
     path = "/api/archive/{run_id}/overview"
     params = PICK
-    answers = (Answer(200, OVERVIEW, "the archived run's overview"), NOT_ARCHIVED, FILES_GONE)
+    answers = (Answer(200, OVERVIEW, "the archived run's overview, read from its frozen file, or built from its stored summary with archive gone when its files are gone"), NOT_ARCHIVED)
     source = (APP + "archive_overview", APP + "_archive_overview", *ARCHIVE_SOURCE, *OVERVIEW_SOURCE)
     does = "Reads one archived run's overview from its frozen archive, or from its stored summary when the files are gone."
     carries = actions.ReadArchive

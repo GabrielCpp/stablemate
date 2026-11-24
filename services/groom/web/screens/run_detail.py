@@ -8,6 +8,9 @@ class RunDetail(Screen):
         "groom/groom/assets/dashboard.js",
         "groom/groom/assets/dashboard.js::loadOverview",
         "groom/groom/assets/dashboard.js::retryOverview",
+        "groom/groom/assets/dashboard.js::Overview",
+        "groom/groom/assets/dashboard.js::ArchiveGone",
+        "groom/groom/assets/dashboard.js::markIndexed",
         "groom/groom/assets/dashboard.js::TurnReading",
         "groom/groom/assets/dashboard.js::StepReading",
         "groom/groom/assets/dashboard.js::GateReading",
@@ -71,11 +74,15 @@ class RunDetail(Screen):
         "groom/groom/medians.py::node_readings",
         "groom/groom/history.py::comparison",
         "groom/groom/overview.py::run_overview",
+        "groom/groom/overview.py::stored_overview",
+        "groom/groom/app.py::_archive_overview",
+        "groom/groom/archive.py::exact_dir",
+        "groom/groom/archive.py::is_indexed",
     )
     route = "/"
     name = "Run detail"
     api = "/api"
-    sends = (request("GET", "/api/run/{id}/overview"), request("GET", "/api/run/{id}/activity"), request("GET", "/api/state"), request("GET", "/api/settings/attend"))
+    sends = (request("GET", "/api/run/{id}/overview"), request("GET", "/api/archive/{id}/overview"), request("GET", "/api/run/{id}/activity"), request("GET", "/api/state"), request("GET", "/api/settings/attend"))
     root = Text("#detail .detail-head", does="the selected run's header: its state dot, repo and branch, id and state, the note of what the run is doing and, when an attendant has worked on it, the attendant link")
     repo = Text("#detail .repo-branch", "repo", does="the repo and branch of the run")
     run_id = Text("#detail .run-id", "run id", does="the whole id of the run")
@@ -218,10 +225,30 @@ class RunDetail(Screen):
         "Sessions",
         does="one row per session, the same count as the Active time tile. Each row gives when the session started, its active time, how long the run stayed stopped before the next session and how the session stopped. The ending reads finished, interrupted, reloaded, failed or crashed, with the recorded message or error class after a colon. A session whose root span recorded no ending reads 'no recorded ending'. The last session of a running or blocked run reads 'running', with 'still running' in place of the gap",
     )
+    archive_reading = Text(
+        "#detail .detail-empty.loading",
+        "Reading the archive for the first time",
+        does="shown in place of the Overview, announced as a status, the first time an archived run is opened: 'Reading the archive for the first time. This takes a few seconds once, then it is instant.' It carries no problem count and is gone when the Overview appears. Opening the archive again shows no such text, because its index is built, and the Overview arrives in under two seconds",
+    )
+    archive_gone = Text(
+        "#detail .side-state[role=status] h2",
+        "This archive's files are gone",
+        does="the note above an archived run's tiles when its frozen files are gone: 'The cost and times below come from the run's stored summary. Activity and transcripts cannot be read.' The row stays in History, the Cost, Active time, Items, Agent turns and Attention tiles and the Run facts read from the stored summary, and the breakdown tables are absent",
+    )
+    archive_unreadable = Text(
+        "#detail .side-state[role=alert] h2",
+        "This archive could not be read",
+        does="the alert shown in place of the Overview when the archive's overview cannot be read: 'Its row in the list comes from the stored summary.' The run's row stays in the list",
+    )
+    archive_retry = Button(
+        "#detail button.retry-overview",
+        "Retry now",
+        does="in the alert of an archive that could not be read. Pressing it reads the archive again and shows the Overview when the read succeeds",
+    )
     activity = Text(
         "#tab-activity",
         "Activity",
-        does="the tab of the run's agent turns, directly after Overview, so the tabs read Overview, Activity, Files and Diff, and Overview and Activity alone on a run without a sidecar. A native run's tab works as a container run's does. The run detail has no Details tab and no telemetry feed. A saved view of the old feed in the browser is ignored, and the detail opens on Overview",
+        does="the tab of the run's agent turns, directly after Overview, so the tabs read Overview, Activity, Files and Diff, and Overview and Activity alone on a run without a sidecar and on an archived run, which has no Files and no Diff tab. A native run's tab works as a container run's does. The run detail has no Details tab and no telemetry feed. A saved view of the old feed in the browser is ignored, and the detail opens on Overview",
     )
     activity_list = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .tl[role="log"]',

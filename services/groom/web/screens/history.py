@@ -18,9 +18,18 @@ class History(Screen):
         "groom/groom/assets/dashboard.js::HistoryPane",
         "groom/groom/assets/dashboard.js::HistoryEach",
         "groom/groom/assets/dashboard.js::historyMedian",
+        "groom/groom/assets/dashboard.js::HistoryRow",
+        "groom/groom/assets/dashboard.js::HistoryNarrowRow",
+        "groom/groom/assets/dashboard.js::retryHistoryRun",
         "groom/groom/assets/dashboard.js::setMode",
         "groom/groom/history.py::LABELS",
         "groom/groom/history.py::listing",
+        "groom/groom/history.py::discover_archives",
+        "groom/groom/history.py::compute_archive",
+        "groom/groom/history.py::retry",
+        "groom/groom/history.py::keep_archived",
+        "groom/groom/archive.py::archive_run",
+        "groom/groom/archive.py::_summary_of",
         "groom/groom/medians.py::per_item_costs",
         "groom/groom/medians.py::median_of_others",
         "groom/groom/medians.py::per_workflow",
@@ -29,7 +38,7 @@ class History(Screen):
     route = "/"
     name = "History"
     api = "/api"
-    sends = (request("GET", "/api/history"), request("GET", "/api/state"), request("GET", "/api/settings/attend"), request("GET", "/api/run/{id}/overview"))
+    sends = (request("GET", "/api/history"), request("GET", "/api/state"), request("GET", "/api/settings/attend"), request("GET", "/api/run/{id}/overview"), request("POST", "/api/history/{id}/retry"))
     root = Text(
         "#history-pane",
         does="the history pane. Its filters, the open run and the narrowed list survive leaving History for another rail tab and coming back, and filtering makes no request except when the range adds or drops the archives",
@@ -62,8 +71,33 @@ class History(Screen):
     range = Select(
         "#history .h-top select.h-range",
         "Range",
-        does="the selector at the right of the bar. It starts on 'Last 30 days'. 'Last 7 days' keeps the runs that ended in the last 7 days, in the browser. 'Everything, archives included' reads History again with the archives, and leaving it reads History again without",
+        does="the selector at the right of the bar. It starts on 'Last 30 days'. 'Last 7 days' keeps the runs that ended in the last 7 days, in the browser. 'Everything, archives included' reads History again with the archives, which adds the archived runs to the table and to the totals, and leaving it reads History again without",
         options=("Last 30 days", "Last 7 days", "Everything, archives included"),
+    )
+    archived_chip = Text(
+        "#history table.ht tr.hrow .who .chip",
+        "archived",
+        does="the word 'archived' after the run id of a run whose files were frozen into an archive, so the marker is a word and never a color. It shows only while the range is 'Everything, archives included'",
+    )
+    narrow_archived = Text(
+        "#history button.row .line1 .chip",
+        "archived",
+        does="the same word after the run id of an archived run in the narrowed list beside an open run",
+    )
+    summary_reading = Text(
+        "#history table.ht span.dim",
+        "reading its summary",
+        does="in the Ending cell of an archive whose summary groom has not read yet, with a dash in every figure cell. An archive that carries its summary never shows it. The row fills in on the same page, with no reload, when the one background read of that archive ends, and the totals drop the clause 'still being read' with it. The narrowed list reads the same words",
+    )
+    summary_unreadable = Text(
+        "#history table.ht .unread",
+        "could not be read",
+        does="in the Ending cell of an archive whose summary could not be read, with a dash in every figure cell and no figure invented. The narrowed list reads the same words and has no retry",
+    )
+    summary_retry = Button(
+        "#history button.retry-summary",
+        "Retry now",
+        does="beside 'could not be read' in the table, named 'Retry now, <run id>'. Pressing it, by mouse or by Enter or Space, asks groom to read that archive's summary again and does not open the run. The row fills in on the same page when the read succeeds",
     )
     totals = Text(
         "#history .h-sum",

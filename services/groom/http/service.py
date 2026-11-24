@@ -24,9 +24,8 @@ PUSH_FIELDS = {
 
 NO_INPUT_BASE = "the book's groom refuses every call of this endpoint the same way, so no call succeeds for an input class to vary"
 NO_TELEMETRY = "the book's groom is never sent telemetry, which its OTLP receivers take as protobuf the book cannot write"
-ARCHIVE_ENDPOINTS = (
-    e.ReadArchiveOverview, e.ReadArchiveActivity, e.ReadArchiveRecords, e.SearchArchive, e.ReadArchiveEntry, e.ReadArchiveTurn,
-)
+ARCHIVE_ACTIVITY_ENDPOINTS = (e.ReadArchiveActivity, e.ReadArchiveRecords, e.SearchArchive, e.ReadArchiveEntry, e.ReadArchiveTurn)
+ARCHIVE_ENDPOINTS = (e.ReadArchiveOverview, *ARCHIVE_ACTIVITY_ENDPOINTS)
 
 DIVERGES = (
     *(
@@ -54,7 +53,7 @@ UNSEEN = (
     *GAPS,
     *(Unseen(ep, "inputs", Because.NEVER_FILLED, NO_INPUT_BASE) for ep in (*ARCHIVE_ENDPOINTS, e.ReadEntry, e.ReadTurn, e.Enqueue)),
     *(Unseen(ep, "200", Because.NEVER_FILLED, NO_TELEMETRY) for ep in (*ARCHIVE_ENDPOINTS, e.ReadEntry, e.ReadTurn)),
-    *(Unseen(ep, "410", Because.NEVER_FILLED, "no run is archived, so no archive has lost its files") for ep in ARCHIVE_ENDPOINTS),
+    *(Unseen(ep, "410", Because.NEVER_FILLED, "no run is archived, so no archive has lost its files") for ep in ARCHIVE_ACTIVITY_ENDPOINTS),
     Unseen(e.ReadTurn, "503", Because.NEVER_FILLED, NO_TELEMETRY),
     Unseen(e.SearchRun, "503", Because.NEVER_FILLED, NO_TELEMETRY),
     Unseen(e.Enqueue, "201", Because.NEVER_FILLED, "the home of the book's groom names no dispatch queue"),
