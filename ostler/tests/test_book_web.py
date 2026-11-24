@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import fcntl
+import json
 import re
 import socket
 import subprocess
@@ -247,19 +249,30 @@ class FullRun:
     out: Path
 
 
-@pytest.fixture(scope="module")
-def full_run(tmp_path_factory: pytest.TempPathFactory) -> Iterator[FullRun]:
-    """The whole web book played once, read by every test that judges a complete run."""
-    stack = _stack()
-    try:
-        tmp_path = tmp_path_factory.mktemp("full-run")
-        yield FullRun(_run(stack, tmp_path), tmp_path / "out")
-    finally:
-        _stop(stack)
+@pytest.fixture(scope="session")
+def full_run(tmp_path_factory: pytest.TempPathFactory, worker_id: str) -> FullRun:
+    """The whole web book played once per suite run, by the first worker that asks, and read by the others."""
+    base = tmp_path_factory.getbasetemp()
+    shared = (base if worker_id == "master" else base.parent) / "web-book-full-run"
+    shared.mkdir(exist_ok=True)
+    record = shared / "done.json"
+    with (shared / "lock").open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if not record.exists():
+            stack = _stack()
+            try:
+                done = _run(stack, shared)
+            finally:
+                _stop(stack)
+            _ = record.write_text(
+                json.dumps({"returncode": done.returncode, "stdout": done.stdout, "stderr": done.stderr}), encoding="utf-8"
+            )
+    held = json.loads(record.read_text(encoding="utf-8"))
+    return FullRun(subprocess.CompletedProcess([], held["returncode"], held["stdout"], held["stderr"]), shared / "out")
 
 
 def full_run_group[F: Callable[..., object]](test: F) -> F:
-    """A test that reads the shared whole run: on the one worker that plays it, handed out first."""
+    """A test that reads the shared whole run, handed out first so the run starts early."""
     return pytest.mark.whole_run(pytest.mark.xdist_group("web-book-full-run")(test))
 
 
