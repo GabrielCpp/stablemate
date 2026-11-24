@@ -1,6 +1,6 @@
 story: SM-01M6CRJCCQMV38ZHX44NT0WG84
 date: 2026-11-24
-elements: History, RunDetail
+elements: History, RunDetail, ReadTheMedian, ReadTheOpenedRun
 sources: groom/groom/medians.py, groom/groom/history.py, groom/groom/overview.py, groom/groom/assets/dashboard.js
 
 An operator who sees a run cost $14 cannot tell whether that is high. The History table, its totals, the Work items tile and By node now put each ended run beside the median of its workflow.
@@ -21,4 +21,4 @@ By node of an ended run reads the medians of per-run node means from the stored 
 
 A difference is a signed percent with a true minus sign and never a color alone.
 
-The book's groom holds only pushed runs, which report no telemetry and so never reach History. The `ReadTheMedian` interaction therefore writes the stored summaries of the judged run and its peers straight into groom's sqlite file, and plays the History table cell and the totals cell against them. The Work items tile and By node of an opened run read spans and turns that no pushed run has, so the book declares them and does not play them. The tests in `groom/tests/test_medians.py` and `groom/tests/test_history_median_dynamic.py` play those against stored summaries.
+The book's groom holds only pushed runs, which report no telemetry and so never reach History. The `ReadTheMedian` interaction therefore writes the stored summaries of the judged run and its peers straight into groom's sqlite file, and plays the History table cell and the totals cell against them. The `ReadTheOpenedRun` interaction writes the same summaries with a node mean for each run and a few spans for the judged run, opens it from History and plays the Work items tile and By node against them. The tests in `groom/tests/test_medians.py` and `groom/tests/test_history_median_dynamic.py` play the same figures against stored summaries in more states.

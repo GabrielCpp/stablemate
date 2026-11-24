@@ -21,6 +21,7 @@ class Judged(Fixture):
     ending: str = "success"
     items: int = 2
     estimate: bool = False
+    visit: float = 90.0
 
     def __str__(self) -> str:
         return f"{self.workflow}: ${self.each} per item against {len(self.peers)} runs"

@@ -19,9 +19,9 @@ from ..model.actions import handle
 from ..model.records import Ack, Line, Panel
 from ..stack import DB
 from .activity import Note
-from .median import EachCell, MedianCell
+from .median import ITEMS, PEER_VISIT, EachCell, MedianCell, NodeCells, TileCell
 from .interactions import (
-    AnswerTheGate, FilterTheList, ReadActivity, ReadTheMedian, OpenAttendant, OpenDispatch, OpenHistory, OpenRun, OpenRuns, OpenSettings, ReportExit,
+    AnswerTheGate, FilterTheList, ReadActivity, ReadTheMedian, ReadTheOpenedRun, OpenAttendant, OpenDispatch, OpenHistory, OpenRun, OpenRuns, OpenSettings, ReportExit,
     ReportGate, ReportProgress, SwitchTheAttendant,
 )
 from .screens import ALL as SCREENS
@@ -98,8 +98,19 @@ MEDIAN = '#history .h-sum span[title^="Successful runs of this workflow"]'
 
 SUMMARY = (
     "run_id", "workflow", "repo", "branch", "state", "ending", "ended_ts", "last_ts", "active_s", "wall_s",
-    "cost_usd", "est_usd", "priced_turns", "turns", "items_done", "items_total",
+    "cost_usd", "est_usd", "priced_turns", "turns", "items_done", "items_total", "nodes_json",
 )
+
+NODE_TABLE = 'table[aria-label="Time and cost per node"]'
+TILE = "#detail-items-tile"
+BREAKDOWN = '[role=group][aria-label="Breakdown view"] button:text-is("By node")'
+HEADING = f"{NODE_TABLE} thead th:nth-child(6)"
+NODE_CELL = """
+([name]) => {
+  const row = [...document.querySelectorAll('table[aria-label="Time and cost per node"] tbody tr')].find((r) => r.cells[0].innerText.trim() === name);
+  return row ? row.cells[5].innerText : null;
+}
+"""
 
 PUSHES = {ReportProgress: "progress", ReportGate: "blocked", ReportExit: "exited"}
 FIELDS = ("name", "repo_name", "repo_branch", "current_node", "file_path", "question", "exit_code")
@@ -193,6 +204,8 @@ class GroomDashboard(PageSurface):
             return self.activity()
         elif isinstance(step, ReadTheMedian):
             return self.median(step.of)
+        elif isinstance(step, ReadTheOpenedRun):
+            return self.opened(step.of)
         elif isinstance(step, AnswerTheGate):
             return self.answer(step.of)
         elif isinstance(step, OpenHistory):
@@ -227,35 +240,79 @@ class GroomDashboard(PageSurface):
 
     def summaries(self, judged: Judged, workflow: str, own: str) -> None:
         now = time.time()
-        each = [(f"{own}-peer{n}", cost, False, 2, 1) for n, cost in enumerate(judged.peers)]
-        each.append((own, judged.each, judged.estimate, judged.items, 0 if judged.estimate else 1))
+        each = [(f"peer{n}-{own.removeprefix('judged-')}", cost, False, 2, 1, PEER_VISIT) for n, cost in enumerate(judged.peers)]
+        each.append((own, judged.each, judged.estimate, judged.items, 0 if judged.estimate else 1, judged.visit))
         rows = []
-        for n, (run, cost, estimate, items, priced) in enumerate(each):
+        spans = []
+        for n, (run, cost, estimate, items, priced, visit) in enumerate(each):
             ended = now - 3600 * (n + 1)
             ending = judged.ending if run == own else "success"
             spent = None if estimate else cost * items
             guess = cost * items if estimate else None
-            rows.append((run, workflow, "acme", "main", "ready", ending, ended, ended, 3600.0, 7200.0, spent, guess, 4 * priced, 4, items, items))
+            node = {"node": "qa", "kind": "agent", "visits": 1, "time_s": visit, "samples": 1, "longest_s": visit, "turns": 1, "cost_turns": priced, "cost_usd": spent, "output_tokens": 100, "retries": 0}
+            rows.append((run, workflow, "acme", "main", "ready", ending, ended, ended, 3600.0, 7200.0, spent, guess, 4 * priced, 4, items, items, json.dumps([node])))
+            if run == own:
+                spans = self.spans(run, workflow, ended - 1000, judged, spent)
         marks = ", ".join("?" for _ in SUMMARY)
         with closing(sqlite3.connect(DB, timeout=10)) as conn, conn:
-            conn.executemany(f"INSERT INTO run_summary ({', '.join(SUMMARY)}) VALUES ({marks})", rows)  # noqa: S608
+            conn.executemany(f"INSERT OR REPLACE INTO spans (span_id, trace_id, parent_id, run_id, workflow, repo, branch, node, name, run_dir, start_ts, end_ts, status, attrs_json, resume_generation) VALUES ({', '.join('?' for _ in range(15))})", spans)  # noqa: S608
+            conn.executemany(f"INSERT OR REPLACE INTO run_summary ({', '.join(SUMMARY)}) VALUES ({marks})", rows)  # noqa: S608
 
-    def median(self, judged: Judged) -> Done:
+    def spans(self, run: str, workflow: str, base: float, judged: Judged, spent: float | None) -> list[tuple[Any, ...]]:
+        terminal = "terminal" if judged.ending == "success" else "fail"
+        turn = {"backend": "claude", "model": "claude-sonnet-5", "duration_ms": judged.visit * 1000, "usage.output_tokens": 100}
+        if spent is not None:
+            turn["total_cost_usd"] = spent
+        found = (
+            ("r", "", "coder", "run:coder", 1000.0, {"workhorse.terminal": terminal, "progress": f"{judged.items}/{ITEMS}"}),
+            ("s", "r", "work", "work", 900.0, {"workhorse.span_kind": "state", "workhorse.depth": 0}),
+            ("n", "s", "qa", "qa", 800.0, {"workhorse.depth": 1}),
+            ("a", "n", "qa", "agent_turn", judged.visit, turn),
+            ("d", "s", "lint", "lint", 30.0, {}),
+        )
+        return [
+            (f"{run}-{key}", f"{run}-t", f"{run}-{parent}" if parent else "", run, workflow, "acme", "main", node, name, "", base + 10 * index, base + 10 * index + seconds, "OK", json.dumps(attrs), 1)
+            for index, (key, parent, node, name, seconds, attrs) in enumerate(found)
+        ]
+
+    def judge(self, judged: Judged) -> tuple[str, str]:
         tag = secrets.token_hex(3)
         workflow, own = f"{judged.workflow}-{tag}", f"judged-{tag}"
         self.summaries(judged, workflow, own)
         self.browser.page.click("#activitybar .act-btn[data-mode=runs]")
         self.pane("history", History.root)
+        close = self.browser.page.locator("#history-close")
+        if close.is_visible():
+            close.click()
         self.browser.wait_for(History.workflow)
         self.browser.fill(History.workflow, "")
         self.browser.page.wait_for_selector(f"#history tr.hrow:has-text('{own}')")
         self.browser.fill(History.workflow, workflow)
+        return workflow, own
+
+    def median(self, judged: Judged) -> Done:
+        workflow, own = self.judge(judged)
         cell = self.browser.page.locator(MEDIAN)
         cell.wait_for()
         each = self.browser.page.evaluate(EACH, [own])
         totals = " ".join(cell.inner_text().split())
         self.settle()
         return Done(self.rows(), (EachCell(" ".join(each.split())), MedianCell(totals.replace(workflow, judged.workflow))))
+
+    def opened(self, judged: Judged) -> Done:
+        workflow, own = self.judge(judged)
+        page = self.browser.page
+        page.click(f"#history tr.hrow:has-text('{own}')")
+        page.wait_for_selector(f"#history-detail {TILE}")
+        tile = " ".join(page.locator(TILE).inner_text().split()).removeprefix("Work items ")
+        page.click(BREAKDOWN)
+        page.wait_for_selector(NODE_TABLE)
+        heading = " ".join(page.locator(HEADING).inner_text().split())
+        agent = page.evaluate(NODE_CELL, ["qa"])
+        step = page.evaluate(NODE_CELL, ["lint"])
+        self.settle()
+        shown = (TileCell(tile.replace(workflow, judged.workflow)), NodeCells(heading, " ".join(agent.split()), " ".join(step.split())))
+        return Done(self.rows(), shown)
 
     def answer(self, reply: Reply) -> Done | Refusal:
         self.open_run(Push(container_id=reply.container_id))

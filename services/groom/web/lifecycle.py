@@ -12,7 +12,7 @@ from ..fixtures import Push, Query, Settings, blocked, finished, judging, replyi
 from ..model.records import Run
 from ..model.state import Dashboard
 from .interactions import (
-    AnswerTheGate, FilterTheList, ReadActivity, ReadTheMedian, OpenAttendant, OpenDispatch, OpenHistory, OpenRun, OpenRuns, OpenSettings, ReportExit,
+    AnswerTheGate, FilterTheList, ReadActivity, ReadTheMedian, ReadTheOpenedRun, OpenAttendant, OpenDispatch, OpenHistory, OpenRun, OpenRuns, OpenSettings, ReportExit,
     ReportGate, ReportProgress, SwitchTheAttendant,
 )
 
@@ -91,6 +91,12 @@ HISTORY_ACTIONS: dict[str, Callable[[Dashboard], object]] = {
     "judge a run that failed": lambda m: ReadTheMedian(judging(ending="failed")),
     "judge a run whose cost is an estimate": lambda m: ReadTheMedian(judging(estimate=True)),
     "judge a run with no finished item": lambda m: ReadTheMedian(judging(items=0)),
+    "open a run that cost more": lambda m: ReadTheOpenedRun(judging()),
+    "open a run that cost less": lambda m: ReadTheOpenedRun(judging(each=0.5)),
+    "open a run with four other runs": lambda m: ReadTheOpenedRun(judging(peers=(1.0, 2.0, 3.0, 4.0))),
+    "open a run that failed": lambda m: ReadTheOpenedRun(judging(ending="failed")),
+    "open a run whose cost is an estimate": lambda m: ReadTheOpenedRun(judging(estimate=True)),
+    "open a run with no finished item": lambda m: ReadTheOpenedRun(judging(items=0)),
 }
 
 MATRICES = (

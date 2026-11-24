@@ -3,7 +3,7 @@ from ostler.book import Interaction
 from ..fixtures import Judged, Push, Query, Reply, Settings
 from ..model.actions import AnswerFromPage, FilterRuns, Navigate, OpenRun as SelectRun, PushBlocked, PushExited, PushProgress, SwitchAttendant
 from .activity import ReadActivityTab
-from .median import JudgeRun
+from .median import JudgeOpenedRun, JudgeRun
 from .screens import Attendant, Dispatch, History, RunDetail, Runs
 from .screens import Settings as SettingsScreen
 
@@ -78,6 +78,13 @@ class ReadTheMedian(Interaction[Judged]):
     carries = JudgeRun
 
 
+class ReadTheOpenedRun(Interaction[Judged]):
+    source = ("groom/groom/assets/dashboard.js", "groom/groom/medians.py", "groom/groom/overview.py", "groom/groom/history.py")
+    screen = RunDetail
+    does = "opens an ended run from History and reads its Work items tile and the By node table. The tile gives the cost per item with its signed percent against the median of the other comparable runs of the workflow, or the reason it compares none. The By node heading gives the number of runs behind each node's median, and an agent node's cell reads its mean visit against that median"
+    carries = JudgeOpenedRun
+
+
 class AnswerTheGate(Interaction[Reply]):
     source = ("groom/groom/assets/dashboard.js", "groom/groom/app.py")
     screen = RunDetail
@@ -111,5 +118,5 @@ class OpenDispatch(Interaction[object]):
 
 ALL = (
     ReportProgress, ReportGate, ReportExit, FilterTheList, OpenSettings, OpenRuns, SwitchTheAttendant,
-    OpenRun, ReadActivity, ReadTheMedian, AnswerTheGate, OpenHistory, OpenAttendant, OpenDispatch,
+    OpenRun, ReadActivity, ReadTheMedian, ReadTheOpenedRun, AnswerTheGate, OpenHistory, OpenAttendant, OpenDispatch,
 )

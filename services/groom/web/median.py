@@ -11,6 +11,8 @@ from ..fixtures import Judged
 from ..model.state import Dashboard
 
 FLOOR = 5
+ITEMS = 2
+PEER_VISIT = 60.0
 
 
 @dataclass(frozen=True)
@@ -31,6 +33,28 @@ class MedianCell:
 
     def __str__(self) -> str:
         return self.text
+
+
+@dataclass(frozen=True)
+class TileCell:
+    """What the Work items tile of the opened run says."""
+
+    text: str
+
+    def __str__(self) -> str:
+        return self.text
+
+
+@dataclass(frozen=True)
+class NodeCells:
+    """What the By node table says of the comparison: its heading, an agent node's cell and a step node's cell."""
+
+    heading: str
+    agent: str
+    step: str
+
+    def __str__(self) -> str:
+        return f"{self.heading} | agent node {self.agent} | step node {self.step}"
 
 
 def each(value: float) -> str:
@@ -69,9 +93,43 @@ def totals_cell(judged: Judged) -> str:
     return f"— {who}: {only}, and it takes {FLOOR}"
 
 
+def tile_cell(judged: Judged) -> str:
+    count = f"{judged.items} of {ITEMS}"
+    if judged.items == 0:
+        return f"{count} no item finished, so no cost per item"
+    if judged.estimate:
+        return f"{count} est {each(judged.each)} per item, not compared: an estimate has no median"
+    if judged.ending != "success":
+        return f"{count} {each(judged.each)} per item, not compared: the run {judged.ending}"
+    others = len(judged.peers)
+    if others < FLOOR:
+        kind = f"other comparable {judged.workflow} run"
+        who = f"only {plural(others, kind, kind + 's')}" if others else f"no {kind} yet"
+        return f"{count} {each(judged.each)} per item, no comparison: {who}, and it takes {FLOOR}"
+    median = statistics.median(judged.peers)
+    return f"{count} {each(judged.each)} per item {signed((judged.each - median) / median * 100)} vs median of {others} runs"
+
+
+def node_cells(judged: Judged) -> NodeCells:
+    others = len(judged.peers)
+    if not comparable(judged) or not others:
+        return NodeCells("vs median", "—", "—")
+    if others < FLOOR:
+        return NodeCells(f"vs median: {plural(others, 'run', 'runs')}, under five", "—", "—")
+    return NodeCells(f"vs median of {others}", signed((judged.visit - PEER_VISIT) / PEER_VISIT * 100), "—")
+
+
 class JudgeRun(Action[Judged, Dashboard]):
     accept = Judged
 
     @staticmethod
     def reduce(a: Judged, s: Dashboard, by: Actor | None) -> Transaction:
         return Transaction(says=(EachCell(run_cell(a)), MedianCell(totals_cell(a))))
+
+
+class JudgeOpenedRun(Action[Judged, Dashboard]):
+    accept = Judged
+
+    @staticmethod
+    def reduce(a: Judged, s: Dashboard, by: Actor | None) -> Transaction:
+        return Transaction(says=(TileCell(tile_cell(a)), node_cells(a)))
