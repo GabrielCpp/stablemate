@@ -65,6 +65,14 @@ def _kept_repo(document: Path, kind: str) -> str | None:
     return str(repo).strip() if repo else None
 
 
+def kept_home(home: Path) -> Path:
+    """The main checkout of the repository holding *home* when *home* is a linked worktree; *home* itself otherwise."""
+    identity = core_config.repository_identity(home)
+    if identity.main_folder == identity.folder:
+        return home
+    return identity.main_folder
+
+
 def kept_moves(artifacts: Path, home: Path) -> list[str]:
     """The shell commands that bring the decisions and ADRs *home* still holds under its ``docs/`` into the artifacts dir; a taken slug moves to ``<slug>-<repo>``."""
     if home.resolve() == artifacts.resolve():
@@ -193,7 +201,7 @@ def _epic_folders(shelf: Path) -> list[Path]:
 
 
 def check(artifacts: Path, home: Path, start: Path | None = None) -> None:
-    """Raise :class:`LayoutMoveRequired` when *artifacts* holds ``backlog/`` or ``adr/``, *home* holds ``docs/epics/``, *home* is not the artifacts dir and holds decisions or ADRs of its own under ``docs/``, *home* or the artifacts dir holds ``docs/milestones/*/milestone.md``, or the shelf still names an epic folder ``NNNN-slug``; an emptied folder the moves left behind, or one holding no ``epic.md``, is not a reason to refuse."""
+    """Raise :class:`LayoutMoveRequired` when *artifacts* holds ``backlog/`` or ``adr/``, *home* holds ``docs/epics/``, *home* is not the artifacts dir and holds decisions or ADRs of its own under ``docs/``, *home* or the artifacts dir holds ``docs/milestones/*/milestone.md``, or the shelf still names an epic folder ``NNNN-slug``; a linked worktree is judged by its main checkout; an emptied folder the moves left behind, or one holding no ``epic.md``, is not a reason to refuse."""
     numbered = numbered_epics(artifacts)
     if numbered:
         names = ", ".join(d.name for d in numbered[:5]) + (", ..." if len(numbered) > 5 else "")
@@ -202,7 +210,8 @@ def check(artifacts: Path, home: Path, start: Path | None = None) -> None:
             f"number and slug ({names}); epic and story folders are named by their ids now. Run "
             f"`ostler layout apply` to rename them and record each epic's slug, "
             f"then run ostler again")
-    lines = moves(artifacts, home) + kept_moves(artifacts, home) + milestone_moves(artifacts, home, start)
+    kept = kept_home(home)
+    lines = moves(artifacts, home) + kept_moves(artifacts, kept) + milestone_moves(artifacts, kept, start or home)
     if not lines:
         return
     commands = "\n".join(f"  {line}" for line in lines)

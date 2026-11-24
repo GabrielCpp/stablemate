@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from conftest import milestones_root, repository, write, write_prefix
+from conftest import git, milestones_root, repository, write, write_prefix
 from ostler import Ostler, adr, index, layout, register, textindex
 from ostler._vendor.stablemate_core import config as core_config
 from ostler.cli import main
@@ -211,3 +211,39 @@ def test_a_file_with_no_ostler_shape_is_not_refused(tmp_path):
     write(repo / "docs/decisions/notes.md", "# notes\n")
 
     load(repo)
+
+
+def _repository_with_old_folders_and_a_worktree(tmp_path) -> tuple[Path, Path]:
+    main_checkout = repository(tmp_path / "api-service")
+    write(main_checkout / "docs/decisions/x/decision.md", "---\nrepo: api-service\nsummary: s\n---\n")
+    write(main_checkout / "docs/milestones/0001-a/milestone.md", "---\ntype: milestone\ntitle: A\nstatus: proposed\n---\n")
+    git("-C", str(main_checkout), "add", "docs")
+    git("-C", str(main_checkout), "-c", "user.name=t", "-c", "user.email=t@example.com",
+        "commit", "--quiet", "-m", "docs")
+    linked = tmp_path / "linked"
+    git("-C", str(main_checkout), "worktree", "add", "--quiet", str(linked))
+    return main_checkout, linked
+
+
+def test_a_linked_worktree_is_not_refused_once_the_main_checkout_has_moved_its_documents(tmp_path):
+    main_checkout, linked = _repository_with_old_folders_and_a_worktree(tmp_path)
+    artifacts = Path(os.environ[core_config.ARTIFACTS_DIR_ENV]).resolve()
+    git("-C", str(main_checkout), "rm", "-r", "--quiet", "docs")
+    git("-C", str(main_checkout), "-c", "user.name=t", "-c", "user.email=t@example.com",
+        "commit", "--quiet", "-m", "moved")
+    assert (linked / "docs/decisions/x/decision.md").is_file()
+
+    layout.check(artifacts, linked)
+
+
+def test_a_linked_worktree_is_judged_by_its_main_checkout_and_the_commands_name_it(tmp_path):
+    main_checkout, linked = _repository_with_old_folders_and_a_worktree(tmp_path)
+    artifacts = Path(os.environ[core_config.ARTIFACTS_DIR_ENV]).resolve()
+
+    with pytest.raises(layout.LayoutMoveRequired) as raised:
+        layout.check(artifacts, linked)
+
+    message = str(raised.value)
+    assert f"mv {main_checkout}/docs/decisions/x" in message
+    assert f"mv {main_checkout}/docs/milestones/0001-a" in message
+    assert str(linked) not in message
