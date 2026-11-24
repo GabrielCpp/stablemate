@@ -126,10 +126,10 @@ class ReadActivity(Endpoint):
     method = "GET"
     path = "/api/run/{run_id}/activity"
     params = PICK
-    query = Object(logs=Field(Int(), required=False, does="1 adds the run's info logs at their place in the timeline"))
+    query = Object(logs=Field(Int(), required=False, does="1 adds the run's logs at info level and above at their place in the timeline"))
     answers = (Answer(200, ACTIVITY, "the run's turns oldest first in rows, and the same turns grouped by work item, flow pass and visit in items"),)
     source = (APP + "run_activity", APP + "_timeline", APP + "_live_turns", APP + "_standing", *ACTIVITY_SOURCE)
-    does = "Reads one run's agent turns oldest first in rows, and the same turns in items, grouped by work item, flow pass and visit with the steps, gates, retries and churn alerts around them; logs=1 adds its info logs at their place. Each row that is a problem carries problem true, and a run's problem rows are as many as problems."
+    does = "Reads one run's agent turns oldest first in rows, and the same turns in items, grouped by work item, flow pass and visit with the steps, gates, retries and churn alerts around them; logs=1 adds its logs at info level and above at their place, and log_count is 0 while no pass can hold them. Each row that is a problem carries problem true, and a run's problem rows are as many as problems."
     carries = actions.ReadActivity
 
 
@@ -203,7 +203,7 @@ class ReadArchiveActivity(Endpoint):
     method = "GET"
     path = "/api/archive/{run_id}/activity"
     params = PICK
-    query = Object(logs=Field(Int(), required=False, does="1 adds the run's info logs at their place in the timeline"))
+    query = Object(logs=Field(Int(), required=False, does="1 adds the run's logs at info level and above at their place in the timeline"))
     answers = (Answer(200, ACTIVITY, "the archived run's turns"), NOT_ARCHIVED, FILES_GONE)
     source = (APP + "archive_activity", APP + "_in_archive", APP + "_archive_read", *ARCHIVE_SOURCE)
     does = "Reads one archived run's turns from its frozen file, on the archive pool."

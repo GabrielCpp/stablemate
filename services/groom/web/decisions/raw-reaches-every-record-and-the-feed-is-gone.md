@@ -17,7 +17,7 @@ Raw replaces the timeline and the pane, so the bar keeps only the follow control
 
 A failed Raw read says so with a retry and leaves the timeline working. A failed read never reads as an empty run.
 
-Steps and Info logs start off, so the first view is turns, gates, problems and one folded line per run of passing steps. Each shows how many rows it adds across the run. An info log lands inside the pass it belongs to and never splits a fold, which keeps `the-timeline-groups-by-work-item-pass-and-visit`. A debug log is no timeline row, and Raw lists it.
+Steps and Info logs start off, so the first view is turns, gates, problems and one folded line per run of passing steps. Each shows how many rows it adds across the run. A log at info level or above lands inside the pass it belongs to and never splits a fold, which keeps `the-timeline-groups-by-work-item-pass-and-visit`. A debug log is no timeline row, and Raw lists it.
 
 The Details tab, the feed and its All, Transcript and Telemetry views went in this story, after Raw and the toggles reached everything they did. The `groom.trailView` key is no longer read, so a stale saved view is ignored. Each Details record keeps the new home `the-details-tab-gave-way-to-activity-files-and-diff` names. Its metric cells went: node, in turn, agent idle and last beat sit on the Overview strip, which gained the time in the node and the wait's kind. Uptime gave way to active and wall time, spans to Raw's count and errors to the Problems count. The alert chips gave way to the churn row and the run head.
 

@@ -324,7 +324,7 @@ class RunDetail(Screen):
     activity_logs = Button(
         '#detail-panel[aria-labelledby="tab-activity"] .feedbar button.fchip.logs-toggle',
         "Info logs",
-        does="after Steps, reading 'Info logs' with the number of info and warning logs of the run. It exposes its state as aria-pressed and works from Enter and Space. Pressing it reads the timeline again with each log as a row at its time inside the pass it belongs to, never splitting a fold, and pressing it again removes them. Turning it on while paused counts no log as an arrival. A debug log is no row and Raw lists it. Off at first",
+        does="after Steps, reading 'Info logs' with the number of logs of the run at info level and above, which is 0 while no pass can hold them. It exposes its state as aria-pressed and works from Enter and Space. Pressing it reads the timeline again with each log as a row at its time inside the pass it belongs to, never splitting a fold, and pressing it again removes them. Turning it on while paused counts no log as an arrival. A debug log is no row and Raw lists it. Off at first",
     )
     activity_raw = Button(
         '#detail-panel[aria-labelledby="tab-activity"] .feedbar button.fchip.raw-toggle',
