@@ -66,7 +66,7 @@ choices; the PM's review angles check consistency, verifiability, existing docum
 and scope rather than demanding that a greenfield detail already exist in the book. A conflict
 with an existing source or a required scope expansion still goes to the operator.
 
-Epic authoring consumes the one approved milestone folder, `docs/milestones/<slug>/milestone.md`:
+Epic authoring consumes the one approved milestone folder. It lives under its product in the artifacts folder, at `products/<product>/milestones/<slug>/milestone.md`:
 
 ```bash
 workhorse-author run

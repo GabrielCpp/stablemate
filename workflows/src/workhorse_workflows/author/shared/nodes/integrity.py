@@ -3,10 +3,9 @@ from __future__ import annotations
 
 import logging
 
-from ostler import Ostler
+from workhorse_workflows.kit.paths import ostler_for
 from workhorse_workflows.author.shared.nodes.blueprint import blueprint
 from workhorse_workflows.author.shared.nodes import stubs as _stubs
-from workhorse_workflows.author.shared.paths import launch_repo_root
 from workhorse_workflows.author.shared.schemas.main import VerifyReport
 
 
@@ -17,7 +16,7 @@ def verify_integrity(
     repo_dir: str = "",
 ) -> VerifyReport:
     """`ostler doctor` over the whole graph, as a blocking gate."""
-    okf = Ostler(launch_repo_root(repo_dir))
+    okf = ostler_for(repo_dir)
 
     outcome = okf.doctor(epic=epic.strip() or None)
     if outcome.status == "invalid":

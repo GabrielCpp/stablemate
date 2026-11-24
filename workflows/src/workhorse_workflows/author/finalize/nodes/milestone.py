@@ -4,10 +4,10 @@ from __future__ import annotations
 import logging
 import re
 
-from ostler import Ostler, doctor, markdown
+from ostler import doctor, markdown
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.finalize.nodes._blueprint import blueprint
-from workhorse_workflows.author.shared.paths import agents_repo_root
+from workhorse_workflows.kit.paths import artifacts_root, ostler_for
 from workhorse_workflows.author.shared.schemas.main import Defects, MilestoneStatus
 
 
@@ -18,12 +18,9 @@ def validate_milestone_epics(
     repo_dir: str = "",
 ) -> Defects:
     """Prove the milestone lists its epics by id, and that it, they and their stories meet the authoring contract."""
-    root = agents_repo_root(repo_dir)
-    graph = Ostler(root).graph
-    matches = [
-        m for m in graph.milestones
-        if m.path.relative_to(root).as_posix() == milestone
-    ]
+    graph = ostler_for(repo_dir).graph
+    wanted = (artifacts_root() / milestone).resolve()
+    matches = [m for m in graph.milestones if m.path.resolve() == wanted]
     errors: list[str] = []
     if len(matches) != 1:
         errors.append(f"milestone '{milestone}' was not found")
@@ -47,7 +44,7 @@ def mark_milestone_authored(
     repo_dir: str = "",
 ) -> MilestoneStatus:
     """Advance one validated milestone from approved to authored, idempotently."""
-    path = agents_repo_root(repo_dir) / milestone
+    path = artifacts_root() / milestone
     text = path.read_text(encoding="utf-8")
     document = markdown.split(text)
     status = str((document.frontmatter or {}).get("status", ""))

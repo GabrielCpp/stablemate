@@ -11,6 +11,7 @@ from workhorse_workflows.author.epic_split.schemas import EpicSplitContext, Epic
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.paths import agents_repo_root
 from workhorse_workflows.author.shared.nodes.config import approved_milestone_path, pm_ledger_path
+from workhorse_workflows.kit.paths import milestone_key, ostler_for
 
 
 def _fingerprints(okf: Ostler) -> dict[str, str]:
@@ -21,9 +22,9 @@ def _fingerprints(okf: Ostler) -> dict[str, str]:
     }
 
 
-def _milestone_fingerprints(okf: Ostler, root: Path) -> dict[str, str]:
+def _milestone_fingerprints(okf: Ostler) -> dict[str, str]:
     return {
-        milestone.path.relative_to(root).as_posix(): hashlib.sha256(
+        milestone_key(milestone.path): hashlib.sha256(
             milestone.path.read_bytes()
         ).hexdigest()
         for milestone in okf.graph.milestones
@@ -58,16 +59,16 @@ def prepare_epic_split(
 ) -> EpicSplitContext:
     """Require the one ready approved milestone and snapshot content."""
     root = agents_repo_root(repo_dir)
-    milestone_path = approved_milestone_path(root)
-    okf = Ostler(root)
+    approved_milestone_path(repo_dir)
+    okf = ostler_for(repo_dir)
     milestone = okf.approved_milestone()
     logger.info("prepared milestone %s for epic splitting", milestone.name)
     return EpicSplitContext(
         repo_root=str(root),
         epics_dir=paths.epics_dir(root),
-        milestone_path=milestone_path,
+        milestone_path=milestone_key(milestone.path),
         existing_epics=[epic.name for epic in okf.graph.epics],
-        milestone_fingerprints=_milestone_fingerprints(okf, root),
+        milestone_fingerprints=_milestone_fingerprints(okf),
         epic_fingerprints=_fingerprints(okf),
         seed_ids=_seed_ids(okf),
         story_slugs=_story_slugs(okf),
@@ -79,13 +80,13 @@ def prepare_epic_split(
 def validate_epic_split(
     logger: logging.Logger,
     context: EpicSplitContext,
+    repo_dir: str = "",
 ) -> EpicSplitValidation:
     """Validate an ordered, non-empty epic list without accepting prose, seeds, or stories."""
-    root = Path(context.repo_root)
-    okf = Ostler(root)
+    okf = ostler_for(repo_dir)
     matches = [
         m for m in okf.graph.milestones
-        if m.path.relative_to(root).as_posix() == context.milestone_path
+        if milestone_key(m.path) == context.milestone_path
     ]
     errors: list[str] = []
     ordered: list[str] = []
@@ -119,7 +120,7 @@ def validate_epic_split(
                 f"the epic-split flow must not create, remove, or edit stories in '{epic}'"
             )
     current_fingerprints = _fingerprints(okf)
-    current_milestones = _milestone_fingerprints(okf, root)
+    current_milestones = _milestone_fingerprints(okf)
     if set(current_milestones) != set(context.milestone_fingerprints):
         errors.append("the epic-split flow must not create or remove milestone documents")
     for path, fingerprint in context.milestone_fingerprints.items():
@@ -144,7 +145,7 @@ def validate_epic_split(
     logger.info("epic split validation: %d error(s)", len(errors))
     return EpicSplitValidation(
         ok=not errors,
-        milestone_path=matches[0].path.relative_to(root).as_posix() if len(matches) == 1 else "",
+        milestone_path=milestone_key(matches[0].path) if len(matches) == 1 else "",
         ordered_epics=ordered,
         errors="\n".join(errors),
     )

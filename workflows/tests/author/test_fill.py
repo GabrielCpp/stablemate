@@ -18,8 +18,7 @@ from workhorse_workflows.author.pm.receipt import (
     write_pm_receipt,
 )
 from _epics import epics_root
-
-MILESTONE = "docs/milestones/account-access/milestone.md"
+from _milestones import milestone_folder, milestone_key
 
 
 def _story(
@@ -87,25 +86,24 @@ def install(
                     write_pm_receipt(path.parent, "story", story_digest(path))
             if fill._story_graph_valid(epic):
                 write_pm_receipt(epic_dir, "story-split", story_split_digest(epic))
-        milestone_md = tmp_path / MILESTONE
+        milestone_md = milestone_folder(tmp_path) / "milestone.md"
         milestone_md.parent.mkdir(parents=True, exist_ok=True)
         milestone_md.write_text("---\nstatus: approved\n---\n\n# Account access\n", encoding="utf-8")
         write_pm_receipt(
             milestone_md.parent / MILESTONE_ARTIFACTS,
             "epic-split",
-            epic_split_digest(tmp_path, MILESTONE, milestone_epics),
+            epic_split_digest(milestone_key(tmp_path), milestone_epics),
         )
         milestones = [
             Milestone(
                 name="account-access",
-                path=tmp_path / MILESTONE,
+                path=milestone_md,
                 status="approved",
                 epics=milestone_epics,
             )
         ]
         fake = _Ostler(tmp_path, milestones, epics)
-        monkeypatch.setattr(fill, "Ostler", lambda _root: fake)
-        monkeypatch.setattr(fill, "agents_repo_root", lambda _repo: tmp_path)
+        monkeypatch.setattr(fill, "ostler_for", lambda _repo: fake)
         return fake
 
     return _install
@@ -170,7 +168,7 @@ def test_check_epic_split_refuses_a_split_without_a_current_pm_pass(
     install: Any, tmp_path: Path
 ) -> None:
     install(["accounts"], [_epic("accounts")])
-    (tmp_path / "docs/milestones/account-access" / MILESTONE_ARTIFACTS / "pm-receipt.json").unlink()
+    (milestone_folder(tmp_path) / MILESTONE_ARTIFACTS / "pm-receipt.json").unlink()
 
     result = fill.check_epic_split(logging.getLogger("test"), repo_dir="unused")
 
@@ -182,7 +180,7 @@ def test_check_epic_split_refuses_a_milestone_changed_after_the_pass(
     install: Any, tmp_path: Path
 ) -> None:
     install(["accounts"], [_epic("accounts")])
-    (tmp_path / MILESTONE).write_text("---\nstatus: approved\n---\n\n# Changed\n", encoding="utf-8")
+    (milestone_folder(tmp_path) / "milestone.md").write_text("---\nstatus: approved\n---\n\n# Changed\n", encoding="utf-8")
 
     result = fill.check_epic_split(logging.getLogger("test"), repo_dir="unused")
 

@@ -8,6 +8,7 @@ from pathlib import Path
 from ostler import Ostler, register
 from ostler.register import Record
 from workhorse.pyflow import WorkflowFailed
+from workhorse_workflows.kit.paths import ostler_for
 from workhorse_workflows.author.shared.nodes.blueprint import blueprint
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.paths import agents_repo_root
@@ -148,7 +149,7 @@ def promote_record(
     record_id = record_id.strip()
     if not record_id:
         raise WorkflowFailed("no record id supplied — nothing to close as promoted")
-    okf = Ostler(agents_repo_root(repo_dir))
+    okf = ostler_for(repo_dir)
     slug = story.strip()
     if not slug:
         slug = next(

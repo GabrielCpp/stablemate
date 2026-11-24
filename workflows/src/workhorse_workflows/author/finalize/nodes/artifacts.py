@@ -5,11 +5,12 @@ import logging
 from pathlib import Path
 
 from ostler import Ostler, select
+from workhorse_workflows.kit.paths import ostler_for
 from workhorse_workflows.author.finalize.nodes._blueprint import blueprint
 from workhorse_workflows.author.shared.nodes import stubs as _stubs
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.baseline import epic_scopes
-from workhorse_workflows.author.shared.paths import launch_repo_root, agents_repo_root
+from workhorse_workflows.author.shared.paths import launch_repo_root
 from workhorse_workflows.author.shared.schemas.main import Defects, EpicBaseline, VerifyReport
 
 
@@ -90,7 +91,7 @@ def _canonical_epic_names(okf: Ostler, names: list[str]) -> list[str]:
 @blueprint.node(stub=_stubs.clean)
 def validate_artifacts(logger: logging.Logger, repo_dir: str = "") -> Defects:
     """Can the coder engine actually walk what this run produced?"""
-    okf = Ostler(agents_repo_root(repo_dir))
+    okf = ostler_for(repo_dir)
 
     queue = _canonical_epic_names(okf, okf.milestone_epics())
     if not queue:

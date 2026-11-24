@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from ostler import Ostler
 from ostler.milestones import MOCKUPS_DIR, MilestoneSelectionError
 from workhorse.pyflow import WorkflowFailed
 from workhorse_workflows.author.shared.nodes.blueprint import blueprint
@@ -12,6 +11,7 @@ from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.paths import agents_repo_root
 from workhorse_workflows.author.shared.schemas.main import Config
 from workhorse_workflows.kit.manifest import read_manifest
+from workhorse_workflows.kit.paths import ostler_for
 
 GRILLS_DIR = "grills"
 PM_LEDGER_FILE = "pm.md"
@@ -25,9 +25,9 @@ def layers(root: Path) -> list[str]:
     return [entry.skill for entry in manifest.localInstructions if entry.skill]
 
 
-def approved_milestone_path(root: Path) -> str:
-    """The docs-root-relative path of the one approved milestone, or stop before a turn."""
-    okf = Ostler(root)
+def approved_milestone_path(repo_dir: str | Path = "") -> str:
+    """The absolute path of the one approved milestone, or stop before a turn."""
+    okf = ostler_for(repo_dir)
     try:
         milestone = okf.approved_milestone()
     except MilestoneSelectionError as exc:
@@ -39,7 +39,7 @@ def approved_milestone_path(root: Path) -> str:
             f"milestone '{milestone.name}' is not ready to author from, fix it until "
             f"`ostler doctor` reports no milestone finding:\n{listed}"
         )
-    return milestone.path.resolve().relative_to(root.resolve()).as_posix()
+    return milestone.path.resolve().as_posix()
 
 
 def pm_ledger_path(folder: Path) -> str:
@@ -47,10 +47,10 @@ def pm_ledger_path(folder: Path) -> str:
     return str(folder / GRILLS_DIR / PM_LEDGER_FILE)
 
 
-def approved_milestone_folder(root: Path) -> Path | None:
+def approved_milestone_folder(repo_dir: str | Path = "") -> Path | None:
     """The absolute folder of the approved milestone, or nothing when none is."""
     try:
-        return Ostler(root).approved_milestone().path.parent.resolve()
+        return ostler_for(repo_dir).approved_milestone().path.parent.resolve()
     except MilestoneSelectionError:
         return None
 
@@ -64,9 +64,9 @@ def load_config(
     """Resolve the author's paths and prove the selected intake exists."""
     root = agents_repo_root(repo_dir)
     epics_dir = paths.epics_dir(root)
-    milestone = approved_milestone_path(root) if mode == "epic" else ""
+    milestone = approved_milestone_path(repo_dir) if mode == "epic" else ""
 
-    folder = approved_milestone_folder(root)
+    folder = approved_milestone_folder(repo_dir)
     layer_skills = layers(root)
 
     logger.info("loaded config for %s (%d layer(s))", root, len(layer_skills))

@@ -49,6 +49,7 @@ class StorySnapshot(AuthorResult):
 
 class MilestoneSnapshot(AuthorResult):
     name: str = ""
+    path: str = ""
     source_items: list[str] = []
     epics: list[str] = []
 

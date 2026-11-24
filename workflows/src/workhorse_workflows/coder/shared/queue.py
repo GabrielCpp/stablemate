@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ostler import Ostler
 from workhorse.pyflow import WorkflowFailed
+from workhorse_workflows.kit.paths import ostler_for
 from workhorse_workflows.kit import find_docs_root
 from workhorse_workflows.coder.shared import stubs, work
 from workhorse_workflows.coder.shared.blueprint import blueprint
@@ -69,7 +70,7 @@ def resolve_launch(
             f"the launch names both story={story!r} and epic={epic!r}: name one of them"
         )
     root = find_docs_root(repo_dir)
-    facade = Ostler(root)
+    facade = ostler_for(repo_dir)
     if story:
         entry = facade.story(story)
         if entry is None:

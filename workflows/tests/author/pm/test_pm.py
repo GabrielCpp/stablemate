@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 from _fakes import StubRunner
-from _milestones import write_milestone
+from _milestones import milestone_folder, write_milestone
 from _pm import amendment, answer, verdict
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
@@ -275,7 +275,7 @@ def test_a_pm_answer_is_kept_in_the_ledger(repo: Path, tmp_path: Path) -> None:
 
     assert isinstance(result, GapAnswered)
     assert (result.kind, result.by, result.answer) == ("answered", "pm", "sign-in first")
-    ledger = repo / "docs/milestones/account-access/grills/pm.md"
+    ledger = milestone_folder(repo) / "grills/pm.md"
     text = ledger.read_text(encoding="utf-8")
     assert "which first?" in text
     assert "sign-in first" in text
@@ -302,7 +302,7 @@ def test_an_amendment_waits_on_the_operator_and_records_the_human_answer(
     assert (result.kind, result.by) == ("amendment", "human")
     assert "Recovery ships first." in result.answer
     assert "the milestone is silent" in seen[0]
-    ledger = repo / "docs/milestones/account-access/grills/pm.md"
+    ledger = milestone_folder(repo) / "grills/pm.md"
     assert "Recovery ships first." in ledger.read_text(encoding="utf-8")
     assert agent.calls == {"answer": 1}
 

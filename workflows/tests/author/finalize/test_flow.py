@@ -9,7 +9,7 @@ from unittest.mock import patch
 import pytest
 from _fakes import StubRunner
 from _epics import write_epic_prose
-from _milestones import write_milestone
+from _milestones import milestone_folder, write_milestone
 from ostler import Ostler, crud
 from ostler.model import load
 from workhorse.artifacts import ArtifactWriter
@@ -23,8 +23,8 @@ from workhorse_workflows.author.finalize import Finalize
 from workhorse_workflows.author.finalize.flow import MAX_INTEGRITY_RESOLVES
 from workhorse_workflows.author.shared.schemas import Committed, Defects, MilestoneStatus, VerifyReport
 from workhorse_workflows.author.workflow import workflow
+from workhorse_workflows.kit.paths import artifacts_root
 
-MILESTONE = "docs/milestones/account-access/milestone.md"
 EPIC = "accounts"
 STORY = "sign-in"
 
@@ -41,8 +41,15 @@ def _git(repo: Path, *args: str) -> str:
 
 
 def _commit(repo: Path, message: str) -> None:
-    _git(repo, "add", "docs/milestones")
-    _git(repo, "commit", "-m", message)
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "--allow-empty", "-m", message)
+    artifacts = artifacts_root()
+    if not (artifacts / ".git").exists():
+        _git(artifacts, "init", "-q")
+        _git(artifacts, "config", "user.name", "Author Test")
+        _git(artifacts, "config", "user.email", "author@example.com")
+    _git(artifacts, "add", "-A")
+    _git(artifacts, "commit", "-q", "--allow-empty", "-m", message)
 
 
 def _story_body(title: str) -> str:
@@ -132,31 +139,34 @@ def _env(tmp_path: Path) -> RunEnv:
 def test_finalizes_with_one_commit_on_the_current_branch(repo: Path, tmp_path: Path) -> None:
     """The tail commits the epics and stops — there is no branch to cut and no PR to open."""
     _planning_graph(repo, selectable=True)
-    before = int(_git(repo, "rev-list", "--count", "HEAD"))
+    artifacts = artifacts_root()
+    before = int(_git(artifacts, "rev-list", "--count", "HEAD"))
     branch = _git(repo, "branch", "--show-current")
 
     result = drive(Finalize(repo_dir=str(repo)), _env(tmp_path))
 
-    assert int(_git(repo, "rev-list", "--count", "HEAD")) == before + 1
+    assert int(_git(artifacts, "rev-list", "--count", "HEAD")) == before + 1
     assert _git(repo, "branch", "--show-current") == branch
-    assert _git(repo, "log", "-1", "--pretty=%s") == "author: milestone account-access"
-    assert "status: authored" in (repo / MILESTONE).read_text(encoding="utf-8")
+    assert _git(artifacts, "log", "-1", "--pretty=%s") == "author: milestone account-access"
+    assert "status: authored" in (milestone_folder(repo) / "milestone.md").read_text(encoding="utf-8")
     assert result.committed is True, result
 
 
 def test_terminal_validation_commits_incomplete_then_fails(repo: Path, tmp_path: Path) -> None:
     _planning_graph(repo, selectable=False)
-    (repo / "docs" / "notes.md").write_text("# Notes\n\nWork the run left under docs.\n", encoding="utf-8")
-    before = int(_git(repo, "rev-list", "--count", "HEAD"))
+    artifacts = artifacts_root()
+    milestone = milestone_folder(repo) / "milestone.md"
+    milestone.write_text(milestone.read_text(encoding="utf-8") + "\nWork the run left behind.\n", encoding="utf-8")
+    before = int(_git(artifacts, "rev-list", "--count", "HEAD"))
 
     with pytest.raises(WorkflowFailed, match="authored artifacts did not validate"):
         drive(Finalize(repo_dir=str(repo)), _env(tmp_path))
 
-    assert int(_git(repo, "rev-list", "--count", "HEAD")) == before + 1
-    assert _git(repo, "log", "-1", "--pretty=%s") == (
+    assert int(_git(artifacts, "rev-list", "--count", "HEAD")) == before + 1
+    assert _git(artifacts, "log", "-1", "--pretty=%s") == (
         "author: INCOMPLETE — milestone account-access, do not merge"
     )
-    assert "status: approved" in (repo / MILESTONE).read_text(encoding="utf-8")
+    assert "status: approved" in milestone.read_text(encoding="utf-8")
 
 
 class _Checks:

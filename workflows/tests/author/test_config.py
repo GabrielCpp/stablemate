@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from _books import write_book
 from _epics import write_epic_prose
+from _milestones import milestone_folder, milestone_key
 import workhorse_workflows
 from ostler import Ostler, crud
 from ostler.model import load
@@ -16,7 +17,6 @@ from workhorse_workflows.author.finalize.nodes.milestone import (
 )
 from workhorse_workflows.author.shared.nodes.config import load_config
 
-MILESTONE = "docs/milestones/account-access/milestone.md"
 LOGGER = logging.getLogger("test.author")
 
 
@@ -65,7 +65,7 @@ Profile editing is excluded.
 
 
 def _write(root: Path, slug: str = "account-access", **kwargs: str) -> Path:
-    path = root / "docs/milestones" / slug / "milestone.md"
+    path = milestone_folder(root, slug) / "milestone.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(_milestone(**kwargs), encoding="utf-8")
     write_book(root, "account")
@@ -88,8 +88,17 @@ def test_author_config_never_invents_a_surface_inventory(tmp_path: Path) -> None
     config = load_config(LOGGER, repo_dir=str(tmp_path))
 
     assert "surface_manifest" not in config.model_dump()
-    assert config.milestone_path == MILESTONE
+    assert config.milestone_path == str(milestone_folder(tmp_path) / "milestone.md")
     assert not (tmp_path / "docs/services/inventory.json").exists()
+
+
+def test_a_repository_in_no_workspace_gets_its_approved_milestone_path(tmp_path: Path) -> None:
+    _write(tmp_path)
+
+    config = load_config(LOGGER, repo_dir=str(tmp_path))
+
+    assert config.milestone_path == str(milestone_folder(tmp_path) / "milestone.md")
+    assert not Path(config.milestone_path).is_relative_to(tmp_path)
 
 
 def test_epic_authoring_selects_the_approved_milestone_folder(tmp_path: Path) -> None:
@@ -99,7 +108,7 @@ def test_epic_authoring_selects_the_approved_milestone_folder(tmp_path: Path) ->
 
     config = load_config(LOGGER, repo_dir=str(tmp_path))
 
-    assert config.milestone_path == "docs/milestones/second/milestone.md"
+    assert config.milestone_path == str(milestone_folder(tmp_path, "second") / "milestone.md")
 
 
 @pytest.mark.parametrize("status", ["proposed", "authored", "delivered", "superseded"])
@@ -135,7 +144,7 @@ def test_epic_authoring_fails_on_a_readiness_error_and_lists_it(tmp_path: Path) 
 
 
 def test_a_flat_milestone_file_is_not_an_approved_milestone(tmp_path: Path) -> None:
-    flat = tmp_path / "docs/milestones/account-access.md"
+    flat = milestone_folder(tmp_path).parent / "account-access.md"
     flat.parent.mkdir(parents=True)
     flat.write_text(_milestone(), encoding="utf-8")
 
@@ -144,17 +153,17 @@ def test_a_flat_milestone_file_is_not_an_approved_milestone(tmp_path: Path) -> N
 
 
 def test_a_milestone_must_list_at_least_one_epic(tmp_path: Path) -> None:
-    missing = validate_milestone_epics(LOGGER, MILESTONE, repo_dir=str(tmp_path))
+    missing = validate_milestone_epics(LOGGER, milestone_key(tmp_path), repo_dir=str(tmp_path))
     assert not missing.ok
     assert "was not found" in missing.errors
 
     _write(tmp_path)
-    empty = validate_milestone_epics(LOGGER, MILESTONE, repo_dir=str(tmp_path))
+    empty = validate_milestone_epics(LOGGER, milestone_key(tmp_path), repo_dir=str(tmp_path))
     assert not empty.ok
     assert "lists no epics" in empty.errors
 
     _listed_epic(tmp_path)
-    valid = validate_milestone_epics(LOGGER, MILESTONE, repo_dir=str(tmp_path))
+    valid = validate_milestone_epics(LOGGER, milestone_key(tmp_path), repo_dir=str(tmp_path))
     assert valid.ok, valid.errors
 
 
@@ -163,7 +172,7 @@ def test_a_milestone_that_lists_an_epic_by_name_does_not_validate(tmp_path: Path
     assert Ostler(tmp_path).create_epic("account-access", "Account access").ok
     _write(tmp_path, epics="[account-access]")
 
-    result = validate_milestone_epics(LOGGER, MILESTONE, repo_dir=str(tmp_path))
+    result = validate_milestone_epics(LOGGER, milestone_key(tmp_path), repo_dir=str(tmp_path))
 
     assert not result.ok
     assert "[milestone-epic-by-name]" in result.errors
@@ -178,7 +187,7 @@ def _listed_epic(root: Path) -> None:
     assert epic is not None and epic.epic_md is not None
     write_epic_prose(epic.epic_md)
     _write(root)
-    listed = crud.set_milestone_epics(load(root), "account-access", ["account-access"])
+    listed = crud.set_milestone_epics(load(root, start=root), "account-access", ["account-access"])
     assert listed.ok, listed.message
 
 
@@ -186,7 +195,7 @@ def test_epic_validation_ignores_other_milestones(tmp_path: Path) -> None:
     _listed_epic(tmp_path)
     _write(tmp_path, "unrelated", status="proposed", epics="[missing-epic]")
 
-    result = validate_milestone_epics(LOGGER, MILESTONE, repo_dir=str(tmp_path))
+    result = validate_milestone_epics(LOGGER, milestone_key(tmp_path), repo_dir=str(tmp_path))
 
     assert result.ok, result.errors
 
@@ -195,7 +204,7 @@ def test_mark_milestone_authored_preserves_the_contract_body(tmp_path: Path) -> 
     milestone = _write(tmp_path)
     before_body = milestone.read_text(encoding="utf-8").partition("\n---\n")[2]
 
-    result = mark_milestone_authored(LOGGER, MILESTONE, repo_dir=str(tmp_path))
+    result = mark_milestone_authored(LOGGER, milestone_key(tmp_path), repo_dir=str(tmp_path))
 
     after = milestone.read_text(encoding="utf-8")
     assert result.status == "authored"
@@ -207,7 +216,7 @@ def test_marking_an_authored_milestone_is_a_no_op(tmp_path: Path) -> None:
     milestone = _write(tmp_path, status="authored")
     before = milestone.read_text(encoding="utf-8")
 
-    result = mark_milestone_authored(LOGGER, MILESTONE, repo_dir=str(tmp_path))
+    result = mark_milestone_authored(LOGGER, milestone_key(tmp_path), repo_dir=str(tmp_path))
 
     assert result.status == "authored"
     assert milestone.read_text(encoding="utf-8") == before
@@ -218,7 +227,7 @@ def test_marking_any_other_status_raises(tmp_path: Path, status: str) -> None:
     _write(tmp_path, status=status)
 
     with pytest.raises(WorkflowFailed, match="must still be approved"):
-        mark_milestone_authored(LOGGER, MILESTONE, repo_dir=str(tmp_path))
+        mark_milestone_authored(LOGGER, milestone_key(tmp_path), repo_dir=str(tmp_path))
 
 
 def test_design_prompt_has_no_inventory_write_contract() -> None:

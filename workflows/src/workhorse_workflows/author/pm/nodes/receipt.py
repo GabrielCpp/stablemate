@@ -20,7 +20,7 @@ def record_pm_receipt(
     """Bind a passing review to the exact bytes it judged, for the stages whose output is a durable file."""
     root = agents_repo_root(repo_dir)
     try:
-        target = receipt_target(root, stage, subject)
+        target = receipt_target(repo_dir, stage, subject)
     except OSError as exc:
         raise WorkflowFailed(f"cannot record the {stage} receipt for '{subject}': {exc}") from exc
     if target is None:

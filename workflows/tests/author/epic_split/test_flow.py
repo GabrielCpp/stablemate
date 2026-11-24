@@ -9,7 +9,7 @@ from typing import Any
 
 from _fakes import StubRunner
 from _pm import answer, verdict
-from _milestones import write_milestone
+from _milestones import milestone_folder, write_milestone
 import pytest
 from git import Repo
 from ostler import Ostler, crud
@@ -25,14 +25,11 @@ from workhorse_workflows.author.epic_split.schemas import EpicSplitDone
 from workhorse_workflows.author.workflow import workflow
 from _epics import epic_dir, epics_root
 
-MILESTONE = "docs/milestones/account-access/milestone.md"
 
 
 def _planning_input(repo: Path) -> None:
-    path = write_milestone(repo)
-    git = Repo(repo)
-    git.index.add([path])
-    git.index.commit("planning input")
+    write_milestone(repo)
+    Repo(repo).index.commit("planning input")
 
 
 def _set_epics(repo: Path, epics: list[str]) -> None:
@@ -123,7 +120,7 @@ def test_a_passing_review_writes_the_receipt_beside_the_milestone(
         replace(_env(tmp_path), agent_runner=StubRunner(_Agent(repo, [{}]))),
     )
 
-    receipt = repo / "docs/milestones/account-access/artifacts/pm-receipt.json"
+    receipt = milestone_folder(repo) / "artifacts/pm-receipt.json"
     assert json.loads(receipt.read_text(encoding="utf-8"))["stage"] == "epic-split"
 
 
@@ -155,7 +152,7 @@ def test_a_blocked_writer_is_answered_by_the_pm_and_retried(repo: Path, tmp_path
     assert agent.calls["answer"] == 1
     assert agent.calls["split-epics"] == 2
     assert "sign-in first" in agent.notes[1]
-    ledger = repo / "docs/milestones/account-access/grills/pm.md"
+    ledger = milestone_folder(repo) / "grills/pm.md"
     assert "sign-in first" in ledger.read_text(encoding="utf-8")
 
 
@@ -192,7 +189,7 @@ def test_a_review_that_never_passes_ends_blocked_with_its_findings(
     assert "still wrong" in result.notes
     assert agent.calls["review-inline"] == 4
     assert agent.calls["rework-epic-split"] == 3
-    receipt = repo / "docs/milestones/account-access/artifacts/pm-receipt.json"
+    receipt = milestone_folder(repo) / "artifacts/pm-receipt.json"
     assert not receipt.exists()
 
 

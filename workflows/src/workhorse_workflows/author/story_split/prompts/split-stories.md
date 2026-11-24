@@ -45,7 +45,7 @@ stage does that next.
   Where it says "use existing stories as templates", size stories from the **researched seed**, not
   from how any existing epic split the work — existing breakdowns are references, not templates.
 - `{{ epic_dir }}/context.md` and the epic's existing `## Stories` section when present.
-- The milestone file under `docs/milestones/` that lists this epic. Cross-epic readiness belongs in the milestone graph, not
+- The approved milestone file that lists this epic. Cross-epic readiness belongs in the milestone graph, not
   in a sibling-story blocker. A `- Blocked by:` value may name only a story in this same
   epic; use milestone `dependsOn` for cross-epic sequencing.
 

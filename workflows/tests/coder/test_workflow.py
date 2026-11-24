@@ -46,14 +46,15 @@ from workhorse_workflows.coder.shared.schemas.qa import (
 from workhorse_workflows.coder.shared.schemas.dev_story import DevOutcome
 from workhorse_workflows.coder.main import Coder
 from _epics import epics_root, spec_dir
+from _milestones import milestone_folder
 
 EPIC = "EPIC-1"
-MILESTONE = "docs/milestones/0001-launch/milestone.md"
+MILESTONE = "0001-launch"
 
 
 def _milestone(repo: Path, *epics: str, status: str = "approved", name: str = "0001-launch") -> Path:
     """A milestone that lists *epics*, the list a launch over every epic reads."""
-    path = repo / "docs" / "milestones" / name / "milestone.md"
+    path = milestone_folder(repo, name) / "milestone.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     listed = "".join(f"- {e}\n" for e in epics)
     path.write_text(
@@ -761,11 +762,11 @@ def test_a_finished_epic_leaves_the_milestones_as_they_were(
     """The run tracks what it finished on its own worklist, so no shared list changes and the tree stays clean."""
     repo = epic()
     _Sub(repo).install(monkeypatch)
-    before = (repo / MILESTONE).read_text(encoding="utf-8")
+    before = (milestone_folder(repo, MILESTONE) / "milestone.md").read_text(encoding="utf-8")
 
     drive_flow(Coder(delivery=delivery), env(), _Agent())
 
-    assert (repo / MILESTONE).read_text(encoding="utf-8") == before
+    assert (milestone_folder(repo, MILESTONE) / "milestone.md").read_text(encoding="utf-8") == before
     assert not [s for s in _subjects(repo) if "prune" in s], _subjects(repo)
     assert _dirty(repo) == "", _dirty(repo)
 

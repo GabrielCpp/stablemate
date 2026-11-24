@@ -5,9 +5,9 @@ import hashlib
 import json
 from pathlib import Path
 
-from ostler import Ostler
 from ostler.model import Epic
 from workhorse_workflows.author.shared.digests import milestone_body_digest
+from workhorse_workflows.kit.paths import agents_repo_root, artifacts_root, ostler_for
 
 RECEIPT_NAME = "pm-receipt.json"
 MILESTONE_ARTIFACTS = "artifacts"
@@ -36,22 +36,23 @@ def story_split_digest(epic: Epic) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def epic_split_digest(root: Path, milestone_path: str, epics: list[str]) -> str:
+def epic_split_digest(milestone_path: str, epics: list[str]) -> str:
     """Hash the milestone's ordered epic list together with its body digest."""
     payload = {
         "epics": [str(epic).strip() for epic in epics],
-        "body": milestone_body_digest(root, milestone_path),
+        "body": milestone_body_digest(milestone_path),
     }
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
 
 
-def receipt_target(root: Path, stage: str, subject: str) -> tuple[Path, str] | None:
+def receipt_target(repo_dir: str | Path, stage: str, subject: str) -> tuple[Path, str] | None:
     """The directory a stage's receipt lives in and the digest it binds, or nothing for a stage with no durable subject."""
+    root = agents_repo_root(repo_dir)
     if stage == "story":
         story_md = root / subject
         return story_md.parent, story_digest(story_md)
-    graph = Ostler(root).graph
+    graph = ostler_for(repo_dir).graph
     if stage == "story-split":
         folder = (root / subject).resolve()
         for epic in graph.epics:
@@ -59,10 +60,10 @@ def receipt_target(root: Path, stage: str, subject: str) -> tuple[Path, str] | N
                 return epic.epic_md.parent, story_split_digest(epic)
         return None
     if stage == "epic-split":
-        milestone_md = (root / subject).resolve()
+        milestone_md = (artifacts_root() / subject).resolve()
         for milestone in graph.milestones:
             if milestone.path.resolve() == milestone_md:
-                digest = epic_split_digest(root, subject, milestone.epics)
+                digest = epic_split_digest(subject, milestone.epics)
                 return milestone.path.parent / MILESTONE_ARTIFACTS, digest
     return None
 

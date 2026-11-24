@@ -17,7 +17,7 @@ from workhorse_workflows.author.pm.receipt import (
     story_digest,
     story_split_digest,
 )
-from workhorse_workflows.author.shared.paths import agents_repo_root
+from workhorse_workflows.kit.paths import milestone_key, ostler_for
 from workhorse_workflows.author.shared.schemas.main import Defects, Filled
 
 EPIC = "epic"
@@ -181,14 +181,13 @@ def _story_items(okf: Ostler, epics: list[Epic], finished: set[str]) -> list[Wor
 @blueprint.node
 def check_epic_split(logger: logging.Logger, repo_dir: str = "") -> Defects:
     """Whether the approved milestone already has a valid ordered epic split."""
-    okf = Ostler(agents_repo_root(repo_dir))
+    okf = ostler_for(repo_dir)
     milestone = okf.approved_milestone()
-    root = agents_repo_root(repo_dir)
     if _ordered_epics(okf, milestone.epics) is None:
         reason = f"milestone '{milestone.name}' has no valid ordered epic split"
         logger.info(reason)
         return Defects(ok=False, errors=reason)
-    digest = epic_split_digest(root, milestone.path.relative_to(root).as_posix(), milestone.epics)
+    digest = epic_split_digest(milestone_key(milestone.path), milestone.epics)
     if not pm_receipt_current(milestone.path.parent / MILESTONE_ARTIFACTS, EPIC_SPLIT, digest):
         reason = f"milestone '{milestone.name}' has no current PM pass of its epic split"
         logger.info(reason)
@@ -206,7 +205,7 @@ def fill_work(
     """File every item of *kind* the planning graph holds, satisfied ones as done, skipping ids already filed."""
     if kind not in KINDS:
         raise WorkflowFailed(f"cannot fill unknown work kind '{kind}'")
-    okf = Ostler(agents_repo_root(repo_dir))
+    okf = ostler_for(repo_dir)
     epics = _ordered(okf)
     if epics is None:
         raise WorkflowFailed("the approved milestone has no valid ordered epic split to fill from")

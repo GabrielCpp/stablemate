@@ -8,6 +8,7 @@ from typing import Any
 
 from ostler import Ostler, markdown
 from workhorse.pyflow import WorkflowFailed
+from workhorse_workflows.kit.paths import milestone_key, ostler_for
 from workhorse_workflows.author.epic_edit.nodes._blueprint import blueprint
 from workhorse_workflows.author.shared import paths
 from workhorse_workflows.author.shared.listing import open_listing
@@ -73,6 +74,11 @@ def read_register_listing(
     return RegisterListing(text=text)
 
 
+def _milestone_path(okf: Ostler, name: str) -> str:
+    found = okf.graph.milestone_by_name(name)
+    return milestone_key(found.path) if found is not None else ""
+
+
 @blueprint.node(stub=_snapshot_stub)
 def snapshot_epic(
     logger: logging.Logger,
@@ -81,7 +87,7 @@ def snapshot_epic(
 ) -> EpicSnapshot:
     """Capture the graph and story-body baseline an edit is allowed to change."""
     resolved_epics_dir = paths.epics_dir(repo_dir)
-    okf = Ostler(repo_dir)
+    okf = ostler_for(repo_dir)
     found = okf.graph.epic_by_ref(epic)
     if found is None:
         raise WorkflowFailed(f"epic '{epic}' does not exist")
@@ -115,6 +121,7 @@ def snapshot_epic(
     milestones = [
         MilestoneSnapshot(
             name=str(row["name"]),
+            path=_milestone_path(okf, str(row["name"])),
             source_items=[str(value) for value in row["sourceItems"]],
             epics=[str(value) for value in row["epics"]],
         )
@@ -313,7 +320,7 @@ def apply_edit_plan(
     repo_dir: str = "",
 ) -> AppliedEpicEdit:
     """Apply one validated plan idempotently through Ostler's structural APIs."""
-    okf = Ostler(repo_dir)
+    okf = ostler_for(repo_dir)
     epic = snapshot.epic
     rows = {str(row["slug"]): row for row in okf.list("story", epic=epic)}
     for change in plan.story_changes:
@@ -424,7 +431,7 @@ def validate_applied_edit(
     repo_dir: str = "",
 ) -> Defects:
     """Prove disk matches the approved graph and unaffected story bodies remain byte-stable."""
-    okf = Ostler(repo_dir)
+    okf = ostler_for(repo_dir)
     if applied.deleted:
         exists = okf.graph.epic_by_ref(snapshot.epic) is not None
         return Defects(

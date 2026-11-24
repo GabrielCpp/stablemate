@@ -11,6 +11,7 @@ from ostler.model import (
     section_order_problems,
     status_bullet,
 )
+from workhorse_workflows.kit.paths import ostler_for
 from workhorse_workflows.author.shared.nodes.blueprint import blueprint
 from workhorse_workflows.author.shared.nodes import stubs as _stubs
 from workhorse_workflows.author.shared.nodes.services import service_errors, ui_service_names
@@ -155,7 +156,7 @@ def check_story_grounding(
         logger.warning("story_dir and epic_dir are required — nothing to check")
         return Defects(errors="story_dir and epic_dir are required")
 
-    okf = Ostler(agents_repo_root(repo_dir))
+    okf = ostler_for(repo_dir)
     slug = Path(story_dir_rel).name
     epic = Path(epic_dir_rel).name
     errors: list[str] = []

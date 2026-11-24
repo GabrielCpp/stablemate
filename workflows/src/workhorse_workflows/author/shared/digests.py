@@ -2,14 +2,14 @@
 from __future__ import annotations
 
 import hashlib
-from pathlib import Path
 
 from ostler import markdown, registry
+from workhorse_workflows.kit.paths import artifacts_root
 
 
-def milestone_body_digest(root: Path, milestone_path: str) -> str:
+def milestone_body_digest(milestone_path: str) -> str:
     """The sha256 of the milestone body the owner writes, without the `## Epics` section ostler writes."""
-    text = (root / milestone_path).read_text(encoding="utf-8")
+    text = (artifacts_root() / milestone_path).read_text(encoding="utf-8")
     document = markdown.split(text)
     lines = document.body.split("\n")
     section = document.find_section(registry.MILESTONE_EPICS_HEADING)

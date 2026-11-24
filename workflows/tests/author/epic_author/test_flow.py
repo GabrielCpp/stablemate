@@ -22,11 +22,9 @@ from workhorse_workflows.author.epic_author.schemas import EpicAuthorDone
 from workhorse_workflows.author.workflow import workflow
 
 def _planning_input(repo: Path) -> None:
-    milestone = write_milestone(repo)
+    write_milestone(repo)
     assert Ostler(repo).create_epic("sign-in", "Sign in").ok
-    git = Repo(repo)
-    git.index.add([milestone])
-    git.index.commit("planning input")
+    Repo(repo).index.commit("planning input")
 
 
 def _document_epic(repo: Path) -> None:

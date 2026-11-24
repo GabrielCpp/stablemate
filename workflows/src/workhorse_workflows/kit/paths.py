@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from ostler import Ostler
 from workhorse._vendor.stablemate_core import books, config as core_config
 
 
@@ -46,3 +47,18 @@ def find_book_package(repo_dir: str | Path = "") -> str:
 def find_docs_root(repo_dir: str | Path = "") -> Path:
     """The docs root: the artifacts repo while a workspace is active, else the repo root."""
     return docs_home_or(find_repo_root(repo_dir))
+
+
+def ostler_for(repo_dir: str | Path = "") -> Ostler:
+    """The planning facade over the docs root of *repo_dir*, milestones found from its code checkout."""
+    return Ostler(agents_repo_root(repo_dir), start=find_repo_root(repo_dir))
+
+
+def artifacts_root() -> Path:
+    """The per-user artifacts folder, where milestones live."""
+    return core_config.resolve_artifacts_dir()
+
+
+def milestone_key(path: str | Path) -> str:
+    """The milestone's path relative to the artifacts folder."""
+    return Path(path).resolve().relative_to(artifacts_root()).as_posix()

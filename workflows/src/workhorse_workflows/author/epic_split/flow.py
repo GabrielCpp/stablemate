@@ -7,6 +7,7 @@ from workhorse.pyflow import Done, Workflow
 from workhorse_workflows.author.draft import DraftLoop
 from workhorse_workflows.author.epic_split.nodes import prepare_epic_split, validate_epic_split
 from workhorse_workflows.author.epic_split.schemas import EpicSplitContext, EpicSplitDone
+from workhorse_workflows.kit.paths import artifacts_root
 
 
 class EpicSplit(Workflow):
@@ -28,7 +29,7 @@ class EpicSplit(Workflow):
             subject=self.ctx.milestone_path,
             split=self.ctx,
             args={
-                "milestone": self.ctx.milestone_path,
+                "milestone": str(artifacts_root() / self.ctx.milestone_path),
                 "epics_dir": self.ctx.epics_dir,
                 "ledger": self.ctx.pm_ledger,
             },

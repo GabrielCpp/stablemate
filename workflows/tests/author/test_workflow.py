@@ -14,7 +14,7 @@ import pytest
 from _books import write_book
 from _epics import epic_dir, epics_root, story_dir, write_epic_prose
 from _fakes import StubRunner
-from _milestones import write_milestone
+from _milestones import milestone_folder, write_milestone
 from _pm import amendment, answer, verdict
 from ostler import Ostler, crud, ids
 from ostler.model import load
@@ -41,7 +41,6 @@ from workhorse_workflows.author.story_edit import StoryEdit
 from workhorse_workflows.author.story_edit.nodes import resolve_story_intent
 from workhorse_workflows.author.workflow import Author, workflow
 
-MILESTONE = "docs/milestones/account-access/milestone.md"
 EPIC = "accounts"
 SECOND_EPIC = "profiles"
 CONTEXT = "_author-context.md"
@@ -70,11 +69,11 @@ SECOND_SLUGS = [slug for slug, _, _ in SECOND_STORIES]
 
 
 @pytest.fixture
-def backlogged(repo: Path, write: Callable[[Path, str], Path]) -> Path:
+def backlogged(repo: Path, artifacts: Path, write: Callable[[Path, str], Path]) -> Path:
     """A repo with a milestone and one screen and nothing else: no epics."""
     write_milestone(repo)
     write_book(repo, "account", screens=True)
-    write(repo / "docs/milestones/account-access/mockups/sign-in.html", "<html></html>\n")
+    write(milestone_folder(repo) / "mockups/sign-in.html", "<html></html>\n")
     write_book(repo, "api-service")
     _commit(repo, "seed")
     return repo
@@ -579,10 +578,11 @@ def test_the_milestone_stage_is_not_registered() -> None:
 
 
 def test_epic_mode_authors_the_approved_milestone_and_commits_it(
-    backlogged: Path, tmp_path: Path
+    backlogged: Path, artifacts: Path, tmp_path: Path
 ) -> None:
     """The straight-through run: one epic, two stories, both gates green, then the git tail."""
-    commits_before = _commit_count(backlogged)
+    commits_before = _commit_count(artifacts)
+    repo_commits_before = _commit_count(backlogged)
     branch_before = _current_branch(backlogged)
     agent = _Agent(backlogged)
     result = _drive(_env(tmp_path), agent)
@@ -598,8 +598,8 @@ def test_epic_mode_authors_the_approved_milestone_and_commits_it(
     assert agent.stage_calls == {"epic-split": 1, "story-split": 1, "story": 2}
     split_review = agent.calls.index("review-inline", agent.calls.index("split-stories"))
     assert split_review < agent.calls.index("write-story")
-    artifacts = backlogged / "docs/milestones/account-access/artifacts"
-    assert (artifacts / "pm-receipt.json").is_file()
+    run_artifacts = milestone_folder(backlogged) / "artifacts"
+    assert (run_artifacts / "pm-receipt.json").is_file()
     assert (epic_dir(EPIC) / "pm-receipt.json").is_file()
     for slug in SLUGS:
         assert (story_dir(EPIC, slug) / "pm-receipt.json").is_file()
@@ -612,10 +612,11 @@ def test_epic_mode_authors_the_approved_milestone_and_commits_it(
     milestones = Ostler(backlogged).list("milestone")
     assert len(milestones) == 1
     assert milestones[0]["epics"] == [_name(EPIC)]
-    assert "status: authored" in (backlogged / MILESTONE).read_text(encoding="utf-8")
+    assert "status: authored" in (milestone_folder(backlogged) / "milestone.md").read_text(encoding="utf-8")
 
-    assert _subject(backlogged) == "author: milestone account-access"
-    assert _commit_count(backlogged) == commits_before + 1
+    assert _subject(artifacts) == "author: milestone account-access"
+    assert _commit_count(artifacts) == commits_before + 1
+    assert _commit_count(backlogged) == repo_commits_before
     assert _current_branch(backlogged) == branch_before
     assert result.committed is True, result
 
@@ -655,7 +656,7 @@ def test_epic_mode_stops_before_any_turn_on_a_milestone_readiness_error(
 ) -> None:
     from workhorse.pyflow import WorkflowFailed
 
-    path = backlogged / MILESTONE
+    path = milestone_folder(backlogged) / "milestone.md"
     path.write_text(path.read_text(encoding="utf-8") + "\n## Open Decisions\n\n- x\n", encoding="utf-8")
     agent = _Agent(backlogged)
 
@@ -703,10 +704,10 @@ def test_every_prompt_is_told_the_resolved_paths_not_the_blank_parameters(
 
     for args in agent.args_for("split-epics"):
         assert args["epics_dir"] == str(epics_root()), args
-        assert args["milestone"] == MILESTONE, args
+        assert args["milestone"] == str(milestone_folder(backlogged) / "milestone.md"), args
         assert "roadmap" not in args, args
     for args in agent.args_for("write-epic"):
-        assert args["milestone"] == MILESTONE, args
+        assert args["milestone"] == str(milestone_folder(backlogged) / "milestone.md"), args
         assert args["epic_dir"] == str(epic_dir(EPIC)), args
 
 
@@ -731,7 +732,9 @@ def test_epic_docs_are_all_written_before_story_splitting(backlogged: Path, tmp_
     assert _stories(backlogged) == {slug: True for slug in [*SLUGS, *SECOND_SLUGS]}
 
 
-def test_a_fresh_run_goes_split_epics_stories_then_finalizes(backlogged: Path, tmp_path: Path) -> None:
+def test_a_fresh_run_goes_split_epics_stories_then_finalizes(
+    backlogged: Path, artifacts: Path, tmp_path: Path
+) -> None:
     agent = _Agent(backlogged, two_epics=True)
     env = _env(tmp_path)
 
@@ -782,23 +785,24 @@ def test_a_run_stopped_at_a_later_epic_story_resumes_without_redoing_settled_row
 
 
 def test_the_commit_leaves_work_the_run_did_not_do_alone(
-    backlogged: Path, tmp_path: Path, write: Callable[[Path, str], Path]
+    backlogged: Path, artifacts: Path, tmp_path: Path, write: Callable[[Path, str], Path]
 ) -> None:
     """The run commits the docs it authored, not the working tree it found."""
     stray = write(backlogged / "src/half_finished.py", "def in_progress(): ...\n")
 
     _drive(_env(tmp_path), _Agent(backlogged))
 
-    assert _subject(backlogged) == "author: milestone account-access"
+    assert _subject(artifacts) == "author: milestone account-access"
     committed = subprocess.run(
         ["git", "show", "--name-only", "--pretty=format:", "HEAD"],
-        cwd=backlogged,
+        cwd=artifacts,
         check=True,
         capture_output=True,
         text=True,
     ).stdout.split()
     assert committed, "the run committed nothing at all"
-    assert all(p.startswith("docs/") for p in committed), committed
+    folder = milestone_folder(backlogged).relative_to(artifacts).as_posix()
+    assert all(p.startswith(f"{folder}/") for p in committed), committed
     assert stray.read_text() == "def in_progress(): ...\n"
     untracked = subprocess.run(
         ["git", "ls-files", "--others", "--exclude-standard"],
@@ -872,7 +876,7 @@ def _gate_then_stop(seen: list[str]) -> Callable[..., Any]:
 
 def _status(repo: Path) -> str:
     return next(
-        line for line in (repo / MILESTONE).read_text(encoding="utf-8").splitlines()
+        line for line in (milestone_folder(repo) / "milestone.md").read_text(encoding="utf-8").splitlines()
         if line.startswith("status:")
     )
 
@@ -930,7 +934,7 @@ def test_an_edit_to_the_milestone_body_ends_at_the_contract_gate(
 
     class _Editing(_Agent):
         def _write_epic(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-            path = self.repo / MILESTONE
+            path = milestone_folder(self.repo) / "milestone.md"
             path.write_text(path.read_text(encoding="utf-8") + "\nOne more journey.\n", encoding="utf-8")
             return super()._write_epic(data, nth)
 
@@ -946,7 +950,7 @@ def test_accepting_a_changed_contract_finishes_the_run(backlogged: Path, tmp_pat
 
     class _Editing(_Agent):
         def _write_epic(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-            path = self.repo / MILESTONE
+            path = milestone_folder(self.repo) / "milestone.md"
             path.write_text(path.read_text(encoding="utf-8") + "\nOne more journey.\n", encoding="utf-8")
             return super()._write_epic(data, nth)
 
@@ -1024,7 +1028,7 @@ def test_a_split_the_pm_never_passes_stops_at_the_completion_gate(
 
 
 def test_an_epic_split_the_pm_never_passes_asks_the_operator_then_splits_again(
-    backlogged: Path, tmp_path: Path
+    backlogged: Path, artifacts: Path, tmp_path: Path
 ) -> None:
     seen: list[str] = []
     agent = _Agent(backlogged, review_epics=["needs_rework"] * 4)
@@ -1039,11 +1043,11 @@ def test_an_epic_split_the_pm_never_passes_asks_the_operator_then_splits_again(
     assert agent.counts()["split-epics"] == 2, agent.counts()
     assert "one epic is two" in seen[0], seen
     assert agent.counts()["answer"] == 0, agent.counts()
-    assert _subject(backlogged) == "author: milestone account-access"
+    assert _subject(artifacts) == "author: milestone account-access"
 
 
 def test_a_blocked_epic_split_writer_is_answered_by_the_pm_and_the_answer_is_kept(
-    backlogged: Path, tmp_path: Path
+    backlogged: Path, artifacts: Path, tmp_path: Path
 ) -> None:
     agent = _Agent(backlogged, block={"split-epics"})
 
@@ -1053,9 +1057,9 @@ def test_a_blocked_epic_split_writer_is_answered_by_the_pm_and_the_answer_is_kep
     assert agent.counts()["split-epics"] == 2, agent.counts()
     assert agent.questions == ["which order?"]
     assert "You asked: which order?" in agent.args_for("split-epics")[1]["note"]
-    ledger = backlogged / "docs/milestones/account-access/grills/pm.md"
+    ledger = milestone_folder(backlogged) / "grills/pm.md"
     assert "decided for epic-split" in ledger.read_text(encoding="utf-8")
-    assert _subject(backlogged) == "author: milestone account-access"
+    assert _subject(artifacts) == "author: milestone account-access"
 
 
 def test_a_question_only_the_operator_can_settle_waits_on_the_run_gate(
@@ -1074,7 +1078,7 @@ def test_a_question_only_the_operator_can_settle_waits_on_the_run_gate(
     assert agent.counts()["answer"] == 1, agent.counts()
     retry = [a for a in agent.args_for("write-story") if a["note"]]
     assert retry and "Sign in comes first." in retry[0]["note"], retry
-    ledger = backlogged / "docs/milestones/account-access/grills/pm.md"
+    ledger = milestone_folder(backlogged) / "grills/pm.md"
     assert "Sign in comes first." in ledger.read_text(encoding="utf-8")
     assert _stories(backlogged) == {slug: True for slug in SLUGS}
 
@@ -1221,7 +1225,7 @@ def test_story_edit_add_authors_one_story_and_promotes_its_record(
     assert closed.status == "promoted"
     assert closed.reason == f"promoted to story {B1_SLUG} in epic {EPIC}"
     assert _filed(artifacts, "b2").status == "open"
-    assert _subject(with_records).startswith("author: accounts"), _subject(with_records)
+    assert _subject(artifacts).startswith("author: accounts"), _subject(artifacts)
 
 
 def test_epic_edit_add_story_from_a_record_closes_it_as_promoted(
@@ -1295,7 +1299,7 @@ def test_the_epic_edit_planner_is_told_when_the_register_is_empty(
 
 
 def test_story_edit_remove_deletes_an_unstarted_story_and_commits(
-    with_epic: Path, tmp_path: Path
+    with_epic: Path, artifacts: Path, tmp_path: Path
 ) -> None:
     okf = Ostler(with_epic)
     assert okf.create_story(EPIC, "01-extra", "Extra").ok
@@ -1306,7 +1310,7 @@ def test_story_edit_remove_deletes_an_unstarted_story_and_commits(
     assert result.changed is True
     assert "01-extra" not in {s["slug"] for s in Ostler(with_epic).list("story")}
     assert not (epic_dir(EPIC)).exists(), "the last story leaves an empty epic to delete"
-    assert "accounts" in _subject(with_epic)
+    assert "accounts" in _subject(artifacts)
 
 
 def test_story_edit_remove_refuses_a_started_story_without_force(
