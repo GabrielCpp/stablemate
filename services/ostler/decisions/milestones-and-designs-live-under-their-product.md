@@ -18,3 +18,5 @@ Numbers are per product. The first milestone of each product is `0001`, and the 
 A repository that still holds `docs/milestones/*/milestone.md` is refused with the commands that move it, as for decisions: `mkdir -p`, `mv` and `git rm -r --cached`. The same holds for `docs/milestones/` in the artifacts folder, which moves with `git mv`. A number already taken in the product folder moves to the next free one.
 
 `ostler path notes <slug>` and `ostler path design <slug>` print a place and create nothing. `ostler path milestone <slug>` prints the folder of a milestone that exists and refuses otherwise.
+
+A linked worktree is judged by its main checkout. A run's worktree is cut from a commit that may still hold the old folders, so the refusal reads the main checkout and names it in the commands it prints.
