@@ -117,6 +117,11 @@ def _seed(workspace: Path) -> None:
     )
     from groom import alerts
 
+    wait_attrs = {
+        "node": "await_operator", "wait_kind": "operator",
+        "gate_path": "context/gate.md",
+        "gate_question": "Pick a **storage backend**:\n\n- postgres\n- sqlite\n",
+    }
     alerts.ingest_metrics(
         [
             {
@@ -129,17 +134,11 @@ def _seed(workspace: Path) -> None:
             },
             {
                 "run_id": "run-blocked", "name": "workhorse.wait.active",
-                "ts": now, "value": 1.0,
-                "attrs": {
-                    "node": "await_operator", "wait_kind": "operator",
-                    "gate_path": "context/gate.md",
-                    "gate_question": "Pick a **storage backend**:\n\n- postgres\n- sqlite\n",
-                },
+                "ts": now, "value": 1.0, "attrs": wait_attrs,
             },
             {
                 "run_id": "run-blocked", "name": "workhorse.wait.elapsed_s",
-                "ts": now, "value": 125.0,
-                "attrs": {"node": "await_operator", "wait_kind": "operator"},
+                "ts": now, "value": 125.0, "attrs": wait_attrs,
             },
         ],
         now=now,
@@ -811,15 +810,18 @@ def _seconds_in(text: str) -> int:
     return (int(hours[1]) * 3600 if hours else 0) + (int(minutes[1]) * 60 if minutes else 0) + (int(secs[1]) if secs else 0)
 
 
-def _clock_readings(page) -> dict[str, int]:
+def _clock_readings(page, strip_cell: str = "In node") -> dict[str, int]:
     values = page.evaluate(
-        """() => {
+        """(label) => {
           const row = document.querySelector('#runs-list .row[aria-current="true"] .mini');
-          const lead = document.querySelector('[aria-label="Where the run is now"] > div:nth-child(2) .v2');
+          const cells = [...document.querySelectorAll('[aria-label="Where the run is now"] > div')];
+          const named = cells.find((cell) => cell.querySelector('.k2').textContent === label);
+          const lead = named ? named.querySelector('.v2') : null;
           const mark = document.querySelector('table.tt tr.cur .chip');
           const cell = document.querySelector('table.tt tr.cur td:nth-child(3)');
           return [row, lead, mark, cell].map((el) => (el ? el.innerText : ''));
-        }"""
+        }""",
+        strip_cell,
     )
     row, strip, mark, cell = values
     return {
@@ -846,7 +848,7 @@ def _assert_one_clock(page, expected: int | None) -> None:
     deadline = time.time() + 30
     readings: dict[str, int] = {}
     while time.time() < deadline:
-        readings = _clock_readings(page)
+        readings = _clock_readings(page, strip_cell)
         if len(set(readings.values())) == 1:
             break
         time.sleep(0.2)
@@ -857,7 +859,7 @@ def _assert_one_clock(page, expected: int | None) -> None:
     later = readings
     while time.time() < deadline:
         time.sleep(0.25)
-        later = _clock_readings(page)
+        later = _clock_readings(page, strip_cell)
         if later["strip"] >= first + 2:
             break
     assert len(set(later.values())) == 1 and later["strip"] >= first + 2, (first, later)
@@ -987,7 +989,7 @@ def test_the_row_the_strip_and_the_tree_count_one_clock_for_a_gate_wait():
     try:
         page.click("#runs-list .row.blocked")
         page.get_by_role("group", name="Where the run is now").wait_for()
-        _assert_one_clock(page, None)
+        _assert_one_clock(page, None, "Waiting on you")
     finally:
         page.close()
 
