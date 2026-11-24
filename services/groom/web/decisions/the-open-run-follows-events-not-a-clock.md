@@ -10,7 +10,8 @@ detail counts time: a running turn, the last beat, the uptime and a silent run's
 the page draws the span from its one-second ticker. The detail carries `activity_rev` and `metrics_rev`, and the Activity
 and Raw panes fetch again, at most once per 300 milliseconds, when the number they follow moves. A native run's transcript is
 watched on disk while a tab has the run open, so a new line reaches the pane within a second, and the watch ends with the
-last tab.
+last tab. When the system refuses the watch or drops it, groom reads the run's newest transcripts every half second
+instead, and still sends a detail only when lines arrived.
 
 A container run's sidecar sends a `workspace` frame over its socket when a file under the workspace changes, or when a
 checkout's `.git/index` or `.git/HEAD` moves, and sends at most one every two seconds with a trailing one after a burst.

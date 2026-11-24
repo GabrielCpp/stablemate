@@ -96,6 +96,7 @@ RULES_TICK_S = float(os.environ.get("GROOM_RULES_TICK_S", "60"))
 PRUNE_EVERY_S = float(os.environ.get("GROOM_PRUNE_EVERY_S", "3600"))
 HARVEST_EVERY_S = float(os.environ.get("GROOM_HARVEST_EVERY_S", "300"))
 ARCHIVE_EVERY_S = archive.ARCHIVE_EVERY_S
+TRANSCRIPT_POLL_S = float(os.environ.get("GROOM_TRANSCRIPT_POLL_S", "0.5"))
 SERVED_BY_SIDECAR = "sidecar"
 SERVED_BY_VOLUME = "volume"
 SERVED_BY_HOST = "host"
@@ -175,7 +176,7 @@ _TRANSCRIPT_FILTER = DefaultFilter()
 
 
 async def _follow_transcript(wf: WorkflowContainer) -> None:
-    """Read a watched native run's new transcript lines the moment a transcript file changes."""
+    """Read a watched native run's new transcript lines the moment a transcript file changes, and every ``TRANSCRIPT_POLL_S`` once the system refuses or drops the file watch, until the last tab leaves."""
     run_dir = _native_run_dir(wf)
     marker = f"{os.sep}transcripts{os.sep}"
     try:
@@ -183,8 +184,14 @@ async def _follow_transcript(wf: WorkflowContainer) -> None:
             if not any(marker in path for _, path in changes):
                 continue
             await _tail_transcript(wf)
-    except Exception:  # noqa: BLE001 - a pane whose transcript is not watched is not a broken groom
-        logger.debug("transcript watch failed for %s", wf.container_id, exc_info=True)
+    except Exception:  # noqa: BLE001 - a run whose files cannot be watched is still followed by reading them
+        logger.warning("groom: no file watch for %s, reading its transcript every %s s", wf.container_id, TRANSCRIPT_POLL_S, exc_info=True)
+    while True:
+        await asyncio.sleep(TRANSCRIPT_POLL_S)
+        try:
+            await _tail_transcript(wf)
+        except Exception:  # noqa: BLE001 - one failed read must not end the follow
+            logger.debug("transcript read failed for %s", wf.container_id, exc_info=True)
 
 
 def _watch_transcript(wf: WorkflowContainer) -> None:

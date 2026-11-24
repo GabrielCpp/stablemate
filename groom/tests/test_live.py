@@ -496,6 +496,38 @@ def test_a_transcript_line_reaches_the_open_run_through_its_follower(tmp_path):
     assert after > opened
 
 
+def test_a_transcript_line_reaches_the_open_run_when_the_os_refuses_the_file_watch(tmp_path, monkeypatch):
+    _, path = _native(tmp_path)
+    asked: list[str] = []
+
+    async def refuse(*paths, **_options):
+        asked.extend(str(one) for one in paths)
+        for _ in ():
+            yield set()
+        raise RuntimeError("Error creating recommended watcher: Too many open files (os error 24)")
+
+    monkeypatch.setattr(groom_app, "awatch", refuse)
+    monkeypatch.setattr(groom_app, "TRANSCRIPT_POLL_S", 0.01)
+
+    async def drive():
+        live.bind(asyncio.get_running_loop())
+        queue = await _open()
+        opened = _details(_drain(queue))[0]["detail"]["activity_rev"]
+        await until(lambda: bool(asked), "the follower asking for its watch")
+        with path.open("a") as handle:
+            handle.write(_line("second", 11.0))
+        sent: list = []
+        await until(lambda: bool(sent.extend(_details(_drain(queue))) or sent), "the appended line reaching the tab")
+        follower = state.TRANSCRIPT_TASKS["run-w"]
+        state.remove_client(queue)
+        await until(follower.done, "the transcript follower ending")
+        return opened, sent[-1]["detail"]["activity_rev"]
+
+    opened, after = asyncio.run(drive())
+    assert asked == [str(tmp_path)]
+    assert after > opened
+
+
 def test_lines_read_by_the_activity_request_still_push_a_detail(tmp_path):
     _, path = _native(tmp_path)
 
