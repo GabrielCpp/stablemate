@@ -84,8 +84,8 @@ def story_context_path(story_path: str, repo_dir: str | Path = "") -> Path:
 
 
 def decisions_dir(docs_root: Path) -> Path:
-    """Where the operator's standing decisions live: `docs/decisions/` under *docs_root*."""
-    return docs_root / "docs" / "decisions"
+    """Where the operator's standing decisions live: the root ostler resolves for *docs_root*, in the artifacts folder."""
+    return okf_path.decisions_root_in(docs_root)
 
 
 def is_gate_context(path: str | Path) -> bool:

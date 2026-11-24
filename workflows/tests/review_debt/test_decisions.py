@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from ostler import Ostler, adr
+from ostler import Ostler, adr, path
 from ostler.result import Result
 from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow.engine import RunEnv
@@ -43,7 +43,7 @@ def two_clusters() -> dict[str, Any]:
 
 
 def decisions(repo: Path) -> list[Path]:
-    return sorted(repo.glob("docs/adrs/*/adr.md"))
+    return sorted(path.adr_root_in(repo).glob("*/adr.md"))
 
 
 def bound(repo: Path) -> dict[str, str]:
@@ -74,9 +74,10 @@ def test_a_cluster_of_three_is_drafted_and_a_cluster_of_two_is_left(
         "api-old": "", "web-nav": "",
     }
     assert agent.turns == 2
-    assert files[0] == repo / "docs" / "adrs" / DRAFT["slug"] / "adr.md"
+    assert files[0] == path.adr_root_in(repo) / DRAFT["slug"] / "adr.md"
     assert decision.id == DRAFT["slug"]
-    assert git_out(artifacts, "log", "-1", "--format=%s").strip() == "init"
+    assert git_out(artifacts, "log", "-1", "--format=%s").strip() == "docs: propose guard-cart-total from 3 records"
+    assert not (repo / "docs" / "adrs").exists()
 
 
 def test_the_draft_turn_is_given_the_cluster_and_the_shelf(

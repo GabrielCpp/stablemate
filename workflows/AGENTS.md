@@ -63,7 +63,7 @@ The auto-resolver a block routes through — one shared prompt,
 `coder/shared/prompts/resolve-operator.md`, rendered by every lane that gates —
 **applies decisions; it does not make them.** It may write `STATUS: ANSWERED` and let
 the loop continue only when it can quote the thing that already settles the question — a
-record under `<docs-root>/docs/decisions/`, a convention in `AGENTS.md` or an installed
+record in the decisions folder of the artifacts folder, a convention in `AGENTS.md` or an installed
 skill, an acceptance criterion in the story's own spec — and it publishes that citation
 in the answer and in the run log. A question with a written answer costs a human nothing
 to be asked and teaches them nothing when they answer it the way the document already
@@ -76,8 +76,8 @@ its own QA `covers:`, stamps its own status, or edits its own evidence). "I am n
 an escalation too. The parking half of this rule is untouched — a block it cannot ground
 `Await`s, as many times as it takes, and never ends the run.
 
-The place decisions accumulate is `<docs-root>/docs/decisions/`
-(`coder/shared/paths.py::decisions_dir`), and answering writes one, so the second run to
+Decisions accumulate in the artifacts folder, at the root ostler resolves
+(`coder/shared/paths.py::decisions_dir`). Answering writes one, so the second run to
 hit the same question reads the ruling instead of parking on it again. Every lane caps the
 *resolver* rather than the block, with the one `MAX_BLOCKS` in `coder/shared/owner.py`. A
 lane spends that budget on an answer exactly as on an escalation, so a resolver that keeps

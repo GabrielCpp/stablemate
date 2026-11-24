@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from workhorse_workflows.coder.shared import paths
 from _epics import epics_root
 
@@ -30,9 +32,13 @@ def test_the_operator_dir_files_are_still_excused_from_the_dirty_check(tmp_path:
         assert paths.is_gate_context(paths.operator_context_path(tmp_path, gate, "e"))
 
 
-def test_decisions_land_with_the_documents_not_beside_the_service_directories(
-    tmp_path: Path,
+def test_decisions_land_in_the_artifacts_folder_not_in_the_code_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A decision record is a document a person reads, so it sits under `docs/` with the epics rather than as a stray top-level folder."""
-    assert paths.decisions_dir(tmp_path) == tmp_path / "docs" / "decisions"
-    assert paths.decisions_dir(tmp_path).name == "decisions"
+    """A decision record is a document a person reads, so it sits under `docs/` of the artifacts folder rather than in the code repository."""
+    artifacts = tmp_path / "artifacts"
+    monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(artifacts))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    assert paths.decisions_dir(repo) == artifacts.resolve() / "docs" / "decisions"
+    assert paths.decisions_dir(repo).name == "decisions"
