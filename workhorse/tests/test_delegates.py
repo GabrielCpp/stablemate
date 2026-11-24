@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import io
 import json
-import tempfile
 from contextlib import redirect_stdout
 from pathlib import Path
 
@@ -271,13 +270,13 @@ def test_codex_without_delegates_adds_no_role(profile_config):
     assert not any(arg.startswith("agents.") for arg in captured["cmd"])
 
 
-def test_a_cli_with_no_launch_time_subagents_says_so_once(profile_config):
+def test_a_cli_with_no_launch_time_subagents_says_so_once(profile_config, tmp_path: Path):
     out = io.StringIO()
     captured = {}
     with redirect_stdout(out):
         for _ in range(2):
             CopilotBackend(_stream_capturing(captured)).run_turn(
-                "P", "n", Path(tempfile.mkdtemp()) / ".sid", timeout=60, resilience=RESILIENCE,
+                "P", "n", tmp_path / ".sid", timeout=60, resilience=RESILIENCE,
                 delegates=(LOOKUP,),
             )
     assert out.getvalue().count("copilot defines no subagents at launch") == 1

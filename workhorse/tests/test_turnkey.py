@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
-import tempfile
 from pathlib import Path
 
 from workhorse import gitstate, turnkey
@@ -15,8 +14,8 @@ TIMEOUT = 30.0
 HAVE_GIT = shutil.which("git") is not None
 
 
-def _run_dir() -> Path:
-    return Path(tempfile.mkdtemp())
+def _run_dir(base: Path) -> Path:
+    return base
 
 
 def _repo(path: Path) -> Path:
@@ -36,9 +35,9 @@ def _repo(path: Path) -> Path:
     return path
 
 
-def test_a_visit_key_names_the_node_the_generation_and_the_visit():
+def test_a_visit_key_names_the_node_the_generation_and_the_visit(tmp_path: Path):
     turnkey.clear()
-    run_dir = _run_dir()
+    run_dir = _run_dir(tmp_path)
     (run_dir / turnkey.GENERATION_FILE).write_text("3")
 
     key = turnkey.begin(run_dir, "plan")
@@ -47,9 +46,9 @@ def test_a_visit_key_names_the_node_the_generation_and_the_visit():
     assert turnkey.current() == key
 
 
-def test_the_slug_sorts_lexically_in_the_order_the_visits_happened():
+def test_the_slug_sorts_lexically_in_the_order_the_visits_happened(tmp_path: Path):
     turnkey.clear()
-    run_dir = _run_dir()
+    run_dir = _run_dir(tmp_path)
     (run_dir / turnkey.GENERATION_FILE).write_text("1")
 
     slugs = [turnkey.begin(run_dir, "plan").slug for _ in range(11)]
@@ -59,10 +58,10 @@ def test_the_slug_sorts_lexically_in_the_order_the_visits_happened():
     assert slugs[-1] == "001-00011-plan"
 
 
-def test_the_counter_survives_a_restart_and_never_repeats_a_visit():
+def test_the_counter_survives_a_restart_and_never_repeats_a_visit(tmp_path: Path):
     """Two processes over one run dir must not both call their first visit number 1."""
     turnkey.clear()
-    run_dir = _run_dir()
+    run_dir = _run_dir(tmp_path)
     first = [turnkey.begin(run_dir, "plan").seq for _ in range(3)]
 
     turnkey.clear()
@@ -72,9 +71,9 @@ def test_the_counter_survives_a_restart_and_never_repeats_a_visit():
     assert second == [4, 5]
 
 
-def test_a_counter_that_cannot_be_written_still_never_repeats_within_the_run():
+def test_a_counter_that_cannot_be_written_still_never_repeats_within_the_run(tmp_path: Path):
     turnkey.clear()
-    run_dir = _run_dir()
+    run_dir = _run_dir(tmp_path)
     (run_dir / turnkey.SEQ_FILE).mkdir()
 
     assert [turnkey.begin(run_dir, "plan").seq for _ in range(3)] == [1, 2, 3]
@@ -91,9 +90,9 @@ def test_outside_a_visit_there_is_no_current_key():
     assert turnkey.current() is None
 
 
-def test_each_turn_of_a_revisited_node_gets_its_own_addressable_row():
+def test_each_turn_of_a_revisited_node_gets_its_own_addressable_row(tmp_path: Path):
     turnkey.clear()
-    run_dir = _run_dir()
+    run_dir = _run_dir(tmp_path)
     sidp = run_dir / ".session_id"
     (run_dir / turnkey.GENERATION_FILE).write_text("2")
 
@@ -120,10 +119,10 @@ def test_each_turn_of_a_revisited_node_gets_its_own_addressable_row():
     assert all(isinstance(r["ts"], int) and r["ts"] > 0 for r in rows)
 
 
-def test_a_turn_outside_the_engines_visit_is_left_unnumbered():
+def test_a_turn_outside_the_engines_visit_is_left_unnumbered(tmp_path: Path):
     """A library caller driving the runner directly takes turns the engine never opened."""
     turnkey.clear()
-    run_dir = _run_dir()
+    run_dir = _run_dir(tmp_path)
     turnkey.begin(run_dir, "plan")
 
     failure.record_session_map(run_dir / ".session_id", "some-other-node", "ses_x", "codex")
@@ -133,11 +132,11 @@ def test_a_turn_outside_the_engines_visit_is_left_unnumbered():
     assert (row["node"], row["session_id"]) == ("some-other-node", "ses_x")
 
 
-def test_a_row_records_the_commit_the_tree_was_on():
+def test_a_row_records_the_commit_the_tree_was_on(tmp_path: Path):
     if not HAVE_GIT:
         return
     turnkey.clear()
-    run_dir = _run_dir()
+    run_dir = _run_dir(tmp_path)
     repo = _repo(run_dir / "acme")
 
     gitstate.bind(repo)
@@ -150,10 +149,10 @@ def test_a_row_records_the_commit_the_tree_was_on():
     assert row["head"] == gitstate.observe(repo, dirty=False).head
 
 
-def test_no_repo_observed_leaves_the_row_without_a_head():
+def test_no_repo_observed_leaves_the_row_without_a_head(tmp_path: Path):
     turnkey.clear()
     gitstate.unbind()
-    run_dir = _run_dir()
+    run_dir = _run_dir(tmp_path)
 
     failure.record_session_map(run_dir / ".session_id", "plan", "ses_n", "claude")
 

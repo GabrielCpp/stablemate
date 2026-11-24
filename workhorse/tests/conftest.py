@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from workhorse._vendor.stablemate_core import base_cache, config
+from workhorse.runner import transcript
 
 
 @pytest.fixture(autouse=True)
@@ -26,6 +27,12 @@ def _no_real_config(tmp_path_factory, monkeypatch):
     )
     monkeypatch.delenv(config.LEGACY_CONFIG_PATH_ENV, raising=False)
     monkeypatch.setattr(config, "legacy_config_paths", list)
+
+
+@pytest.fixture(autouse=True)
+def _no_bound_transcript():
+    yield
+    transcript.unbind()
 
 
 TOOL_CACHE = os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache")

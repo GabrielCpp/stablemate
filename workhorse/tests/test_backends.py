@@ -160,7 +160,7 @@ def test_run_config_without_a_cli_holds_the_null_backend():
     assert isinstance(RunConfig().backend, NullBackend)
 
 
-def test_agentless_run_fails_its_first_agent_node_with_a_sentence():
+def test_agentless_run_fails_its_first_agent_node_with_a_sentence(tmp_path: Path):
     """A run with no CLI reaching an agent node aborts on a message, not on a crash."""
     node = AgentNode(
         type="agent",
@@ -172,7 +172,7 @@ def test_agentless_run_fails_its_first_agent_node_with_a_sentence():
     runner = ladder.AgentRunner.from_config(RunConfig(), clock=FakeClock())
     assert isinstance(runner.backend, NullBackend)
 
-    run_dir = Path(tempfile.mkdtemp())
+    run_dir = tmp_path
     with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)), \
          redirect_stdout(io.StringIO()):
         try:
@@ -222,10 +222,10 @@ def test_copilot_and_cline_warn_that_a_confined_profile_runs_unboxed():
         assert cmd == free_cmd
 
 
-def test_cline_points_a_large_prompt_at_its_artifact_instead_of_putting_it_in_argv():
+def test_cline_points_a_large_prompt_at_its_artifact_instead_of_putting_it_in_argv(tmp_path: Path):
     """Cline has no attachment flag, so its bounded message names the complete artifact."""
     prompt = "large prompt\n" * 12_000
-    prompt_path = Path(tempfile.mkdtemp()) / "prompt.md"
+    prompt_path = tmp_path / "prompt.md"
     fake, captured = _fake_stream(
         turn.TurnState(result_text="ANSWER", session_id="task-1")
     )
@@ -252,9 +252,9 @@ def _fake_stream(canned):
     return fake, captured
 
 
-def test_codex_effort_sets_reasoning_override():
+def test_codex_effort_sets_reasoning_override(tmp_path: Path):
     """`effort` maps to a `-c model_reasoning_effort="<level>"` config override."""
-    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+    sidp = tmp_path / ".session_id"
     fake, captured = _fake_stream(
         turn.TurnState(result_text="OK", session_id="t")
     )
@@ -268,9 +268,9 @@ def test_codex_effort_sets_reasoning_override():
     assert cmd[cmd.index("-c") + 1] == 'model_reasoning_effort="high"'
 
 
-def test_codex_effort_passes_xhigh_and_max_through():
+def test_codex_effort_passes_xhigh_and_max_through(tmp_path: Path):
     """Codex accepts "xhigh" and "max", so a tier set to either runs at that level and not at "high"."""
-    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+    sidp = tmp_path / ".session_id"
     for level in ("xhigh", "max"):
         fake, captured = _fake_stream(
             turn.TurnState(result_text="OK", session_id="t")
@@ -285,8 +285,8 @@ def test_codex_effort_passes_xhigh_and_max_through():
         assert cmd[cmd.index("-c") + 1] == f'model_reasoning_effort="{level}"'
 
 
-def test_codex_no_effort_omits_override():
-    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+def test_codex_no_effort_omits_override(tmp_path: Path):
+    sidp = tmp_path / ".session_id"
     fake, captured = _fake_stream(
         turn.TurnState(result_text="OK", session_id="t")
     )
@@ -507,9 +507,9 @@ def test_claude_waits_on_a_slow_command_for_its_profile_limit():
     assert "BASH_MAX_TIMEOUT_MS" not in default
 
 
-def test_copilot_effort_maps_to_native_flag():
+def test_copilot_effort_maps_to_native_flag(tmp_path: Path):
     """Copilot has a native `--effort <level>` flag; the prompt is passed verbatim."""
-    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+    sidp = tmp_path / ".session_id"
     fake, captured = _fake_stream(
         turn.TurnState(result_text="OK", session_id="s")
     )
@@ -519,8 +519,8 @@ def test_copilot_effort_maps_to_native_flag():
     assert "BASE PROMPT" in cmd and "ultrathink" not in " ".join(cmd)
 
 
-def test_codex_run_turn_fresh_then_resume():
-    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+def test_codex_run_turn_fresh_then_resume(tmp_path: Path):
+    sidp = tmp_path / ".session_id"
     fake, captured = _fake_stream(
         turn.TurnState(result_text="OK", session_id="tid-123")
     )
@@ -562,9 +562,9 @@ def test_codex_keeps_a_large_prompt_on_stdin():
     assert captured["stdin"] == prompt
 
 
-def test_codex_profile_from_env():
+def test_codex_profile_from_env(tmp_path: Path):
     """CODEX_PROFILE is the run-level *fallback*: when a node names no profile, it injects a top-level `--profile <name>` (before `exec`); a leading-'@' model still maps to `-m`, overriding the profile's pinned model."""
-    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+    sidp = tmp_path / ".session_id"
     fake, captured = _fake_stream(
         turn.TurnState(result_text="OK", session_id="t1")
     )
@@ -605,12 +605,12 @@ def test_codex_profile_from_env():
     ]
 
 
-def test_codex_per_node_profile_overrides_env():
+def test_codex_per_node_profile_overrides_env(tmp_path: Path):
     """A node's `<profile>@<slug>` beats the CODEX_PROFILE fallback; a bare token is a profile name (model comes from the profile, so no `-m`)."""
     prior = os.environ.get("CODEX_PROFILE")
     os.environ["CODEX_PROFILE"] = "openrouter"
     try:
-        sidp = Path(tempfile.mkdtemp()) / ".s"
+        sidp = tmp_path / ".s"
         fake, captured = _fake_stream(
             turn.TurnState(result_text="X", session_id="s")
         )
@@ -619,7 +619,7 @@ def test_codex_per_node_profile_overrides_env():
         assert cmd[:4] == ["codex", "--profile", "local", "exec"]
         assert cmd[cmd.index("-m") + 1] == "qwen2.5-coder:32b"
 
-        sidp2 = Path(tempfile.mkdtemp()) / ".s"
+        sidp2 = tmp_path / ".s2"
         fake2, captured2 = _fake_stream(
             turn.TurnState(result_text="X", session_id="s")
         )
@@ -633,9 +633,9 @@ def test_codex_per_node_profile_overrides_env():
             os.environ["CODEX_PROFILE"] = prior
 
 
-def test_codex_profile_at_slug_model_string():
+def test_codex_profile_at_slug_model_string(tmp_path: Path):
     """A `<profile>@<slug>` codex model string drives the CLI as `codex --profile mimo exec ..."""
-    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+    sidp = tmp_path / ".session_id"
     fake, captured = _fake_stream(
         turn.TurnState(result_text="OK", session_id="t")
     )
@@ -662,8 +662,8 @@ def test_parse_codex_model():
     assert codex._parse_codex_model("@gpt-5.5") == (None, "gpt-5.5")
 
 
-def test_copilot_run_turn_fresh_then_resume():
-    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+def test_copilot_run_turn_fresh_then_resume(tmp_path: Path):
+    sidp = tmp_path / ".session_id"
     fake, captured = _fake_stream(
         turn.TurnState(result_text="ANSWER", session_id="sess-1")
     )
@@ -685,10 +685,10 @@ def test_copilot_run_turn_fresh_then_resume():
     assert captured2["cmd"][captured2["cmd"].index("--session-id") + 1] == "sess-1"
 
 
-def test_copilot_attaches_a_large_prompt_instead_of_putting_it_in_argv():
+def test_copilot_attaches_a_large_prompt_instead_of_putting_it_in_argv(tmp_path: Path):
     """A prompt larger than Linux's per-argument limit must reach Copilot as a file."""
     prompt = "large prompt\n" * 12_000
-    prompt_path = Path(tempfile.mkdtemp()) / "prompt.md"
+    prompt_path = tmp_path / "prompt.md"
     fake, captured = _fake_stream(
         turn.TurnState(result_text="ANSWER", session_id="sess-1")
     )
@@ -759,11 +759,11 @@ def test_finalize_turn_classifies_failures():
     assert turn.finalize_turn("codex", "n", ok, None, TIMEOUT) == "x"
 
 
-def test_classify_turn_records_node_to_session_manifest():
+def test_classify_turn_records_node_to_session_manifest(tmp_path: Path):
     """A finished turn maps its node to the harness session id in a durable, append-only manifest beside .session_id — so a past node can be traced to its CLI session transcript even after .session_id (one-slot) is overwritten."""
     import json
 
-    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+    sidp = tmp_path / ".session_id"
     manifest = sidp.parent / "sessions.jsonl"
 
     assert (
@@ -802,9 +802,9 @@ def test_classify_turn_records_node_to_session_manifest():
     assert [r["backend"] for r in rows] == ["opencode", "opencode"]
 
 
-def test_classify_turn_creates_the_sessions_dir_for_a_chains_first_lap():
+def test_classify_turn_creates_the_sessions_dir_for_a_chains_first_lap(tmp_path: Path):
     """A chain's session id lives under `.sessions/<key>`, and a chain's first-ever lap is exactly when that directory does not exist yet — `write_text` does not make parent directories, so the first lap of every chain used to crash here."""
-    run_dir = Path(tempfile.mkdtemp())
+    run_dir = tmp_path
     chain = sessions.chain_path(run_dir, "docs-repair:S-1")
     assert not chain.parent.exists()
 
@@ -825,9 +825,9 @@ def test_classify_turn_creates_the_sessions_dir_for_a_chains_first_lap():
     assert chain.read_text() == "ses_first"
 
 
-def test_classify_turn_without_session_writes_no_manifest():
+def test_classify_turn_without_session_writes_no_manifest(tmp_path: Path):
     """No session id reported by the turn → nothing to map, no file."""
-    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+    sidp = tmp_path / ".session_id"
     assert (
         failure.classify_turn(
             "cline",
@@ -884,8 +884,8 @@ def test_agentnode_power_is_an_opaque_tier_name():
 
 
 
-def test_opencode_run_turn_fresh_then_resume():
-    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+def test_opencode_run_turn_fresh_then_resume(tmp_path: Path):
+    sidp = tmp_path / ".session_id"
     fake, captured = _fake_stream(
         turn.TurnState(result_text="PONG", session_id="ses_1")
     )
@@ -918,10 +918,10 @@ def test_opencode_run_turn_fresh_then_resume():
     assert captured2["cmd"][captured2["cmd"].index("--session") + 1] == "ses_1"
 
 
-def test_opencode_attaches_a_large_prompt_instead_of_putting_it_in_argv():
+def test_opencode_attaches_a_large_prompt_instead_of_putting_it_in_argv(tmp_path: Path):
     """A prompt larger than Linux's per-argument limit must reach OpenCode as a file."""
     prompt = "large prompt\n" * 12_000
-    prompt_path = Path(tempfile.mkdtemp()) / "prompt.md"
+    prompt_path = tmp_path / "prompt.md"
     fake, captured = _fake_stream(
         turn.TurnState(result_text="PONG", session_id="ses_1")
     )
@@ -934,8 +934,8 @@ def test_opencode_attaches_a_large_prompt_instead_of_putting_it_in_argv():
     assert prompt_path.read_text(encoding="utf-8") == prompt
 
 
-def test_opencode_effort_variant_mapping_and_omit():
-    sidp = Path(tempfile.mkdtemp()) / ".s"
+def test_opencode_effort_variant_mapping_and_omit(tmp_path: Path):
+    sidp = tmp_path / ".s"
     cases = {"low": "minimal", "high": "high", "xhigh": "max", "max": "max"}
     for effort, variant in cases.items():
         fake, captured = _fake_stream(
@@ -950,8 +950,8 @@ def test_opencode_effort_variant_mapping_and_omit():
     assert "--variant" not in captured["cmd"]
 
 
-def test_opencode_effort_outside_the_levels_names_the_variant():
-    sidp = Path(tempfile.mkdtemp()) / ".s"
+def test_opencode_effort_outside_the_levels_names_the_variant(tmp_path: Path):
+    sidp = tmp_path / ".s"
     for effort in ("none", "thinking"):
         fake, captured = _fake_stream(
             turn.TurnState(result_text="X", session_id="s")
@@ -1095,8 +1095,8 @@ def test_opencode_text_parts_do_not_leak_between_turns():
 
 
 
-def test_cline_run_turn_fresh_then_resume():
-    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+def test_cline_run_turn_fresh_then_resume(tmp_path: Path):
+    sidp = tmp_path / ".session_id"
     fake, captured = _fake_stream(
         turn.TurnState(result_text="OK", session_id="conv_1")
     )
@@ -1480,9 +1480,9 @@ def _claude_stream(events, *, cut="silence", seen=None):
     return fake_stream
 
 
-def test_claude_records_the_session_id_the_moment_the_stream_names_it():
+def test_claude_records_the_session_id_the_moment_the_stream_names_it(tmp_path: Path):
     for cut in ("silence", "exception"):
-        sidp = Path(tempfile.mkdtemp()) / ".sessions" / "lead"
+        sidp = tmp_path / ".sessions" / "lead"
         fake = _claude_stream(
             [{"type": "system", "subtype": "init", "session_id": "sess-early"}], cut=cut
         )
@@ -1518,7 +1518,7 @@ def _jsonl_cut(event, *, cut="silence", seen=None):
     return fake
 
 
-def test_jsonl_backends_record_the_session_id_before_a_cut():
+def test_jsonl_backends_record_the_session_id_before_a_cut(tmp_path: Path):
     cases = [
         (CodexBackend, {"type": "thread.started", "thread_id": "tid-early"}, "tid-early",
          lambda cmd: cmd[:3] == ["codex", "exec", "resume"] and "tid-early" in cmd),
@@ -1529,7 +1529,7 @@ def test_jsonl_backends_record_the_session_id_before_a_cut():
     ]
     for backend_cls, event, sid, resumed in cases:
         for cut in ("silence", "exception"):
-            sidp = Path(tempfile.mkdtemp()) / ".sessions" / "lead"
+            sidp = tmp_path / ".sessions" / "lead"
             backend = backend_cls(_jsonl_cut(event, cut=cut))
             _expect_cut(lambda: _run_turn(backend, "P", "n", sidp))
             assert sidp.read_text() == sid, (backend_cls.__name__, cut)
@@ -1540,8 +1540,8 @@ def test_jsonl_backends_record_the_session_id_before_a_cut():
             assert resumed(seen[0]), (backend_cls.__name__, seen[0])
 
 
-def test_copilot_records_its_session_id_from_the_result_event():
-    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+def test_copilot_records_its_session_id_from_the_result_event(tmp_path: Path):
+    sidp = tmp_path / ".session_id"
     backend = CopilotBackend(
         _jsonl_cut({"type": "result", "sessionId": "cp-1", "exitCode": 0}, cut="silence")
     )
@@ -1549,8 +1549,8 @@ def test_copilot_records_its_session_id_from_the_result_event():
     assert sidp.read_text() == "cp-1"
 
 
-def test_a_turn_cut_after_naming_its_session_resumes_it_on_the_ladders_retry():
-    sidp = Path(tempfile.mkdtemp()) / ".sessions" / "lead"
+def test_a_turn_cut_after_naming_its_session_resumes_it_on_the_ladders_retry(tmp_path: Path):
+    sidp = tmp_path / ".sessions" / "lead"
     seen = []
     laps = iter([
         _claude_stream(
@@ -1571,8 +1571,8 @@ def test_a_turn_cut_after_naming_its_session_resumes_it_on_the_ladders_retry():
     assert seen[1][seen[1].index("--resume") + 1] == "sess-1"
 
 
-def test_record_session_start_skips_an_unchanged_id_and_a_missing_path():
-    sidp = Path(tempfile.mkdtemp()) / ".session_id"
+def test_record_session_start_skips_an_unchanged_id_and_a_missing_path(tmp_path: Path):
+    sidp = tmp_path / ".session_id"
     failure.record_session_start(None, "x")
     failure.record_session_start(sidp, None)
     assert not sidp.exists()

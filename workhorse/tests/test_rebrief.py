@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import logging
-import tempfile
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -43,6 +42,7 @@ class _Warnings(logging.Handler):
 
 
 def _drive(
+    base: Path,
     script: Any,
     *,
     node: AgentNode | None = None,
@@ -52,7 +52,7 @@ def _drive(
     session: str | None = "sess-old",
     **resilience: Any,
 ) -> tuple[Path, list[str], tuple[str, dict[str, Any]]]:
-    sidp = Path(tempfile.mkdtemp()) / ".sessions" / "lead"
+    sidp = base / ".sessions" / "lead"
     if session is not None:
         sidp.parent.mkdir(parents=True)
         sidp.write_text(session)
@@ -85,7 +85,7 @@ def _drive(
     return sidp, handler.lines, result
 
 
-def test_an_unresumable_session_is_replaced_by_one_opened_with_the_rebrief():
+def test_an_unresumable_session_is_replaced_by_one_opened_with_the_rebrief(tmp_path: Path):
     prompts: list[str] = []
     present: list[bool] = []
 
@@ -96,8 +96,8 @@ def test_an_unresumable_session_is_replaced_by_one_opened_with_the_rebrief():
             raise BackendInvocationError("No conversation found with session ID: sess-old")
         return DONE
 
-    run_dir = Path(tempfile.mkdtemp())
-    _, warnings, (rendered, outputs) = _drive(script, rebrief=lambda: BRIEF, run_dir=run_dir)
+    run_dir = tmp_path
+    _, warnings, (rendered, outputs) = _drive(tmp_path, script, rebrief=lambda: BRIEF, run_dir=run_dir)
 
     assert prompts == ["Lead the work.", BRIEF]
     assert present == [True, False]
@@ -109,7 +109,7 @@ def test_an_unresumable_session_is_replaced_by_one_opened_with_the_rebrief():
     assert "cannot be resumed" in warnings[0]
 
 
-def test_an_unresumable_session_without_a_rebrief_resends_the_same_prompt():
+def test_an_unresumable_session_without_a_rebrief_resends_the_same_prompt(tmp_path: Path):
     prompts: list[str] = []
 
     def script(prompt: str, sidp: Path) -> str:
@@ -118,13 +118,13 @@ def test_an_unresumable_session_without_a_rebrief_resends_the_same_prompt():
             raise BackendInvocationError("No conversation found with session ID: sess-old")
         return DONE
 
-    _, warnings, _ = _drive(script)
+    _, warnings, _ = _drive(tmp_path, script)
 
     assert prompts == ["Lead the work.", "Lead the work."]
     assert warnings == []
 
 
-def test_a_session_compaction_cannot_shrink_is_replaced_by_one_opened_with_the_rebrief():
+def test_a_session_compaction_cannot_shrink_is_replaced_by_one_opened_with_the_rebrief(tmp_path: Path):
     prompts: list[str] = []
     present: list[bool] = []
 
@@ -135,7 +135,7 @@ def test_a_session_compaction_cannot_shrink_is_replaced_by_one_opened_with_the_r
             raise BackendInvocationError("prompt is too long", overflow=True)
         return DONE
 
-    sidp, warnings, (_, outputs) = _drive(
+    sidp, warnings, (_, outputs) = _drive(tmp_path,
         script, compact=lambda *a, **k: False, rebrief=lambda: BRIEF
     )
 
@@ -148,7 +148,7 @@ def test_a_session_compaction_cannot_shrink_is_replaced_by_one_opened_with_the_r
     assert "compaction can no longer shrink the session" in warnings[0]
 
 
-def test_the_rebrief_follows_every_compaction_attempt_being_spent():
+def test_the_rebrief_follows_every_compaction_attempt_being_spent(tmp_path: Path):
     compacted: list[int] = []
 
     def script(prompt: str, sidp: Path) -> str:
@@ -160,7 +160,7 @@ def test_the_rebrief_follows_every_compaction_attempt_being_spent():
         compacted.append(1)
         return True
 
-    _, _, (_, outputs) = _drive(
+    _, _, (_, outputs) = _drive(tmp_path,
         script, compact=compact, rebrief=lambda: BRIEF, max_compact_attempts=3
     )
 
@@ -168,7 +168,7 @@ def test_the_rebrief_follows_every_compaction_attempt_being_spent():
     assert outputs == {"decision": "approve"}
 
 
-def test_a_node_is_rebriefed_for_overflow_once_and_then_fails_as_before():
+def test_a_node_is_rebriefed_for_overflow_once_and_then_fails_as_before(tmp_path: Path):
     briefs: list[int] = []
 
     def brief() -> str:
@@ -179,7 +179,7 @@ def test_a_node_is_rebriefed_for_overflow_once_and_then_fails_as_before():
         raise BackendInvocationError("prompt is too long", overflow=True)
 
     try:
-        _drive(
+        _drive(tmp_path,
             script,
             compact=lambda *a, **k: False,
             rebrief=brief,
@@ -192,7 +192,7 @@ def test_a_node_is_rebriefed_for_overflow_once_and_then_fails_as_before():
     assert briefs == [1]
 
 
-def test_an_overflow_without_a_rebrief_reframes_as_before():
+def test_an_overflow_without_a_rebrief_reframes_as_before(tmp_path: Path):
     prompts: list[str] = []
 
     def script(prompt: str, sidp: Path) -> str:
@@ -201,7 +201,7 @@ def test_an_overflow_without_a_rebrief_reframes_as_before():
             raise BackendInvocationError("prompt is too long", overflow=True)
         return DONE
 
-    _, warnings, _ = _drive(
+    _, warnings, _ = _drive(tmp_path,
         script, compact=lambda *a, **k: False, max_rephrase_attempts=1
     )
 
@@ -248,13 +248,13 @@ def test_a_silence_bound_must_be_positive():
     assert _node(silence="30").silence == 30.0
 
 
-def test_the_turn_record_keeps_the_silence_bound_of_an_unbounded_node():
+def test_the_turn_record_keeps_the_silence_bound_of_an_unbounded_node(tmp_path: Path):
     class ScriptedRunner(ladder.AgentRunner):
         def turn(self, prompt, node_id, session_id_path, model=None, **kwargs):
             return DONE
 
     def record(node: AgentNode) -> Any:
-        root = Path(tempfile.mkdtemp())
+        root = tmp_path
         visit_dir = root / "turns" / "000-00001-lead"
         with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)):
             ScriptedRunner(
@@ -267,17 +267,3 @@ def test_the_turn_record_keeps_the_silence_bound_of_an_unbounded_node():
 
     assert record(_node(timeout="infinity", silence=120)).silence_budget_s == 120
     assert record(_node(timeout="infinity")).silence_budget_s is None
-
-
-if __name__ == "__main__":
-    fns = [v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
-    failed = 0
-    for fn in fns:
-        try:
-            fn()
-            print(f"PASS  {fn.__name__}")
-        except Exception as e:  # noqa: BLE001
-            failed += 1
-            print(f"FAIL  {fn.__name__}: {type(e).__name__}: {e}")
-    print(f"\n{len(fns) - failed}/{len(fns)} passed")
-    raise SystemExit(1 if failed else 0)

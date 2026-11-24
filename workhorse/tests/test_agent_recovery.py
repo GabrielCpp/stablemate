@@ -60,8 +60,8 @@ def test_success_on_first_attempt_returns_outputs():
     assert outputs == {"decision": "approve", "review": "looks good"}
 
 
-def test_rendered_prompt_is_written_and_only_path_is_printed():
-    run_dir = Path(tempfile.mkdtemp())
+def test_rendered_prompt_is_written_and_only_path_is_printed(tmp_path: Path):
+    run_dir = tmp_path
     prompt_path = run_dir / "review_implementation" / "prompt.md"
     payload = json.dumps({"decision": "approve", "review": "looks good"})
 
@@ -303,10 +303,9 @@ def test_unparseable_output_reframes_then_stops():
         pass
 
 
-def test_new_node_starts_clean_dropping_prior_session(tmp_path=None):
+def test_new_node_starts_clean_dropping_prior_session(tmp_path: Path):
     """A fresh node (resume_session=False) must NOT chain a previous node's session: the stale .session_id is dropped before the first invocation."""
-    import tempfile
-    sid_path = Path(tempfile.mkdtemp()) / ".session_id"
+    sid_path = tmp_path / ".session_id"
     sid_path.write_text("prev-node-session-abc")
 
     good = json.dumps({"decision": "continue", "review": "ok"})
@@ -318,10 +317,9 @@ def test_new_node_starts_clean_dropping_prior_session(tmp_path=None):
     assert not sid_path.exists(), "new node should drop the prior node's session"
 
 
-def test_interrupted_node_keeps_session_for_resume(tmp_path=None):
+def test_interrupted_node_keeps_session_for_resume(tmp_path: Path):
     """An interrupted node (resume_session=True) keeps its session so the CLI can --resume and continue where it left off."""
-    import tempfile
-    sid_path = Path(tempfile.mkdtemp()) / ".session_id"
+    sid_path = tmp_path / ".session_id"
     sid_path.write_text("this-node-session-xyz")
 
     good = json.dumps({"decision": "continue", "review": "ok"})
