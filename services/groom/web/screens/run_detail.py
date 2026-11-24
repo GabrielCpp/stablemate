@@ -46,6 +46,12 @@ class RunDetail(Screen):
         "groom/groom/assets/dashboard.js::searchTranscripts",
         "groom/groom/assets/dashboard.js::Marked",
         "groom/groom/assets/dashboard.js::transcriptHit",
+        "groom/groom/assets/dashboard.js::setProblems",
+        "groom/groom/assets/dashboard.js::openProblems",
+        "groom/groom/assets/dashboard.js::showNewestProblem",
+        "groom/groom/assets/dashboard.js::ProblemReading",
+        "groom/groom/assets/dashboard.js::DetailTabs",
+        "groom/groom/assets/dashboard.js::AttentionTile",
     )
     route = "/"
     name = "Run detail"
@@ -141,7 +147,7 @@ class RunDetail(Screen):
     attention_tile = Text(
         "#detail-attention-tile",
         "Attention",
-        does="the gates of the run, the time spent waiting on them and the problem count. With any problems, the count is a button that opens the Activity tab with problems on. It counts failed steps, backend retries, failed gate checks and churn alerts, so it is never below the retries, and an answered gate does not count",
+        does="the gates of the run, the time spent waiting on them and the problem count. With any problems, the count is a button that opens the Activity tab with problems on. It counts failed steps, backend retries, failed gate checks and churn alerts, so it is never below the retries, and an answered gate does not count. Its count equals the count on the Activity tab and on the Problems control. Opening it selects the newest problem row",
     )
     breakdown_view = Text(
         "[role=group][aria-label=\"Breakdown view\"]",
@@ -201,7 +207,7 @@ class RunDetail(Screen):
     activity_list = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .tl[role="log"]',
         "Run activity",
-        does="the run's moments, oldest first within each group, as a log a screen reader can follow. The list groups them by work item, then by flow pass, then by visit, so an operator finds a moment by where it sits in the run. A run with no work items groups its passes directly under the top level. On a live run it follows: a row that arrives lands at its place and the newest row stays in view, the selected row stays selected and the pane keeps it. An upward scroll pauses the follow, and while paused the rows in view stay where they are and a group that finishes stays open. Scrolling back to the end resumes following and leaves the selection alone, and a scroll that moved nothing does not. After a reconnect the timeline reads the run again and fills the gap. A finished run's turn that the timeline still holds as running reads as ended with no record. Search and the work item selector narrow it together, and clearing them restores it",
+        does="the run's moments, oldest first within each group, as a log a screen reader can follow. The list groups them by work item, then by flow pass, then by visit, so an operator finds a moment by where it sits in the run. A run with no work items groups its passes directly under the top level. On a live run it follows: a row that arrives lands at its place and the newest row stays in view, the selected row stays selected and the pane keeps it. An upward scroll pauses the follow, and while paused the rows in view stay where they are and a group that finishes stays open. Scrolling back to the end resumes following and leaves the selection alone, and a scroll that moved nothing does not. After a reconnect the timeline reads the run again and fills the gap. A finished run's turn that the timeline still holds as running reads as ended with no record. Search and the work item selector narrow it together, and clearing them restores it. Problems narrows it to the problem rows, and search and the work item selector apply inside that view",
     )
     activity_item = Button(
         '#detail-panel[aria-labelledby="tab-activity"] .tl button.tl-group',
@@ -226,7 +232,7 @@ class RunDetail(Screen):
     activity_failed = Button(
         '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev[data-kind="failed"]',
         "failed step",
-        does="a step that failed, as its own row between two folds with the mark ✕ and the words 'failed step'. Pressing it reads the step in full in the pane: its head, its whole error, its logs and what came next",
+        does="a step that failed, as its own row between two folds with the mark ✕ and the words 'failed step'. Pressing it reads the step in full in the pane: its head, its whole error, its logs and what came next. A failed agent turn is not a second row: in the whole timeline it is its turn row marked failed, and in the Problems view it is a failed row that opens the turn",
     )
     activity_gate = Button(
         '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev[data-kind="gate"]',
@@ -241,12 +247,12 @@ class RunDetail(Screen):
     activity_retry_row = Button(
         '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev[data-kind="retry"]',
         "backend retry",
-        does="a backend retry, as its own row with the mark ! and the words 'backend retry'. It names the node and, once the node's own span is stored, the attempt and the delay, because the retry note sits on that span. The row itself appears as soon as the retried turn's span is stored, and reads 'turn started again' until then. Pressing it shows its name, time and one-line result in the pane",
+        does="a backend retry, as its own row with the mark ! and the words 'backend retry'. It is an agent turn after the first of a visit to a node, which the backend started again, as the Overview's attention tile counts it. It reads '<node> turn started again', with the wait and the attempt only when the backend recorded them. Pressing it reads the retry in the pane",
     )
     activity_churn = Button(
         '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev[data-kind="churn"]',
         "churn alert",
-        does="a churn alert, as its own row with the mark ! and the words 'churn alert'. It is the same alert the Overview's attention tile counts, replayed from the stored spans, so it comes back after groom restarts. Pressing it shows its name, time and one-line result in the pane",
+        does="a churn alert, as its own row with the mark ! and the words 'churn alert'. It is the same alert the Overview's attention tile counts, replayed from the stored spans, so it comes back after groom restarts. Its row and its reading in the pane head with 'CHURN', and its accessible name keeps 'churn alert'. Pressing it reads the alert in the pane",
     )
     activity_running = Button(
         '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev.live',
@@ -278,6 +284,26 @@ class RunDetail(Screen):
         "Work item",
         does="the selector at the left of the timeline's bar. Its first option, 'All work items', shows every item. Each other option is a work item of the run, and 'outside any work item' holds the turns with none. Choosing one limits the timeline to it, and the search applies within it. J, k and e pressed while it has the focus move nothing in the timeline. It keeps one width whatever its options",
         options=("All work items",),
+    )
+    activity_problems = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] .feedbar button.fchip.prob',
+        "Problems",
+        does="the control after 'Only' in the timeline's bar, reading 'Problems' with the count. The count is the one the Overview's attention tile shows: failed steps, backend retries, failed gate checks and churn alerts, and an answered gate is not one. It exposes its state as aria-pressed and works from Enter and Space. Pressing it narrows the timeline to the problem rows under their work item and pass headings, so the number of rows equals the count, and pressing it again restores the whole timeline. A failed agent turn is one failed row that opens its turn. When the selected row is not a problem, pressing it selects and reads the newest problem row and keeps it in view. A selected problem row stays selected, and turning the view off keeps it. Search and the work item selector apply inside the view, and e walks the same rows the view lists",
+    )
+    activity_tab_count = Text(
+        "#detail-activity-count",
+        "problems",
+        does="on the Activity tab, 'N problem' or 'N problems' in words beside the tab's name when the count is above zero, and nothing at zero. It equals the Problems count of the Overview's attention tile and of the control",
+    )
+    activity_no_problems = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .tl .detail-empty:has(button.show-all)',
+        "This run has no problems.",
+        does="in the Problems view of a run with no problems, 'This run has no problems.' announced as a status, and the tab shows no count",
+    )
+    activity_show_all = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] button.show-all',
+        "Show the whole timeline",
+        does="turns the Problems view off and restores the whole timeline",
     )
     activity_mark = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .tl mark',
@@ -319,10 +345,25 @@ class RunDetail(Screen):
         "turn",
         does="one agent turn: its start time, its node, its one-line result, its duration and its cost. Its accessible name says the node, the state in words (running, finished, failed or ended with no record), when it started, the figures and the result. Pressing it, by mouse or by keyboard, opens the turn in the reading pane beside the list and marks the row with aria-current. The turn reads as it did before the list was grouped",
     )
+    activity_no_problem_match = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .tl .detail-empty:has(button.clear-search)',
+        "No problems",
+        does="in the Problems view, 'No problems in this work item.' with 'Clear the filters' when the work item selector leaves none, and 'No problems match “<text>”.' with 'Clear the search' when the search leaves none",
+    )
     turn_head = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .rd > .rd-head',
         "turn header",
         does="for a turn, the node, the work item, a chip that says running, finished, failed or no record, the flow and its pass, the visit, the model, the duration, the cost and the output tokens. A turn outside any flow shows no pass. A running turn shows its elapsed time, reads its cost as landing at the turn's end, and leaves out the figures it cannot know yet. For a backend retry or a churn alert, the head holds the row's name, its work item, its flow and pass and its time, and the body holds what happened",
+    )
+    retry_reading = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd.rd-retry',
+        "backend retry",
+        does="for a backend retry, the head reads 'backend retry', its work item, the chip 'problem', its pass and its time. Under 'What happened' it says the backend started the node's turn again after the attempt before it ended. It adds that the attempt failed with its reason only when that attempt's span ended in error, and the wait only when the backend recorded one, because the spans hold no other cause. 'What came next' says whether this attempt finished, failed or was started again, with an 'Open that turn' button that opens the retried turn",
+    )
+    churn_reading = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .rd.rd-churn',
+        "CHURN",
+        does="for a churn alert, the head reads 'CHURN', its work item, the chip 'problem', its pass and its time. Under 'What happened' it says the node ran N times in a row on the work item with the same labels, so the run may be going round in circles. 'What came next' names the row after the alert, with a button that opens it",
     )
     step_head = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .rd.rd-step > .rd-head',

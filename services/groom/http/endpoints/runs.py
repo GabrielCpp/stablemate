@@ -47,6 +47,7 @@ ACTIVITY_SOURCE = (
     "groom/groom/flows.py",
     "groom/groom/live_history.py",
     "groom/groom/live_transcript.py",
+    "groom/groom/problems.py::found",
     "groom/groom/transcript_parse.py",
     STORE,
 )
@@ -128,7 +129,7 @@ class ReadActivity(Endpoint):
     query = Object(logs=Field(Int(), required=False, does="1 adds the run's info logs at their place in the timeline"))
     answers = (Answer(200, ACTIVITY, "the run's turns oldest first in rows, and the same turns grouped by work item, flow pass and visit in items"),)
     source = (APP + "run_activity", APP + "_timeline", APP + "_live_turns", APP + "_standing", *ACTIVITY_SOURCE)
-    does = "Reads one run's agent turns oldest first in rows, and the same turns in items, grouped by work item, flow pass and visit with the steps, gates, retries and churn alerts around them; logs=1 adds its info logs at their place."
+    does = "Reads one run's agent turns oldest first in rows, and the same turns in items, grouped by work item, flow pass and visit with the steps, gates, retries and churn alerts around them; logs=1 adds its info logs at their place. Each row that is a problem carries problem true, and a run's problem rows are as many as problems."
     carries = actions.ReadActivity
 
 
@@ -168,7 +169,7 @@ class ReadEntry(Endpoint):
     method = "GET"
     path = "/api/run/{run_id}/entry/{key}"
     params = Object("Entry", run_id=Field(RUN_ID), key=Field(Str(), does="the key of a step, gate, retry or churn alert"))
-    answers = (Answer(200, SERVED, "a step with its head (name, work item, flow pass, state of failed, passed or running, duration and error class), its whole error, up to 500 of its logs with time, level, node and message and whether earlier ones were cut, and what came next with the key of that row when it is one. A gate with its head, its state of open, answered or ended, its wait, its question and the answer of its own asking from the gate file, and what came next"), Answer(404, ERROR, "the run has no step or gate under this key"))
+    answers = (Answer(200, SERVED, "a step with its head (name, work item, flow pass, state of failed, passed or running, duration and error class), its whole error, up to 500 of its logs with time, level, node and message and whether earlier ones were cut, and what came next with the key of that row when it is one. A gate with its head, its state of open, answered or ended, its wait, its question and the answer of its own asking from the gate file, and what came next. A backend retry or a churn alert with its head, what happened and what came next, which for a retry is the key of the retried turn"), Answer(404, ERROR, "the run has no step or gate under this key"))
     source = (APP + "run_entry", APP + "_entry", "groom/groom/activity.py::entry")
     does = "Reads one step, operator gate, backend retry or churn alert of the run in full. The step the run is in now and a gate still open read from the run's live state, because neither has a stored span yet."
     carries = actions.ReadEntry

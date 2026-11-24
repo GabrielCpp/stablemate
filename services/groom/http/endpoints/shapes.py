@@ -440,7 +440,7 @@ ACTIVITY = Object(
     run_id=Field(RUN_ID),
     rows=Field(List(ENTRY), does=EMPTY_BECAUSE),
     items=Field(List(ENTRY), does=EMPTY_BECAUSE),
-    problems=Field(Int()),
+    problems=Field(Int(), does="the run's problem count, by the same definition as the overview's standing.problems: failed steps, backend retries, failed gate checks and churn alerts"),
     log_count=Field(Int()),
     as_of=Field(Num(), opaque="the server's clock"),
 )
