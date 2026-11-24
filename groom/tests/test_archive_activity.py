@@ -10,11 +10,10 @@ from unittest.mock import patch
 
 from litestar.testing import TestClient
 from test_activity_tab_dynamic import FIRST, SECOND, SESSION, _record, _turn_attrs
-from test_archive_history import every_archive_worker_busy
 from test_history import seed
 from test_run_clock import _DB, span
 
-from groom import activity, archive, state, store, turns
+from groom import activity, archive, pools, state, store, turns
 from groom import app as groom_app
 
 DAY = 86400.0
@@ -134,7 +133,8 @@ def test_an_archive_whose_files_are_gone_answers_gone_on_every_activity_route() 
     assert set(answers) == {410}
 
 
-def test_an_archive_read_holds_an_archive_pool_worker_and_leaves_the_query_pool_free() -> None:
+def test_every_archive_activity_route_reads_on_the_archive_pool_and_never_on_the_query_pool() -> None:
+    tails = ("activity", f"activity/{FIRST}", "records", "search?q=said", "entry/step:none")
     with _DB():
         _archived_turns()
         answers: list[int] = []
@@ -151,10 +151,11 @@ def test_an_archive_read_holds_an_archive_pool_worker_and_leaves_the_query_pool_
 
 
 def test_an_archive_read_enters_the_archive_inside_the_pooled_thread_and_drops_an_unreadable_index() -> None:
-    seen: list[str] = []
+    seen: list[tuple[str, bool]] = []
 
     def reads(*args, **kwargs):
-        seen.append(threading.current_thread().name)
+        entered = store.read_connection() is not store.STORE.read_connection()
+        seen.append((threading.current_thread().name, entered))
         raise sqlite3.DatabaseError("file is not a database")
 
     with _DB():
@@ -167,4 +168,7 @@ def test_an_archive_read_enters_the_archive_inside_the_pooled_thread_and_drops_a
         after = (folder / archive.INDEX_FILE).exists()
     assert built and not after
     assert failed == 500
-    assert seen and seen[0] != threading.current_thread().name
+    assert seen
+    name, entered = seen[0]
+    assert name.startswith(f"groom-{pools.ARCHIVE.name}")
+    assert entered
