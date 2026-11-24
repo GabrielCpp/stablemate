@@ -17,7 +17,7 @@ The pool is every summary of the workflow, in the store and the archives, whatev
 
 A run that did not end in success is not compared anywhere. Its table cell, its tile and its By node show no comparison, and the tile says it was not compared and why.
 
-By node of an ended run reads the medians of per-run node means from the stored summaries, so it holds for an archived run with no span scan. This overturns the norm cache as the source of the By node median in `the-breakdown-traces-cost-to-a-node-or-a-work-item`, for ended runs only. The live strip and the By node of a live run keep the norm, so the two figures may differ for a node. An ended run's cell is a bare signed percent in plain ink so it agrees with the History column.
+By node of an ended run reads the medians of per-run node means from the stored summaries, so it holds for an archived run with no span scan. The pool is the comparable runs, the same as for the cost per item, so the N in its heading and the count in the tile and the totals name one set of runs. A run that is not itself comparable compares no node. This overturns the norm cache as the source of the By node median in `the-breakdown-traces-cost-to-a-node-or-a-work-item`, for ended runs only. The live strip and the By node of a live run keep the norm, so the two figures may differ for a node. An ended run's cell is a bare signed percent in plain ink so it agrees with the History column.
 
 A difference is a signed percent with a true minus sign and never a color alone.
 
