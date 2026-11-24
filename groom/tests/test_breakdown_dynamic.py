@@ -137,6 +137,21 @@ def test_the_node_view_compares_each_mean_with_the_median_of_successful_runs_onl
             page.close()
 
 
+def test_a_live_runs_node_faster_than_its_median_keeps_the_plain_minus_it_always_read():
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    with _seeded(ok=5, failed=6):
+        page = _open(live)
+        try:
+            _pick_run(page, RUN)
+            _view(page, "By node").click()
+            page.get_by_role("table", name="Time and cost per node").wait_for()
+            review = _node_rows(page)["review"][5]
+        finally:
+            page.close()
+    assert review == "-50%", review
+
+
 def test_with_fewer_than_five_comparable_runs_the_comparison_is_blank_and_says_why():
     from playwright.sync_api import expect
 

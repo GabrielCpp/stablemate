@@ -814,8 +814,8 @@ function fmtEach(value) {
   return value >= 10 ? "$" + Math.round(value).toLocaleString("en-US") : fmtUsd(value);
 }
 
-function fmtSigned(percent) {
-  return (percent < 0 ? "\u2212" : "+") + Math.abs(percent).toFixed(0) + "%";
+function fmtSigned(percent, minus = "\u2212") {
+  return (percent < 0 ? minus : "+") + Math.abs(percent).toFixed(0) + "%";
 }
 
 function fmtTokens(count) {
@@ -1139,7 +1139,7 @@ function medianCell(row, ended) {
   }
   const mean = row.time_s / row.samples;
   const change = ((mean - norm.median_s) / norm.median_s) * 100;
-  const text = fmtSigned(change);
+  const text = fmtSigned(change, ended ? undefined : "-");
   const title = "mean " + fmtSpan(mean) + ", median " + fmtSpan(norm.median_s) + " across " + plural(norm.runs, "run", "runs");
   if (ended) return html`<span title=${title}>${text}</span>`;
   return change >= MEDIAN_WARN
