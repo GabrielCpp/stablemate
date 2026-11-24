@@ -18,6 +18,7 @@ from ostler.book import (STDERR, Action, Actor, BookError, Collection, Command, 
                          State, Str, Switch, Transaction, Undeclared, Unique, Watched)
 from ostler.book.inputs import classes, twin_classes, vary
 from ostler.book.runner import attempt
+from ostler._vendor.stablemate_core import books
 
 ROOT = Path(__file__).resolve().parents[2]
 DAY = date(2026, 11, 4)
@@ -260,34 +261,52 @@ def test_the_environment_the_book_declares_is_all_the_program_sees():
         sandbox.discard()
 
 
+def _own_book_home() -> Path | None:
+    try:
+        home = books.book_home(ROOT)
+    except Exception:
+        return None
+    return home if (home / "services" / "stablemate" / "farrier").is_dir() else None
+
+
+OWN_BOOK_HOME = _own_book_home()
+own_book = pytest.mark.skipif(OWN_BOOK_HOME is None, reason="stablemate's own book is not in the artifacts folder of this machine")
+
+
 def _book(arguments: list[str], extra: str = "") -> subprocess.CompletedProcess[str]:
     env = dict(os.environ)
+    if OWN_BOOK_HOME is not None:
+        env["STABLEMATE_ARTIFACTS_DIR"] = str(OWN_BOOK_HOME)
     env["PATH"] = extra + str(Path(sys.executable).parent) + os.pathsep + env.get("PATH", "")
     return subprocess.run([sys.executable, "-m", "ostler.book", *arguments], cwd=ROOT, env=env, capture_output=True, text=True,
                           check=False)
 
 
+@own_book
 def test_the_farrier_book_checks_clean():
-    done = _book(["check", "services.farrier"])
+    done = _book(["check", "services.stablemate.farrier"])
     assert done.returncode == 0, done.stdout + done.stderr
     assert done.stdout.strip().endswith("check: 0 findings")
 
 
-@pytest.mark.parametrize("module", ["services.groom.http", "services.groom.web"])
+@own_book
+@pytest.mark.parametrize("module", ["services.stablemate.groom.http", "services.stablemate.groom.web"])
 def test_a_book_whose_fixtures_mint_names_checks_clean(module: str):
     done = _book(["check", module])
     assert done.returncode == 0, done.stdout + done.stderr
     assert "check: 0 findings" in done.stdout
 
 
+@own_book
 @pytest.mark.whole_run
 def test_the_farrier_book_runs_green_against_the_current_farrier(tmp_path: Path):
-    done = _book(["run", "services.farrier", "--out", str(tmp_path / "out")])
+    done = _book(["run", "services.stablemate.farrier", "--out", str(tmp_path / "out")])
     assert done.returncode == 0, done.stdout + done.stderr
     assert " pass, 0 known defects, 0 fail" in done.stdout
     assert "Every declared answer and field was seen." in done.stdout
 
 
+@own_book
 def test_a_starter_config_with_a_wrong_default_turns_the_farrier_book_red(tmp_path: Path):
     copy = tmp_path / "copy"
     shutil.copytree(ROOT / "farrier" / "farrier", copy / "farrier")
@@ -298,7 +317,7 @@ def test_a_starter_config_with_a_wrong_default_turns_the_farrier_book_red(tmp_pa
     wrapper = bin_dir / "farrier"
     wrapper.write_text(f'#!/bin/sh\nPYTHONPATH={copy} exec {sys.executable} -c "import sys; from farrier.cli import main; sys.exit(main())" "$@"\n')
     wrapper.chmod(0o755)
-    done = _book(["run", "services.farrier", "--journey", "SetUpARepo", "--partial", "--out", str(tmp_path / "out")],
+    done = _book(["run", "services.stablemate.farrier", "--journey", "SetUpARepo", "--partial", "--out", str(tmp_path / "out")],
                  extra=f"{bin_dir}{os.pathsep}")
     assert done.returncode == 1, done.stdout + done.stderr
     assert "at: farrier init --repo ." in done.stdout

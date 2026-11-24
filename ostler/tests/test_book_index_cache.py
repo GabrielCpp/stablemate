@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -14,7 +15,7 @@ from conftest import write
 from ostler.book import cli
 from ostler.book import index as book_index
 
-ROOT = Path(__file__).resolve().parents[2]
+FIXTURE = Path(__file__).parent / "fixtures" / "book_todo"
 
 
 @pytest.fixture
@@ -100,16 +101,18 @@ def test_two_book_folders_with_one_module_name_get_two_cache_files(tmp_path, cac
 
 
 def test_check_with_no_cache_reports_no_index_finding_and_writes_the_cache(tmp_path):
+    root = tmp_path / "root"
+    shutil.copytree(FIXTURE, root, ignore=shutil.ignore_patterns("__pycache__"))
     env = dict(os.environ)
     env["XDG_CACHE_HOME"] = str(tmp_path / "xdg")
     env.pop("STABLEMATE_CACHE_DIR", None)
     env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env.get("PATH", "")
-    done = subprocess.run([sys.executable, "-m", "ostler.book", "check", "services.farrier"], cwd=ROOT, env=env,
+    done = subprocess.run([sys.executable, "-m", "ostler.book", "check", "services.digest"], cwd=root, env=env,
                           capture_output=True, text=True, check=False)
     assert done.returncode == 0, done.stdout + done.stderr
     assert done.stdout.strip().endswith("check: 0 findings")
     assert list((tmp_path / "xdg" / "stablemate" / "book-index").glob("*.tsv"))
-    assert not (ROOT / "services" / "farrier" / "index.tsv").exists()
+    assert not (root / "services" / "digest" / "index.tsv").exists()
 
 
 @pytest.mark.parametrize(
