@@ -449,9 +449,9 @@ BUILTIN_DOC_ROOTS: dict[str, str] = {
 
 
 def doc_roots(root: Path, kinds: Sequence[dynamic_registry.TemplateKind] | None = None) -> dict[str, Path]:
-    """Where each kind of document lives: the kept kinds under *root*'s ``docs/``, and the stand-in shelves at the top level of the artifacts dir."""
-    roots = {key: root / default for key, default in BUILTIN_DOC_ROOTS.items()}
+    """Where each kind of document lives: milestones under *root*'s ``docs/``, decisions and ADRs under ``docs/`` of the artifacts dir, epics, specs and the register at the top level of the artifacts dir, and each template kind under *root*."""
     artifacts = core_config.resolve_artifacts_dir()
+    roots = {key: (root if key == "milestones" else artifacts) / default for key, default in BUILTIN_DOC_ROOTS.items()}
     roots["epics"] = artifacts / "epics"
     roots["specs"] = artifacts / "specs"
     roots["register"] = artifacts / "backlogs"

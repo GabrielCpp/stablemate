@@ -292,7 +292,7 @@ class BacklogDropWithoutReason(Command):
 
 
 class FileDecision(Command):
-    does = "File an empty decision use-x for the repository acme, with a one-line summary."
+    does = "File an empty decision use-x for the repository acme in the artifacts folder, with a one-line summary."
     program = "ostler"
     argv = ("--full-ids", "decisions", "add", "use-x", "--repo", "acme", "--summary", "Use x")
     args = ARGS
@@ -301,7 +301,7 @@ class FileDecision(Command):
         Exit(1, Lines(), "a decision with the slug exists"),
     )
     carries = act.FileDecision
-    source = ("ostler/ostler/decisions.py",)
+    source = ("ostler/ostler/decisions.py", "ostler/ostler/model.py::doc_roots")
 
 
 class TemplateNew(Command):

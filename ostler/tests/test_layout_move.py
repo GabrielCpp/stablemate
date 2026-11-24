@@ -79,10 +79,10 @@ def test_an_adr_folder_prints_a_move_to_a_slug_folder(tmp_path: Path) -> None:
         load(tmp_path)
 
     message = str(raised.value)
-    assert f"mv {artifacts()}/adr/acme-1.md {tmp_path.resolve()}/docs/adrs/guard-every-total/adr.md" in message
+    assert f"mv {artifacts()}/adr/acme-1.md {artifacts()}/docs/adrs/guard-every-total/adr.md" in message
     shell(message)
     load(tmp_path)
-    assert (tmp_path / "docs/adrs/guard-every-total/adr.md").is_file()
+    assert (artifacts() / "docs/adrs/guard-every-total/adr.md").is_file()
 
 
 def test_a_docs_epics_folder_prints_a_move_to_the_artifacts_epics(tmp_path: Path) -> None:

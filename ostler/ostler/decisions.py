@@ -1,4 +1,4 @@
-"""Decision filing — one ``decision.md`` per decision, in a folder named by its slug under the docs home's ``docs/decisions``."""
+"""Decision filing — one ``decision.md`` per decision, in a folder named by its slug under ``docs/decisions`` of the artifacts folder."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ _SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
 
 def decisions_root(graph: Graph) -> Path:
-    """Where this graph's decisions live: ``docs/decisions`` under its docs home."""
+    """Where this graph's decisions live: ``docs/decisions`` in the artifacts folder."""
     return graph.doc_roots["decisions"]
 
 
@@ -32,7 +32,7 @@ def _refusal(message: str) -> Result:
 
 
 def slug_problem(slug: str) -> str:
-    """Why *slug* cannot name a folder under the docs home, or an empty string when it can."""
+    """Why *slug* cannot name a folder under the artifacts folder, or an empty string when it can."""
     if _SLUG.fullmatch(slug) and len(slug) <= SLUG_MAX:
         return ""
     return (

@@ -312,7 +312,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     dc = sub.add_parser("decisions", help="the operator's standing decisions")
     dcs = dc.add_subparsers(dest="op", required=True)
-    dca = dcs.add_parser("add", help="file an empty decision at docs/decisions/<slug>/decision.md")
+    dca = dcs.add_parser("add", help="file an empty decision at docs/decisions/<slug>/decision.md of the artifacts folder")
     dca.add_argument("slug", help="short kebab-case name of the decision")
     dca.add_argument("--repo", default="",
                      help="the repository the decision is about (default: the one holding the cwd)")

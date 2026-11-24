@@ -1,4 +1,4 @@
-"""The Decision record — ``docs/adrs/<slug>/adr.md`` under the docs home, proposed from a cluster of Register records."""
+"""The Decision record — ``docs/adrs/<slug>/adr.md`` under the artifacts folder, proposed from a cluster of Register records."""
 
 from __future__ import annotations
 
@@ -110,9 +110,9 @@ def _refusal(message: str) -> Result:
 
 
 def _commit(graph: Graph, target: Path, message: str) -> bool:
-    """Commit exactly *target* in the artifacts repo, hooks off; False when the docs home is not that repo or there was nothing new to commit."""
+    """Commit exactly *target* in the artifacts repo, hooks off; False when *target* is not in an artifacts folder that is a repo or there was nothing new to commit."""
     root = core_config.resolve_artifacts_dir()
-    if graph.root.resolve() != root.resolve() or not (root / ".git").exists():
+    if not target.resolve().is_relative_to(root.resolve()) or not (root / ".git").exists():
         return False
     rel = str(target.resolve().relative_to(root.resolve()))
     git = ["git", "-C", str(root)]
@@ -140,7 +140,7 @@ def propose(
     consequences: str,
     evidence: Iterable[str],
 ) -> Result:
-    """Write a proposed decision named *slug* for *evidence* and bind each record to it; the decision file alone is committed, and only where the docs home is the artifacts repo."""
+    """Write a proposed decision named *slug* for *evidence* and bind each record to it; the decision file alone is committed, and only where the artifacts folder is a repo."""
     problem = decisions_mod.slug_problem(slug)
     if problem:
         return _refusal(problem)

@@ -38,8 +38,13 @@ def register_root(graph: Graph) -> Path:
     return graph.doc_roots["register"]
 
 
+def decisions_root_in(root: Path) -> Path:
+    """Where the decisions live for *root*: ``docs/decisions`` in the artifacts dir."""
+    return doc_root_in(root, "decisions")
+
+
 def adr_root_in(root: Path) -> Path:
-    """Where the decision records live for *root*: ``docs/adrs`` under its docs home."""
+    """Where the decision records live for *root*: ``docs/adrs`` in the artifacts dir."""
     return doc_root_in(root, "adrs")
 
 

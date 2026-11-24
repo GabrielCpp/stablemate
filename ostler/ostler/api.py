@@ -554,7 +554,7 @@ class Ostler:
         return self._apply(register_mod.filing_result(filing))
 
     def decision_add(self, slug: str, *, summary: str, repo: str = "") -> Result:
-        """File an empty decision under ``docs/decisions/<slug>/`` of the docs home (``ostler decisions add``); *repo* defaults to the repository holding this instance's root."""
+        """File an empty decision under ``docs/decisions/<slug>/`` of the artifacts folder (``ostler decisions add``); *repo* defaults to the repository holding this instance's root."""
         start = self._root if self._root is not None else Path.cwd()
         return decisions_mod.add(
             self._fresh(), slug, repo=repo or decisions_mod.default_repo(start), summary=summary,

@@ -68,6 +68,19 @@ def write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
+def git(*argv: str) -> None:
+    subprocess.run(["git", *argv], check=True, capture_output=True, timeout=30)
+
+
+def repository(path: Path) -> Path:
+    git("init", "--quiet", str(path))
+    write(path / "README.md", "# repo\n")
+    git("-C", str(path), "add", "README.md")
+    git("-C", str(path), "-c", "user.name=t", "-c", "user.email=t@example.com",
+        "commit", "--quiet", "-m", "init")
+    return path
+
+
 def write_json(path: Path, data: dict) -> None:
     """A JSON file under a test root."""
     write(path, json.dumps(data, indent=2) + "\n")

@@ -1,4 +1,4 @@
-"""The Decision record: ``adr.propose`` writes ``docs/adrs/<slug>/adr.md`` under the docs home and binds its evidence."""
+"""The Decision record: ``adr.propose`` writes ``docs/adrs/<slug>/adr.md`` under the artifacts folder and binds its evidence."""
 
 from __future__ import annotations
 
@@ -74,7 +74,7 @@ def test_three_records_yield_one_proposed_decision_with_repos_and_evidence(tmp_p
 
     assert result.ok, result.message
     assert result.entity_id == "guard-every-total"
-    target = adr_file(tmp_path)
+    target = adr_file(artifacts())
     assert target.is_file()
     decision = adr.Decision.read(target)
     assert decision.status == "proposed"
@@ -118,17 +118,13 @@ def test_in_the_artifacts_repo_only_the_adr_is_committed(tmp_path: Path) -> None
     ]
 
 
-def test_outside_the_artifacts_repo_nothing_is_committed(tmp_path: Path) -> None:
-    core_config.ensure_artifacts_repo()
-    graph, evidence = shelve(tmp_path)
-    head = head_of_artifacts()
+def test_an_artifacts_folder_that_is_no_repository_commits_nothing(tmp_path: Path) -> None:
+    target = artifacts() / "docs" / "adrs" / "x" / "adr.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("x\n", encoding="utf-8")
 
-    result = propose(graph, evidence)
-
-    assert result.ok, result.message
-    assert adr_file(tmp_path).is_file()
-    assert head_of_artifacts() == head
-    assert not (artifacts() / "docs" / "adrs").exists()
+    assert adr._commit(load(tmp_path), target, "docs: x") is False
+    assert not (artifacts() / ".git").exists()
 
 
 def test_a_taken_slug_is_refused_and_the_first_decision_stays(tmp_path: Path) -> None:
@@ -136,13 +132,13 @@ def test_a_taken_slug_is_refused_and_the_first_decision_stays(tmp_path: Path) ->
     first = propose(graph, evidence[:1])
     assert first.ok, first.message
     graph = load(tmp_path)
-    kept = adr_file(tmp_path).read_text(encoding="utf-8")
+    kept = adr_file(artifacts()).read_text(encoding="utf-8")
     before = {i: record_text(graph, i) for i in evidence}
 
     result = propose(graph, evidence[1:])
 
     assert not result.ok and "already exists" in result.message
-    assert adr_file(tmp_path).read_text(encoding="utf-8") == kept
+    assert adr_file(artifacts()).read_text(encoding="utf-8") == kept
     assert {i: record_text(load(tmp_path), i) for i in evidence} == before
 
 
@@ -153,7 +149,7 @@ def test_a_slug_that_is_not_a_slug_is_refused(tmp_path: Path, slug: str) -> None
     result = propose(graph, evidence, slug=slug)
 
     assert not result.ok
-    assert not (tmp_path / "docs" / "adrs").exists()
+    assert not (artifacts() / "docs" / "adrs").exists()
 
 
 def test_no_evidence_is_refused(tmp_path: Path) -> None:
@@ -162,7 +158,7 @@ def test_no_evidence_is_refused(tmp_path: Path) -> None:
     result = propose(graph, [])
 
     assert not result.ok
-    assert not (tmp_path / "docs" / "adrs").exists()
+    assert not (artifacts() / "docs" / "adrs").exists()
 
 
 def test_an_unknown_evidence_id_is_refused_and_named_and_nothing_is_written(tmp_path: Path) -> None:
@@ -172,7 +168,7 @@ def test_an_unknown_evidence_id_is_refused_and_named_and_nothing_is_written(tmp_
     result = propose(graph, [*evidence, "acme-404"])
 
     assert not result.ok and "acme-404" in result.message
-    assert not list((tmp_path / "docs" / "adrs").glob("*/adr.md"))
+    assert not list((artifacts() / "docs" / "adrs").glob("*/adr.md"))
     assert {i: record_text(load(tmp_path), i) for i in evidence} == before
 
 
@@ -186,7 +182,7 @@ def test_a_record_bound_to_another_decision_is_refused_and_named(tmp_path: Path)
     result = propose(graph, evidence)
 
     assert not result.ok and "acme-1" in result.message
-    assert [p.parent.name for p in (tmp_path / "docs" / "adrs").glob("*/adr.md")] == [first.entity_id]
+    assert [p.parent.name for p in (artifacts() / "docs" / "adrs").glob("*/adr.md")] == [first.entity_id]
     assert {i: record_text(load(tmp_path), i) for i in evidence} == before
 
 
@@ -220,7 +216,7 @@ def test_a_failed_commit_restores_every_file_and_removes_the_adr(
 def test_decisions_lists_what_parsed_and_names_what_did_not(tmp_path: Path) -> None:
     graph, evidence = shelve(tmp_path)
     result = propose(graph, evidence)
-    broken = tmp_path / "docs" / "adrs" / "broken" / "adr.md"
+    broken = artifacts() / "docs" / "adrs" / "broken" / "adr.md"
     broken.parent.mkdir(parents=True)
     broken.write_text("no frontmatter\n", encoding="utf-8")
 
