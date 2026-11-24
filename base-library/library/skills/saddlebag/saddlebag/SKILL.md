@@ -304,7 +304,9 @@ openssl rand -hex 24 | saddlebag secret set api_db
 A value that belongs to a real account comes from the
 operator, typed into their own terminal.
 
-`secret tag` / `untag NAME K=V...` adjust tags. `secret unset NAME --field F` forgets
+`secret edit NAME --username U` changes the username after creation. `--description` and
+`--var` work the same way, and an empty value clears the field. The values stay as they
+were. `secret tag` / `untag NAME K=V...` adjust tags. `secret unset NAME --field F` forgets
 one value. `secret remove NAME` deletes the secret and every value it holds. Removal is
 permanent, so ask the operator before you run it.
 
