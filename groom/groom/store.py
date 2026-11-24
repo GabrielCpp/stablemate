@@ -1132,6 +1132,32 @@ def _loop_row(node: str, items: dict[tuple[str, str], list[Lap]]) -> dict[str, A
 
 _VERDICT_SUFFIXES = ("_verdict", "_disposition", "_failure_class", "_refutation_class")
 
+_WORKHORSE_READ = frozenset(
+    {
+        "workhorse.cut",
+        "workhorse.depth",
+        "workhorse.flow",
+        "workhorse.gate_path",
+        "workhorse.gate_question",
+        "workhorse.node",
+        "workhorse.out.gate",
+        "workhorse.out.reason",
+        "workhorse.out.status",
+        "workhorse.span_kind",
+        "workhorse.state",
+        "workhorse.terminal",
+        "workhorse.visit.slug",
+        "workhorse.wait_kind",
+        "workhorse.wait_outcome",
+    }
+)
+
+
+@functools.lru_cache(maxsize=4096)
+def _kept_attr(key: str) -> bool:
+    """Whether a run span read keeps attribute ``key``."""
+    return not key.startswith("workhorse.") or key in _WORKHORSE_READ or key.endswith(_VERDICT_SUFFIXES)
+
 
 def _profile_turn_summary(turns: list[dict[str, Any]]) -> dict[str, Any]:
     work_items = {
@@ -1338,24 +1364,25 @@ def _profile_time_partition(
     }
 
 
-def _run_spans(run: str) -> list[dict[str, Any]]:
-    rows = (
-        read_connection()
-        .execute(
-            f"{_charges('run_id = ?')}SELECT {_SPAN_COLUMNS}, {_duration} AS profile_duration_ms,"  # noqa: S608
-            f" {_charge} AS profile_cost_usd, {_output} AS profile_output_tokens,"
-            f" {_input} AS profile_input_tokens, {_cache_read} AS profile_cache_read_tokens,"
-            f" {_cache_write} AS profile_cache_write_tokens,"
-            " est_cost_usd, spans.rowid AS row_id, resume_generation"
-            " FROM spans LEFT JOIN charges USING (span_id)"
-            " WHERE run_id = ? ORDER BY start_ts",
-            (run, run),
-        )
-        .fetchall()
+def _run_span(row: sqlite3.Row, keep: Callable[[str], bool]) -> dict[str, Any]:
+    """One span row as a dict, with the attributes ``keep`` accepts."""
+    span = {key: row[key] for key in row.keys() if key != "attrs_json"}  # noqa: SIM118
+    span["attrs"] = {k: v for k, v in json.loads(row["attrs_json"] or "{}").items() if keep(k)}
+    return span
+
+
+def _run_spans(run: str, keep: Callable[[str], bool] = _kept_attr) -> list[dict[str, Any]]:
+    cursor = read_connection().execute(
+        f"{_charges('run_id = ?')}SELECT {_RUN_SPAN_COLUMNS}, {_duration} AS profile_duration_ms,"  # noqa: S608
+        f" {_charge} AS profile_cost_usd, {_output} AS profile_output_tokens,"
+        f" {_input} AS profile_input_tokens, {_cache_read} AS profile_cache_read_tokens,"
+        f" {_cache_write} AS profile_cache_write_tokens,"
+        " est_cost_usd, spans.rowid AS row_id, resume_generation"
+        " FROM spans LEFT JOIN charges USING (span_id)"
+        " WHERE run_id = ? ORDER BY start_ts",
+        (run, run),
     )
-    return [
-        {**dict(row), "attrs": json.loads(row["attrs_json"] or "{}")} for row in rows
-    ]
+    return [_run_span(row, keep) for row in cursor]
 
 
 @reading
@@ -1613,6 +1640,11 @@ _SPAN_COLUMNS = (
     " run_dir, start_ts, end_ts, status, attrs_json, head_start, head_end,"
     " workspace_start, workspace_end, vcs_start, vcs_end, origin_start, origin_end,"
     " branch_start, branch_end, repositories_start, repositories_end"
+)
+
+_RUN_SPAN_COLUMNS = (
+    "span_id, trace_id, parent_id, run_id, workflow, repo, branch, node, name,"
+    " run_dir, start_ts, end_ts, status, attrs_json, workspace_start, branch_start, branch_end"
 )
 
 
