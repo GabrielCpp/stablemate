@@ -1,22 +1,26 @@
 """The book searched without running it: `index` writes what `search` finds in one service to a file in
-the user cache, and `search` reads those files and the decisions as text."""
+the user cache, and `search` reads those files as text."""
 
 from __future__ import annotations
 
 import hashlib
 import importlib
 import os
+import re
 import sys
 import tempfile
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from ostler._vendor.stablemate_core import base_cache, books
-from ostler.book import decisions, pages
+from ostler.book import pages
 from ostler.book.search import Item, items, loose_hits, phrase_hits
 
 CACHE_FOLDER = "book-index"
+ESCAPED = re.compile(r"\\(.?)", re.DOTALL)
+LOWERS_TO_ASCII = ("\u0130".encode(), "\u212a".encode())
 
 
 @dataclass(frozen=True)
@@ -33,21 +37,9 @@ def escape(text: str) -> str:
 
 
 def unescape(text: str) -> list[str]:
-    lines: list[str] = []
-    current: list[str] = []
-    chars = iter(text)
-    for char in chars:
-        if char != "\\":
-            current.append(char)
-            continue
-        following = next(chars, "")
-        if following == "n":
-            lines.append("".join(current))
-            current = []
-        else:
-            current.append(following)
-    lines.append("".join(current))
-    return lines
+    if "\\" not in text:
+        return [text]
+    return ESCAPED.sub(lambda found: "\n" if found.group(1) == "n" else found.group(1), text).split("\n")
 
 
 def render(found: list[Item]) -> str:
@@ -55,9 +47,29 @@ def render(found: list[Item]) -> str:
     return "".join(row + "\n" for row in rows)
 
 
-def parse(text: str) -> list[Entry]:
+def rows_naming(data: bytes, words: Sequence[str]) -> list[str]:
+    """The rows that hold one of the words, found without decoding the rows that hold none."""
+    plain = words and all(word.isascii() and "\\" not in word for word in words)
+    if not plain or any(letter in data for letter in LOWERS_TO_ASCII):
+        return data.decode().split("\n")
+    lowered = data.lower()
+    starts: set[int] = set()
+    for word in words:
+        sought = word.encode()
+        at = lowered.find(sought)
+        while at != -1:
+            starts.add(lowered.rfind(b"\n", 0, at) + 1)
+            end = lowered.find(b"\n", at)
+            at = lowered.find(sought, end) if end != -1 else -1
+    return [data[start : end if (end := data.find(b"\n", start)) != -1 else len(data)].decode() for start in sorted(starts)]
+
+
+def parse(text: str | bytes, words: Sequence[str] = ()) -> list[Entry]:
+    """Every entry of an index text, or with `words` at least every entry a search for them can hit."""
     out: list[Entry] = []
-    for row in text.splitlines():
+    for row in rows_naming(text.encode() if isinstance(text, str) else text, words):
+        if not row:
+            continue
         kind, name, address, body, *rest = row.split("\t", 4)
         out.append(Entry(kind, name, address, tuple(unescape(body)), rest[0] if rest else ""))
     return out
@@ -79,12 +91,12 @@ def cache_path(directory: str) -> str:
 def store(path: str, text: str) -> bool:
     before = None
     if os.path.exists(path):
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             before = f.read()
     os.makedirs(os.path.dirname(path), exist_ok=True)
     handle, temporary = tempfile.mkstemp(dir=os.path.dirname(path), suffix=".tmp")
     try:
-        with os.fdopen(handle, "w") as f:
+        with os.fdopen(handle, "w", encoding="utf-8") as f:
             f.write(text)
         os.replace(temporary, path)
     except BaseException:
@@ -103,6 +115,7 @@ def newest(directory: str) -> float:
     latest = 0.0
     for here, names, files in os.walk(directory):
         names[:] = [n for n in names if n != "__pycache__"]
+        latest = max(latest, os.path.getmtime(here))
         for name in files:
             if name.endswith((".py", ".md")):
                 latest = max(latest, os.path.getmtime(os.path.join(here, name)))
@@ -128,34 +141,21 @@ def read_levels(root: str) -> dict[str, list[Entry]]:
     return found
 
 
-def read_decisions(directory: str) -> list[Entry]:
-    folder = os.path.join(directory, "decisions")
-    if not os.path.isdir(folder):
-        return []
-    out: list[Entry] = []
-    for name in sorted(os.listdir(folder)):
-        if name.endswith(".md"):
-            decision = decisions.parse(os.path.join(folder, name))
-            for number, text in decision.searchable():
-                out.append(Entry("decision", decision.slug, f"decisions/{decision.slug}.md:{number}", (text,)))
-    return out
-
-
-def entries_of(root: str, name: str) -> list[Entry]:
+def entries_of(root: str, name: str, words: Sequence[str] = ()) -> list[Entry]:
     directory = os.path.join(root, *name.split("."))
     if stale(directory):
         from ostler.book.cli import load
 
         text = build(load(name), name)
-        found = parse(text)
+        found = parse(text, words)
         try:
             store(cache_path(directory), text)
         except OSError:
             pass
     else:
-        with open(cache_path(directory)) as f:
-            found = parse(f.read())
-    return [e for e in found if e.kind != "decision"] + read_decisions(directory)
+        with open(cache_path(directory), "rb") as f:
+            found = parse(f.read(), words)
+    return found
 
 
 def folders(base: str) -> list[str]:
@@ -220,7 +220,7 @@ def cmd_search_book(args: Any) -> int:
             hint = flat_name_of(name, flat)
             raise SystemExit(f"no service {name!r} under {root}" + (f"; {moved_hint(hint, package)}" if hint else ""))
     wider = read_levels(root)
-    held = {**wider, **{name: entries_of(root, name) for name in names}}
+    held = {**wider, **{name: entries_of(root, name, args.term.lower().split()) for name in names}}
     matched = {name: phrase_hits(entries, args.term, args.kind) for name, entries in held.items()}
     if not any(matched.values()):
         matched = {name: loose_hits(entries, args.term, args.kind) for name, entries in held.items()}
