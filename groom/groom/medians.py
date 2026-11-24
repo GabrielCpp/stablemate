@@ -13,7 +13,7 @@ from groom.store import read_connection, reading
 MIN_RUNS = store.MIN_NORM_RUNS
 SUCCESS = "success"
 
-_COMPARABLE = "state = 'ready' AND ended_ts IS NOT NULL AND ending = 'success' AND cost_usd IS NOT NULL AND priced_turns > 0 AND items_done > 0"
+_COMPARABLE = "state = 'ready' AND ended_ts IS NOT NULL AND ending = 'success' AND cost_usd IS NOT NULL AND priced_turns > 0 AND items_done > 0 AND workflow != ''"
 
 
 def _each(spent: float | None, done: int | None) -> float | None:

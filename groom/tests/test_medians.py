@@ -141,6 +141,19 @@ def test_an_archived_successful_run_counts_in_the_median_of_a_run_in_the_store()
     assert comparison["vs_runs"] == 5
 
 
+def test_runs_with_no_workflow_are_never_judged_against_each_other() -> None:
+    with _DB():
+        for index in range(5):
+            _put(f"nameless-{index}", 2.0, workflow="")
+        _put("judged", 4.0, workflow="")
+        found = _compared("judged")
+        pool = medians.per_item_costs(set())
+        listing = history.listing(set())
+    assert "" not in pool
+    assert "" not in listing["medians"]
+    assert (found["per_item_usd"], found["vs_pct"], found["vs_runs"]) == (4.0, None, 0)
+
+
 def test_the_totals_median_is_per_workflow_over_every_successful_run_and_counts_them() -> None:
     with _DB():
         _pool(1.0, 2.0, 3.0, 4.0, 5.0)
