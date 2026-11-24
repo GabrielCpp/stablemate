@@ -178,6 +178,16 @@ def test_a_cursor_with_an_id_no_row_can_have_is_refused_as_a_cursor_and_not_a_se
                 records.page(RUN, cursor)
 
 
+def test_logs_of_a_run_with_no_pass_to_hold_them_are_not_counted_as_rows_the_toggle_cannot_show() -> None:
+    with _DB():
+        _logs(3)
+        counted = activity.timeline(RUN, logs=True)
+        shown = [entry for item in counted["items"] for one in item["passes"] for entry in one["entries"] if entry["kind"] == "log"]
+        listed = [one for one in records.page(RUN)["records"] if one["kind"] == "INFO"]
+    assert counted["log_count"] == len(shown) == 0
+    assert len(listed) == 3
+
+
 def test_the_activity_timeline_adds_info_logs_inside_the_pass_they_belong_to_without_splitting_a_fold() -> None:
     with _DB():
         _seed()

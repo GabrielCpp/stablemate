@@ -528,7 +528,8 @@ def timeline(run_id: str, live: LiveRows | None = None, standing: dict[str, Any]
     items = _items(run_id, groups, flows.pass_status(spans))
     if logs:
         _with_logs(items, store.run_log_rows(run_id, 1_000_000))
-    return {"run_id": run_id, "rows": rows, "items": items, "problems": len(problems.found(spans)), "log_count": store.count_logs(run_id), "as_of": time.time()}
+    holds_logs = any(item["passes"] for item in items)
+    return {"run_id": run_id, "rows": rows, "items": items, "problems": len(problems.found(spans)), "log_count": store.count_logs(run_id) if holds_logs else 0, "as_of": time.time()}
 
 
 def _record_files(run_id: str, head: dict[str, Any], archived: list[dict[str, Any]], strict: bool) -> dict[str, Path] | None:
