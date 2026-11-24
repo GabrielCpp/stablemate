@@ -871,7 +871,7 @@ def run_workspace(start: Path, named: str = "") -> str:
     return holding[0]
 
 
-ARTIFACTS_IGNORED = ("backlogs/", "epics/", "specs/", "researches/", "benchmarks/", "scratch/")
+ARTIFACTS_IGNORED = ("backlogs/", "epics/", "specs/", "researches/", "benchmarks/", "scratch/", "notes/")
 
 
 def _tracked_by_enclosing_repo(root: Path) -> bool:

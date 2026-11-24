@@ -167,7 +167,7 @@ def test_ensure_artifacts_repo_inits_ignores_session_folders_and_adds_no_remote(
     assert root == target.resolve()
     assert (root / ".git").exists()
     assert (root / ".gitignore").read_text().splitlines() == [
-        "backlogs/", "epics/", "specs/", "researches/", "benchmarks/", "scratch/",
+        "backlogs/", "epics/", "specs/", "researches/", "benchmarks/", "scratch/", "notes/",
     ]
     remotes = subprocess.run(
         ["git", "-C", str(root), "remote"], capture_output=True, text=True, check=True
@@ -182,7 +182,7 @@ def test_ensure_artifacts_repo_appends_missing_ignores_and_keeps_custom_lines(tm
 
     assert cfgmod.ensure_artifacts_repo() == root
     assert (root / ".gitignore").read_text().splitlines() == [
-        "mine", "specs/", "benchmarks/", "backlogs/", "epics/", "researches/", "scratch/",
+        "mine", "specs/", "benchmarks/", "backlogs/", "epics/", "researches/", "scratch/", "notes/",
     ]
     before = (root / ".gitignore").read_text()
     cfgmod.ensure_artifacts_repo()
