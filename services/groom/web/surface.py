@@ -97,6 +97,8 @@ EACH = """
 
 MEDIAN = '#history .h-sum span[title^="Successful runs of this workflow"]'
 
+OLD = 10 * 86400.0
+
 SUMMARY = (
     "run_id", "workflow", "repo", "branch", "state", "ending", "ended_ts", "last_ts", "active_s", "wall_s",
     "cost_usd", "est_usd", "priced_turns", "turns", "items_done", "items_total", "nodes_json",
@@ -246,13 +248,13 @@ class GroomDashboard(PageSurface):
         rows = []
         spans = []
         for n, (run, cost, estimate, items, priced, visit) in enumerate(each):
-            ended = now - 3600 * (n + 1)
+            ended = now - 3600 * (n + 1) - (OLD if judged.aged and run != own else 0)
             ending = judged.ending if run == own else "success"
             unpriced = run == own and not judged.priced
             spent = None if estimate or unpriced else cost * items
             guess = cost * items if estimate else None
             node = {"node": "qa", "kind": "agent", "visits": 1, "time_s": visit, "samples": 1, "longest_s": visit, "turns": 1, "cost_turns": priced, "cost_usd": spent, "output_tokens": 100, "retries": 0}
-            rows.append((run, workflow, "acme", "main", "ready", ending, ended, ended, 3600.0, 7200.0, spent, guess, 4 * priced, 4, items, items, json.dumps([node])))
+            rows.append((run, workflow, "acme", "main", "ready", ending, ended, ended, 3600.0, 7200.0, spent, guess, min(priced, 1) if judged.partly else 4 * priced, 4, items, items, json.dumps([node])))
             if run == own:
                 spans = self.spans(run, workflow, ended - 1000, judged, spent)
         marks = ", ".join("?" for _ in SUMMARY)
@@ -290,6 +292,7 @@ class GroomDashboard(PageSurface):
         self.browser.fill(History.workflow, "")
         self.browser.page.wait_for_selector(f"#history tr.hrow:has-text('{own}')")
         self.browser.fill(History.workflow, workflow)
+        self.browser.fill(History.range, "7" if judged.aged else "30")
         return workflow, own
 
     def express(self, request: Any, outcome: Done) -> tuple[object, ...] | None:

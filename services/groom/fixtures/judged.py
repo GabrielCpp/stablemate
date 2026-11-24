@@ -22,6 +22,8 @@ class Judged(Fixture):
     items: int = 2
     estimate: bool = False
     priced: bool = True
+    partly: bool = False
+    aged: bool = False
     visit: float = 90.0
 
     def __str__(self) -> str:
