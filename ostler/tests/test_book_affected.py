@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -333,6 +334,7 @@ def test_with_no_out_the_report_goes_to_a_temp_folder_the_output_names(monkeypat
     where, base = repo
     monkeypatch.setattr(cli, "load", lambda name: sourced_book({}))
     monkeypatch.setattr(cli, "_package_dir", lambda args: str(tmp_path))
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
     assert cli.main(["affected", "services.shelf", "--app", str(where), "--since", base]) == 0
     folder = capsys.readouterr().out.rsplit("reports: ", 1)[1].strip()
     assert Path(folder, "shelf-affected.json").exists()
