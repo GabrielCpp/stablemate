@@ -84,7 +84,7 @@ class RunDetail(Screen):
     route = "/"
     name = "Run detail"
     api = "/api"
-    sends = (request("GET", "/api/run/{id}/overview"), request("GET", "/api/archive/{id}/overview"), request("GET", "/api/run/{id}/activity"), request("GET", "/api/archive/{id}/activity"), request("GET", "/api/state"), request("GET", "/api/settings/attend"))
+    sends = (request("GET", "/api/run/{id}/overview"), request("GET", "/api/archive/{id}/overview"), request("GET", "/api/run/{id}/activity"), request("GET", "/api/archive/{id}/activity"), request("GET", "/api/archive/{id}/activity/{turn}"), request("GET", "/api/archive/{id}/entry/{key}"), request("GET", "/api/archive/{id}/records"), request("GET", "/api/archive/{id}/search"), request("GET", "/api/state"), request("GET", "/api/settings/attend"))
     root = Text("#detail .detail-head", does="the selected run's header: its state dot, repo and branch, id and state, the note of what the run is doing and, when an attendant has worked on it, the attendant link")
     repo = Text("#detail .repo-branch", "repo", does="the repo and branch of the run")
     run_id = Text("#detail .run-id", "run id", does="the whole id of the run")

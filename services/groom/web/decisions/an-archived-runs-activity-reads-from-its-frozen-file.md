@@ -1,6 +1,6 @@
 story: SM-01M6CRJQQHA6V1TEMB155R7F2K
 date: 2026-11-24
-elements: RunDetail, ReadActivityTab
+elements: RunDetail, ReadActivityTab, ReadArchivedActivityTab, ReadArchivedRecordsTab, ReadAnArchivedActivity, ReadTheRecordsOfAnArchive
 sources: groom/groom/app.py, groom/groom/archive.py, groom/groom/store.py, groom/groom/pools.py, groom/groom/assets/dashboard.js
 
 An operator who reads a run that left the live store wants what happened, not only what it cost. The Activity tab of an archived run uses the timeline, the reading pane, Raw and the search of a live run, and the dashboard's `runApi` alone switches the route from `/api/run/{id}` to `/api/archive/{id}`. A turn read shows 'Reading this turn from the archive…' while it waits.

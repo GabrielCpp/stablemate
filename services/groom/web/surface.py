@@ -5,8 +5,11 @@ from __future__ import annotations
 
 import json
 import re
+import os
 import secrets
 import sqlite3
+import subprocess
+import sys
 import time
 import urllib.request
 from contextlib import closing
@@ -15,14 +18,15 @@ from typing import Any
 from ostler.book import Browser, Done, Environment, PageSurface, Refusal, answer
 from ostler.book.screen import Interaction
 
-from ..fixtures import Judged, Push, Query, Reply, Settings
+from ..fixtures import Archived, Judged, Push, Query, Reply, Settings
 from ..model.actions import handle
 from ..model.records import Ack, Line, Panel
-from ..stack import DB
-from .activity import Note
+from ..stack import APP, DB, HOME
+from .activity import ArchiveGone, ArchivedRecords, ArchivedTab, Note
+from .archive_seed import SEED
 from .median import ITEMS, PEER_VISIT, EachCell, MedianCell, NodeCells, TileCell
 from .interactions import (
-    AnswerTheGate, FilterTheList, ReadActivity, ReadTheMedian, ReadTheOpenedRun, OpenAttendant, OpenDispatch, OpenHistory, OpenRun, OpenRuns, OpenSettings, ReportExit,
+    AnswerTheGate, FilterTheList, ReadActivity, ReadAnArchivedActivity, ReadTheMedian, ReadTheRecordsOfAnArchive, ReadTheOpenedRun, OpenAttendant, OpenDispatch, OpenHistory, OpenRun, OpenRuns, OpenSettings, ReportExit,
     ReportGate, ReportProgress, SwitchTheAttendant,
 )
 from .screens import ALL as SCREENS
@@ -98,6 +102,10 @@ EACH = """
 MEDIAN = '#history .h-sum span[title^="Successful runs of this workflow"]'
 
 OLD = 10 * 86400.0
+DETAIL = "#history-detail"
+PANEL = f"{DETAIL} #detail-panel"
+LINES = f"{PANEL} .raw .log-line"
+CHIPS = {"problems", "steps", "logs", "raw"}
 
 SUMMARY = (
     "run_id", "workflow", "repo", "branch", "state", "ending", "ended_ts", "last_ts", "active_s", "wall_s",
@@ -205,6 +213,10 @@ class GroomDashboard(PageSurface):
             self.open_run(step.of)
         elif isinstance(step, ReadActivity):
             return self.activity()
+        elif isinstance(step, ReadAnArchivedActivity):
+            return self.archived(step.of)
+        elif isinstance(step, ReadTheRecordsOfAnArchive):
+            return self.records(step.of)
         elif isinstance(step, ReadTheMedian):
             return self.median(step.of)
         elif isinstance(step, ReadTheOpenedRun):
@@ -240,6 +252,105 @@ class GroomDashboard(PageSurface):
         text = note.inner_text().strip()
         self.settle()
         return Done(self.rows(), (Note(text),))
+
+    def archive(self, gone: bool) -> str:
+        run = f"arch-{secrets.token_hex(3)}"
+        env = {
+            **os.environ,
+            "GROOM_DB": DB,
+            "HOME": HOME,
+            "XDG_DATA_HOME": os.path.join(HOME, "data"),
+            "XDG_CONFIG_HOME": os.path.join(HOME, "config"),
+            "XDG_STATE_HOME": os.path.join(HOME, "state"),
+        }
+        subprocess.run([sys.executable, "-c", SEED, run, "gone" if gone else "kept"], cwd=APP, env=env, check=True, capture_output=True, timeout=60)
+        return run
+
+    def open_archive(self, run: str) -> None:
+        page = self.browser.page
+        page.click("#activitybar .act-btn[data-mode=runs]")
+        self.pane("history", History.root)
+        close = page.locator("#history-close")
+        if close.is_visible():
+            close.click()
+        self.browser.wait_for(History.range)
+        self.browser.fill(History.range, "0")
+        page.wait_for_selector(f"#history tr.hrow:has-text('{run}')")
+        page.click(f"#history tr.hrow:has-text('{run}')")
+        page.wait_for_selector(f"{DETAIL} .ov")
+        self.settle()
+
+    def records(self, fixture: Archived) -> Done:
+        run = self.archive(fixture.gone)
+        self.open_archive(run)
+        page = self.browser.page
+        page.locator(DETAIL).get_by_role("tab", name="Activity").click()
+        page.wait_for_selector(f"{PANEL} .tl button.ev")
+        page.locator(f'{PANEL} .feedbar [data-filter="raw"]').click()
+        lines = page.locator(LINES)
+        lines.first.wait_for()
+        first = lines.count()
+        times = lines.locator(".lt-ts").all_inner_texts()
+        note = " ".join(page.locator(f"{PANEL} .rawnote").inner_text().split())
+        hidden = "METRIC" not in lines.locator(".lt-lvl").all_inner_texts()
+        metrics = page.locator(f'{PANEL} .feedbar [data-filter="metrics"]')
+        metrics.click()
+        page.wait_for_function("([css]) => [...document.querySelectorAll(css)].some((el) => el.innerText === 'METRIC')", arg=[f"{LINES} .lt-lvl"])
+        shown = lines.locator(".lt-lvl").all_inner_texts().count("METRIC")
+        older = page.locator(f"{PANEL} .load-older")
+        older.scroll_into_view_if_needed()
+        before = lines.count()
+        older.click()
+        page.wait_for_function("([css, was]) => document.querySelectorAll(css).length > was", arg=[LINES, before])
+        page.locator(f'{PANEL} .feedbar [data-filter="raw"]').click()
+        page.wait_for_selector(f"{PANEL} .tl button.ev")
+        box = page.locator(f"{PANEL} input[type=search], {PANEL} .feedbar input").first
+        box.fill("free port")
+        page.wait_for_function("([css]) => document.querySelectorAll(css).length === 1", arg=[f"{PANEL} .tl button.ev"])
+        row = page.locator(f"{PANEL} .tl button.ev").first.inner_text()
+        box.fill("Port 5432 is held")
+        hit = page.locator(f"{PANEL} .tl button.ev .hit")
+        hit.wait_for()
+        found = " ".join(hit.inner_text().split())
+        self.settle()
+        said = ArchivedRecords(first, times == sorted(times, reverse=True), note, hidden, shown, True, "qa-story" if "qa-story" in row else row, found)
+        return Done(self.rows(), (said,))
+
+    def archived(self, fixture: Archived) -> Done:
+        run = self.archive(fixture.gone)
+        self.open_archive(run)
+        page = self.browser.page
+        if fixture.gone:
+            page.locator(DETAIL).get_by_role("tab", name="Activity").click()
+            gone = page.locator(f"{PANEL} #activity-gone")
+            gone.wait_for()
+            text = " ".join(gone.inner_text().split())
+            timeline = page.locator(f"{PANEL} .tl").count() > 0
+            page.locator(DETAIL).get_by_role("tab", name="Overview").click()
+            page.locator(f"{DETAIL} #detail-attention-tile").wait_for()
+            self.settle()
+            return Done(self.rows(), (ArchiveGone(text, timeline, True),))
+        names = [name.split()[0] for name in page.locator(DETAIL).get_by_role("tab").all_inner_texts()]
+        link = page.locator(f"{DETAIL} #detail-problems-link")
+        link.wait_for()
+        problems = int(link.inner_text().split()[0])
+        page.locator(DETAIL).get_by_role("tab", name="Activity").click()
+        rows = page.locator(f"{PANEL} .tl button.ev")
+        rows.first.wait_for()
+        chips = page.locator(f"{PANEL} .feedbar [data-filter]").evaluate_all("(els) => els.map((el) => el.dataset.filter)")
+        hints = [" ".join(hint.split()) for hint in page.locator(f"{PANEL} .feedbar .hint").all_inner_texts()]
+        rows.nth(0).click()
+        message = page.locator(f"{PANEL} .rd .at-msg .at-text").first
+        message.wait_for()
+        turn = message.inner_text().strip()
+        page.locator(DETAIL).get_by_role("tab", name="Overview").click()
+        link.click()
+        page.wait_for_selector(f"{PANEL} .tl button.ev")
+        chip = int(page.locator(f'{PANEL} .feedbar [data-filter="problems"] b').inner_text())
+        count = int("".join(ch for ch in page.locator(f"{DETAIL} #detail-activity-count").inner_text() if ch.isdigit()))
+        self.settle()
+        shown = ArchivedTab(tuple(names), tuple(sorted(set(chips) & CHIPS)), tuple(hints), turn, problems, chip, count)
+        return Done(self.rows(), (shown,))
 
     def summaries(self, judged: Judged, workflow: str, own: str) -> None:
         now = time.time()
