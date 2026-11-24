@@ -22,6 +22,7 @@ from ostler.book.listjudge import ListJudge, ListReader, Unfed
 from ostler.book.outcome import CannotReach, cut_by_limit
 from ostler.book.pagedata import Handed, decode, on_route
 from ostler.book.screen import ROLES, Component, Screen
+from ostler.qa.harness_host import load_harness_module
 
 Wanted = Callable[[Any], bool]
 
@@ -192,7 +193,8 @@ class Browser(ListReader):
 
         known_callers()
         self._pw = sync_playwright().start()
-        self._browser = self._pw.chromium.launch(headless=self.headless)
+        shared = load_harness_module("ostler_qa_shared_browser").connect(self._pw) if self.headless else None
+        self._browser = shared or self._pw.chromium.launch(headless=self.headless)
         self._make()
 
     def stop(self) -> None:

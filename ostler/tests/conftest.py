@@ -207,8 +207,9 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 @pytest.fixture(autouse=True)
 def _artifacts_dir_is_per_test(tmp_path_factory, monkeypatch):
-    """Specs live in the user's artifacts folder, so no test may resolve to the real one."""
+    """Specs live in the user's artifacts folder, and the shared browser outlives a test, so no test may reach either."""
     monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(tmp_path_factory.mktemp("artifacts")))
+    monkeypatch.setenv("OSTLER_SHARED_BROWSER", "0")
 
 
 @pytest.fixture

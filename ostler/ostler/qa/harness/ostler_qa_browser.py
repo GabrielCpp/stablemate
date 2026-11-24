@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 from ostler_qa_browser_state import CLIPBOARD_JS
 from ostler_qa_elements import choose, template_pattern
 from ostler_qa_scan import FRAME_JS, SCAN_JS, merge_rects, summarize
+from ostler_qa_shared_browser import connect as connect_shared
 from ostler_qa_transfer import upload
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from playwright.sync_api import sync_playwright
@@ -228,7 +229,9 @@ class Browser:
         browser_type = getattr(self._playwright, name, None)
         if browser_type is None:
             raise ValueError(f"unknown Playwright browser {name!r}")
-        self._browser = browser_type.launch(headless=not (self.required and self.mode == "window"))
+        headless = not (self.required and self.mode == "window")
+        shared = connect_shared(self._playwright) if headless and name == "chromium" else None
+        self._browser = shared or browser_type.launch(headless=headless)
         options: dict[str, Any] = {"viewport": self.viewport}
         permissions = self.permissions()
         if permissions:
