@@ -1,6 +1,7 @@
 """Suite-wide isolation that no single test file can give itself."""
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 
@@ -71,6 +72,7 @@ def _reset_module_state() -> None:
     state.RUNS.clear()
     state.EVENTS.clear()
     state.HISTORIES.clear()
+    state.HISTORY_LOCK = asyncio.Lock()
     state._gate_locks.clear()
     norms.reset()
     app._TAILS.clear()
