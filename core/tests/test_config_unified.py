@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import sys
-import time
 import tomllib
 
 import pytest
@@ -348,7 +347,6 @@ def test_a_rewrite_after_the_guard_with_the_mtime_reset_is_read_again(cfg_file, 
     stat = cfg_file.stat()
     assert cfgmod.load_home_config().profiles["claude"].powers["low"].model == "haiku"
 
-    time.sleep(0.2)
     cfg_file.write_text(_POWER.replace("haiku", "fast_"))
     os.utime(cfg_file, ns=(stat.st_atime_ns, stat.st_mtime_ns))
 

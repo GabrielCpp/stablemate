@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-import time
 from pathlib import Path
 
 import pytest
@@ -249,13 +248,12 @@ def test_a_prompts_list_stays_the_farrier_selection():
 
 
 def test_a_rewrite_after_the_guard_with_the_mtime_reset_is_read_again(tmp_path, monkeypatch):
-    monkeypatch.setattr("stablemate_core.manifest._RACY_NS", 50_000_000)
+    monkeypatch.setattr("stablemate_core.manifest._RACY_NS", 60_000_000_000)
     path = tmp_path / "agents.yml"
     path.write_text("packs: [a]\n")
     stat = os.stat(path)
     assert load_manifest(path).packs == ["a"]
 
-    time.sleep(0.2)
     path.write_text("packs: [b]\n")
     os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
 
