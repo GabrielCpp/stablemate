@@ -1588,12 +1588,13 @@ def _latest(spans: list[dict[str, Any]], *keys: str) -> str:
     return ""
 
 
-@reading
-def run_profile(run: str) -> dict[str, Any] | None:
-    """Partition one run's retained wall time and aggregate its agent rework."""
-    if not run:
-        return None
-    spans = _run_spans(run)
+_ROW_ATTRS = frozenset(
+    {"workhorse.span_kind", "workhorse.wait_kind", "workhorse.depth", "workhorse.flow", "workhorse.state"}
+)
+
+
+def _observed_bounds(run: str, spans: list[dict[str, Any]]) -> tuple[float, float] | None:
+    """The first start and last end over a run's spans and metric samples, or None when it has neither."""
     metric_bounds = (
         read_connection()
         .execute(
@@ -1612,7 +1613,31 @@ def run_profile(run: str) -> dict[str, Any] | None:
     if metric_start is not None:
         starts.append(metric_start)
         ends.append(metric_end)
-    start_ts, end_ts = min(starts), max(ends)
+    return min(starts), max(ends)
+
+
+@reading
+def run_row_profile(run: str) -> dict[str, Any] | None:
+    """The part of a run's profile its row shows, the time partition and the flows, from a read that keeps only the attributes those need."""
+    if not run:
+        return None
+    spans = _run_spans(run, _ROW_ATTRS.__contains__)
+    bounds = _observed_bounds(run, spans)
+    if bounds is None:
+        return None
+    return {"time_s": _profile_time_partition(spans, *bounds), "flows": build_flows(spans)}
+
+
+@reading
+def run_profile(run: str) -> dict[str, Any] | None:
+    """Partition one run's retained wall time and aggregate its agent rework."""
+    if not run:
+        return None
+    spans = _run_spans(run)
+    bounds = _observed_bounds(run, spans)
+    if bounds is None:
+        return None
+    start_ts, end_ts = bounds
     turns = [span for span in spans if span["name"] == "agent_turn"]
     return {
         "run_id": run,

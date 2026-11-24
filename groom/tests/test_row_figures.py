@@ -182,3 +182,36 @@ def test_a_batch_refreshes_only_runs_without_figures_when_not_stale(monkeypatch:
         state.RUNS.pop("fresh", None)
         state.RUNS.pop("new", None)
     assert seen == ["new", "fresh"]
+
+
+def test_row_figures_do_not_build_the_full_profile(monkeypatch: pytest.MonkeyPatch) -> None:
+    with _DB():
+        _seed((("2/4", 200),))
+        expected = figures.row_figures(*figures.read("run-1"))
+
+        def refuse(run: str) -> None:
+            raise AssertionError("the row read the full profile")
+
+        monkeypatch.setattr(store, "run_profile", refuse)
+        assert figures.run_figures("run-1") == expected
+
+
+def test_the_row_profile_matches_the_full_profile() -> None:
+    with _DB():
+        _seed()
+        store.insert_spans(
+            [
+                {
+                    **_span("w1", "s0", "wait", "wait", {"workhorse.span_kind": "wait", "workhorse.wait_kind": "operator"}, 300, 30),
+                    "resume_generation": 0,
+                },
+                {**_span("r1", "s0", "qa", "qa", {"workhorse.depth": 1}, 400, 20), "resume_generation": 1},
+            ]
+        )
+        lean = store.run_row_profile("run-1")
+        full = store.run_profile("run-1")
+        missing = store.run_row_profile("none")
+    assert lean is not None and full is not None
+    assert lean["time_s"] == full["time_s"]
+    assert lean["flows"] == full["flows"]
+    assert missing is None

@@ -59,4 +59,8 @@ def tile_figures(costs: dict[str, Any], profile: dict[str, Any] | None, progress
 
 def run_figures(run_id: str) -> dict[str, Any]:
     """The figures one run row shows, from the store functions behind ``groom cost`` and ``groom profile``."""
-    return row_figures(*read(run_id))
+    with archive.run_source(run_id):
+        costs = cost_totals(store.node_costs(run_id, limit=1000))
+        profile = store.run_row_profile(run_id)
+        progress = store.latest_progress(run_id)
+    return row_figures(costs, profile, progress)
