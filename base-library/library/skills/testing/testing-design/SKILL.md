@@ -238,7 +238,7 @@ counter-case and its proof.
 | --- | --- | --- |
 | 15.1 | The test reads a product source file as text and asserts on it | Whoever edits the checkout |
 | 15.2 | The test runs version control or walks a tree in a folder it did not create | The checkout's state |
-| 15.3 | A fixed delay comes before an assertion | The machine's load |
+| 15.3 | The test waits a set time: a sleep, a delay, a pause | The machine's load |
 | 15.4 | An assertion puts an upper bound on elapsed time | The machine's load |
 | 15.5 | The test opens a port, path or socket named by a literal | Another worker or session |
 | 15.6 | The code reaches home, cache, config or environment and no fixture redirected it | The user's machine |
@@ -248,6 +248,11 @@ counter-case and its proof.
 Reading settles rows 15.1, 15.2, 15.5 and 15.6. The others need the hunt run the reference
 describes: a pinned copy, random order, a loaded machine. A gate that decides a release runs on a
 copy nobody edits.
+
+Row 15.3 has no counter-case. A test never waits on the clock. Every wait is a wait on the event
+the work produces, under a deadline that is a safety net and measures nothing. A check that nothing
+happened waits on a later event that proves the work had its turn. Time the product itself counts,
+such as a debounce or an expiry, comes from a clock the test advances.
 
 ## Review checklist
 
@@ -264,7 +269,8 @@ Before approving a test — yours or someone else's:
 - [ ] It does not emit a warning the package's pytest config would convert to an error (§12)
 - [ ] It does not assert a contract a sibling package owns (§13)
 - [ ] Setup a second test file needs has one home, built from small builders (§14)
-- [ ] No row of the §15 table fires, or its counter-case is named (§15)
+- [ ] Every wait is on an event, and none is on the clock (§15.3)
+- [ ] No other row of the §15 table fires, or its counter-case is named (§15)
 
 ## Smells
 

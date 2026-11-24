@@ -35,15 +35,26 @@ neighbour session that the test cannot know.
 
 **Proof.** Run the test from a dirty checkout, then from a detached one. Same verdict.
 
-## 15.3 A fixed delay comes before an assertion
+## 15.3 The test waits on the clock
 
-**Trigger.** The test sleeps for a set time, then asserts that the work is done.
+**Trigger.** The test sleeps, delays or pauses for a set time. The pause may come before an
+assertion, or stand in for "give it a moment" between two steps.
+
+**Why it flakes.** The pause is a guess at how long the work takes. A loaded machine takes longer
+than the guess, and a quiet one pays the whole pause for nothing.
 
 **Fix.** Wait on the event the work produces: a line of output, a file, a state, a signal. Give the
 wait a deadline many times longer than the work ever takes. The deadline is a safety net for a hung
-test and measures nothing.
+test and measures nothing. Where the work offers no event to block on, poll its condition. The
+condition ends the loop, and the pause between two reads only paces it.
 
-**Counter-case.** The delay is inside a fake the test controls, and the test releases it.
+A claim that nothing happened needs an event too. Start a second piece of work that the code
+handles after the first, wait for its result, then assert the first left no trace.
+
+Time the product itself counts, such as a debounce, a poll interval, a backoff or an expiry, comes
+from an injected clock or the runner's fake timers. The test advances it.
+
+**Counter-case.** None. A fake that must hold its answer blocks on an event the test sets.
 
 **Proof.** Run the test while the machine is loaded, for example beside several copies of the suite.
 Same verdict.

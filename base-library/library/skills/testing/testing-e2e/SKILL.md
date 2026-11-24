@@ -51,6 +51,10 @@ or a deadline passes — as the only wait mechanism. A manual sleep is wrong in 
 once: too short on a slow run (flake), too long on a fast one (waste), and it encodes a guess
 about *how long* instead of a statement about *what must become true*.
 
+No case earns a sleep. The driver's fixed pause is a sleep under another name. A pause that lets
+the page settle becomes a wait on the element, response or state that marks it settled. A check
+that nothing appeared first waits on a later thing that did appear, then asserts the absence.
+
 When a longer deadline is legitimately needed — first navigation after a cold boot, a known-slow
 external dependency — **extend it deliberately and say why** in a comment naming the slow thing.
 An unexplained doubled timeout is the next reader's mystery and the next flake's hiding place; a

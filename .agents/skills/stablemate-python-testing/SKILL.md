@@ -18,6 +18,7 @@ metadata:
 
 - **pytest ≥ 8.0** — plain `assert`, not `self.assertEqual`.
 - **pytest-xdist** for parallel execution (`pytest -n auto` or `pytest.ini` `addopts = -n auto`).
+- A test never waits on the clock. Every wait is on an event, under a deadline of 30 s or more.
 - Tests must be parallel-safe. The section *Flaky shapes* below lists what to search for.
 
 ## Naming
@@ -162,7 +163,7 @@ their pytest spellings. A hit is a place to read, and the counter-case column sa
 | --- | --- | --- | --- |
 | 15.1 | `inspect.getsource(`, or `read_text()` on a path built from a product module's `__file__` | The file sits under `tests/` | Call the function and assert on its result |
 | 15.2 | `git` in a `subprocess` call whose `cwd` is not under `tmp_path`, or a `REPO_ROOT` the test walks | Never | `git init` inside `tmp_path` |
-| 15.3 | `time.sleep(` or `asyncio.sleep(` followed by an `assert` | The sleep is inside a fake the test releases | Poll the condition, or wait on a `threading.Event`, with a deadline of 30 s or more |
+| 15.3 | `time.sleep(`, `asyncio.sleep(` or Playwright's `wait_for_timeout(` anywhere in a test | It paces a poll loop that a condition ends | Wait on a `threading.Event`, an `asyncio.Event` or `expect(locator)`, or poll the condition, with a deadline of 30 s or more. Product time comes from an injected clock |
 | 15.4 | `time.monotonic()` or `time.time()` read twice and compared, or `timeout=` under 5 on a `join`, `wait` or `communicate` | The call is expected to time out | Inject the clock as a parameter |
 | 15.5 | A number passed to `bind(`, `listen(` or `port=`, or `"/tmp/` and `tempfile.gettempdir()` with a fixed name | The literal is only text in a URL nothing opens | Bind port `0` and read `getsockname()[1]`, and put paths under `tmp_path` |
 | 15.6 | `Path.home()`, `expanduser`, a cache-dir call, or `os.environ[...] =`, `.update(`, `.pop(` | The dict is a copy handed to a child process | An autouse fixture that sets `HOME` and `XDG_*` to `tmp_path`, and `monkeypatch.setenv` |

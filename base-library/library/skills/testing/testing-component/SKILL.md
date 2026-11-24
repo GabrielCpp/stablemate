@@ -107,7 +107,8 @@ seam. These are design rules, and they belong in the first version of the compon
 5. **Time comes through a clock.** Debounce, polling, backoff and expiry read an injected clock or
    the runner's fake timers, so the test advances time.
 
-A test that seems to need a sleep is reporting a missing seam. Fix the component.
+A component test never waits on the real clock. A test that seems to need a sleep is reporting a
+missing seam. Fix the component.
 
 ## 6. Hold the answer
 
