@@ -13,6 +13,7 @@ from ..model.state import Dashboard
 FLOOR = 5
 ITEMS = 2
 PEER_VISIT = 60.0
+ENDINGS = {"gave-up": "gave up"}
 
 
 @dataclass(frozen=True)
@@ -93,14 +94,22 @@ def totals_cell(judged: Judged) -> str:
     return f"— {who}: {only}, and it takes {FLOOR}"
 
 
+def not_compared(ending: str) -> str:
+    if ending == "none":
+        return "no ending recorded"
+    if ending == "success":
+        return "an estimate has no median"
+    return f"the run {ENDINGS.get(ending, ending)}"
+
+
 def tile_cell(judged: Judged) -> str:
     count = f"{judged.items} of {ITEMS}"
     if judged.items == 0:
         return f"{count} no item finished, so no cost per item"
     if judged.estimate:
-        return f"{count} est {each(judged.each)} per item, not compared: an estimate has no median"
+        return f"{count} est {each(judged.each)} per item, not compared: {not_compared(judged.ending)}"
     if judged.ending != "success":
-        return f"{count} {each(judged.each)} per item, not compared: the run {judged.ending}"
+        return f"{count} {each(judged.each)} per item, not compared: {not_compared(judged.ending)}"
     others = len(judged.peers)
     if others < FLOOR:
         kind = f"other comparable {judged.workflow} run"
