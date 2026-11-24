@@ -145,6 +145,37 @@ def _open_file(page, name: str) -> None:
     page.locator("#detail-panel .fd-tree").get_by_role("button", name=name, exact=True).click()
 
 
+GREET = 'import os\n\n\ndef greet(name):\n    """Say hello."""\n    if not name:\n        return "hello"\n    return "hello " + name\n'
+PRUNED = {".git", "node_modules", "__pycache__", ".venv"}
+
+
+def _browsable_repo(root: Path) -> Path:
+    repo = root / "app"
+    for name, text in {
+        "src/greet.py": GREET,
+        "src/util/strings.py": "def shout(text):\n    return text.upper()\n",
+        "README.md": "# acme\n",
+        "blank.txt": "",
+        "node_modules/left-pad/index.js": "module.exports = 1;\n",
+        "__pycache__/greet.cpython-312.pyc": "bytecode\n",
+    }.items():
+        target = repo / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text)
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "add", "-f", ".")
+    _git(repo, "commit", "-qm", "init")
+    return repo
+
+
+def _files_on_disk(repo: Path) -> list[str]:
+    found: list[str] = []
+    for folder, dirs, names in os.walk(repo):
+        dirs[:] = [name for name in dirs if name not in PRUNED]
+        found.extend(names)
+    return sorted(found)
+
+
 def test_a_run_that_shows_a_diff_tab_shows_a_files_tab_before_it_and_other_runs_show_neither(tmp_path):
     from playwright.sync_api import expect
 

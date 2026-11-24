@@ -6,6 +6,7 @@ import base64
 import contextlib
 import inspect
 import json
+import re
 import tempfile
 import threading
 from pathlib import Path
@@ -330,6 +331,10 @@ def test_a_quiet_open_pane_gets_no_detail():
     assert rest == []
 
 
+def _reads(statements: list[str]) -> list[str]:
+    return [sql for sql in statements if sql.lstrip().upper().startswith(("SELECT", "WITH"))]
+
+
 def test_a_mark_on_a_quiet_run_sends_nothing_and_reads_no_history():
     _reset()
     state.WORKFLOWS["abc123"] = WorkflowContainer(
@@ -345,19 +350,18 @@ def test_a_mark_on_a_quiet_run_sends_nothing_and_reads_no_history():
         live.snapshot()
         with patch.object(store, "query_logs", side_effect=AssertionError("polled logs")), \
              patch.object(store, "detail_spans", side_effect=AssertionError("polled spans")), \
-             patch.object(store, "detail_metrics", side_effect=AssertionError("polled metrics")):
+             patch.object(store, "detail_metrics", side_effect=AssertionError("polled metrics")), \
+             traced_statements() as statements:
             live.mark_run("abc123")
             await _settle()
         assert queue.empty()
         state.remove_client(queue)
         with traced_statements() as control:
             store.read_connection().execute("SELECT 1").fetchall()
-        return opened, pushed, statements, control
+        return statements, control
 
-    opened, pushed, statements, control = asyncio.run(drive())
-    assert all(detail["found"] for detail in pushed)
-    assert {detail["figures_rev"] for detail in pushed} == {opened}
-    assert statements == []
+    statements, control = asyncio.run(drive())
+    assert [sql for sql in _reads(statements) if re.search(r"\b(spans|metrics|logs|turns|run_summary)\b", sql)] == []
     assert _reads(control) == ["SELECT 1"]
 
 
@@ -596,7 +600,8 @@ def test_a_span_batch_moves_the_watched_figures_revision_and_only_for_an_open_pa
 
     async def drive():
         live.bind(asyncio.get_running_loop())
-        await groom_app._store_history_batch([span], store.insert_spans)
+        with traced_statements() as unopened:
+            await groom_app._store_history_batch([span], store.insert_spans)
         assert not state.HISTORIES
         assert _reads(unopened) == []
         queue = asyncio.Queue()

@@ -302,19 +302,42 @@ def test_a_run_with_no_work_items_groups_its_rows_directly_under_the_flow_pass(t
             page.close()
 
 
+_TIME = re.compile(r"\d+h \d+m|\d+m \d+s|\d+s")
+_USD = re.compile(r"\$\d+\.\d\d")
+
+
+def _overview_row(page, view: str, table: str, name: str) -> tuple[str, str | None]:
+    page.get_by_role("tab", name="Overview").click()
+    page.get_by_role("button", name=view).click()
+    page.wait_for_selector(f"table[aria-label='{table}']", timeout=30000)
+    texts = [one.inner_text() for one in page.locator(f"table[aria-label='{table}'] tbody tr").all()]
+    row = next(text for text in texts if re.match(rf"[^\w-]*{name}(?![-\w])", text))
+    when = _TIME.search(row)
+    cost = _USD.search(row)
+    assert when is not None, row
+    return when.group(0), cost.group(0) if cost else None
+
+
 def test_a_heading_adds_up_to_the_overview_figures_for_its_work_item(tmp_path: Path) -> None:
-    page, context = _opened(tmp_path, "grp-figures")
-    try:
-        heading = _heads(page, "tl-group").nth(1).inner_text()
-        page.get_by_role("tab", name="Overview").click()
-        page.get_by_role("button", name="By work item").click()
-        page.wait_for_selector("table[aria-label='Time and cost per work item']", timeout=30000)
-        row = page.locator("table[aria-label='Time and cost per work item'] tbody tr", has_text="reset").first.inner_text()
-        assert "$3.00" in heading and "$3.00" in row
-        assert "1m" in heading and "1m 10s" in row
-    finally:
-        page.close()
-        context.__exit__(None, None, None)
+    from groom import activity
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    with _grouped("grp-figures", tmp_path) as name:
+        page = _open(live)
+        try:
+            _pick(page, name)
+            _open_activity(page)
+            heading = _heads(page, "tl-group").nth(1).inner_text()
+            when, cost = _overview_row(page, "By work item", "Time and cost per work item", "reset")
+            assert when == "1m 10s" and cost == "$3.00"
+            assert when in heading and cost in heading, heading
+            passes = [one for item in activity.timeline(name)["items"] for one in item["passes"] if one["flow"] == "qa"]
+            when, cost = _overview_row(page, "By flow", "Time and cost per flow", "qa")
+            assert _seconds_in(when) == round(sum(one["time_s"] for one in passes))
+            assert cost == "$" + format(sum(one["cost_usd"] for one in passes), ".2f")
+        finally:
+            page.close()
 
 
 def test_headings_and_rows_keep_a_role_a_name_and_state_in_words_and_pass_an_axe_scan(tmp_path: Path) -> None:

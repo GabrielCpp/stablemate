@@ -66,7 +66,7 @@ async def _no_volumes(_container_id: str) -> None:
 
 
 @contextmanager
-def _run(run: str, tmp: Path, *, native: bool = True, turns: bool = True, running: bool = False, hostile: bool = False, rich: bool = False, old: bool = False, long_live: bool = False) -> Iterator[str]:
+def _run(run: str, tmp: Path, *, native: bool = True, turns: bool = True, running: bool = False, hostile: bool = False, rich: bool = False, old: bool = False, long_live: bool = False, captured: str = "") -> Iterator[str]:
     from groom.models import WorkflowState
 
     from groom import app as app_module

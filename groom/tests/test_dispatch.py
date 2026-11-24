@@ -19,6 +19,7 @@ from groom import app as groom_app
 from groom import discovery, dispatch, dispatch_ledger, state, store
 
 WAIT_S = 30.0
+FAKE_PROC_LIFETIME_S = 120.0
 
 
 _FAKES: list[_FakeProc] = []

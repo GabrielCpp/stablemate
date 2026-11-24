@@ -55,24 +55,7 @@ class _Sidecar(_FilesSidecar):
             params = message["params"]
             self.answers.append((params["path"], params["body"]))
             return {"ok": True, "data": {"ok": True, "path": params["path"]}}
-        return {"ok": True, "data": {}}
-
-    def _serve(self) -> None:
-        try:
-            for raw in self.socket:
-                message = json.loads(raw)
-                if message.get("type") != "rpc":
-                    continue
-                self.socket.send(json.dumps({"type": "rpc_result", "id": message["id"], **self._answer(message)}))
-        except ConnectionClosed:
-            pass
-
-    def drop(self) -> None:
-        from groom import sidecar_hub
-
-        self.socket.close()
-        self.thread.join(timeout=30)
-        _wait_for(lambda: sidecar_hub.get(self.container) is None, "the sidecar to unregister")
+        return super()._answer(message)
 
 
 def _connect(live, container: str = CONTAINER) -> _Sidecar:

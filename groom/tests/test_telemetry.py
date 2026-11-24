@@ -1456,7 +1456,7 @@ def test_streaming_turn_uses_idleness_not_total_node_age_for_stuck() -> None:
 
 def _compactions(value: float, node: str = "plan") -> list[dict]:
     return otlp.parse_metrics(
-        _metrics_request("workhorse.turn.compactions", value=value, node=node, gauge=True)
+        metrics_request("workhorse.turn.compactions", value=value, node=node, gauge=True)
     )
 
 
@@ -1476,7 +1476,7 @@ def test_a_turn_that_compacts_four_times_pages_once_and_again_after_the_turn_end
         assert "'plan' compacted 4 times in one turn" in fired[0].message
         assert alerts.ingest_metrics(_compactions(5), now=1001.0) == []
         ended = otlp.parse_metrics(
-            _metrics_request("workhorse.turn.active", value=0, node="plan", gauge=True)
+            metrics_request("workhorse.turn.active", value=0, node="plan", gauge=True)
         )
         assert alerts.ingest_metrics(ended, now=1002.0) == []
         assert [a.rule for a in alerts.ingest_metrics(_compactions(4), now=1003.0)] == ["COMPACT-LOOP"]

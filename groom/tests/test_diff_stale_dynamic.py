@@ -1,6 +1,7 @@
 """The Diff and Files tabs of a container run whose sidecar dropped, measured on the page the operator gets against a real sidecar socket."""
 from __future__ import annotations
 
+import json
 import re
 import tempfile
 from contextlib import contextmanager
@@ -548,52 +549,6 @@ def test_the_strip_and_marks_pass_the_accessibility_scan():
             assert [found for found in _scan(page) if found["id"] != "heading-order"] == []
         finally:
             page.close()
-
-
-class _RealSidecar:
-    """A sidecar over a real socket that answers every call with the real sidecar handlers against a real git checkout."""
-
-    def __init__(self, live, container: str, workspace: Path) -> None:
-        from groom import sidecar
-
-        self.container = container
-        self.workspace = workspace
-        self.handlers = sidecar._RPC_METHODS
-        self.socket = connect(f"ws://127.0.0.1:{live.port}/sidecar")
-        hello = {
-            "type": "hello",
-            "identity": {"container_id": container, "name": "coder-acme", "run_id": f"run-{container}", "workflow": "coder"},
-            "snapshot": {"current_node": "build", "terminal": "", "gates": []},
-        }
-        self.socket.send(json.dumps(hello))
-        self.thread = threading.Thread(target=self._serve, daemon=True)
-        self.thread.start()
-
-    def _serve(self) -> None:
-        from groom import sidecar
-
-        try:
-            for raw in self.socket:
-                message = json.loads(raw)
-                if message.get("type") != "rpc":
-                    continue
-                try:
-                    with patch.object(sidecar, "WORKSPACE_DIR", self.workspace):
-                        data = self.handlers[message["method"]](message.get("params") or {})
-                    reply = {"ok": True, "data": data}
-                except Exception as exc:  # noqa: BLE001
-                    reply = {"ok": False, "error": str(exc)}
-                self.socket.send(json.dumps({"type": "rpc_result", "id": message["id"], **reply}))
-        except ConnectionClosed:
-            pass
-
-    def drop(self) -> None:
-        self.socket.close()
-        self.thread.join(timeout=30)
-
-
-def _git(repo: Path, *args: str) -> str:
-    return subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *args], cwd=repo, check=True, capture_output=True, text=True).stdout
 
 
 def test_the_kept_diff_after_a_real_drop_is_the_diff_git_reports_for_the_checkout():

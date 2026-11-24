@@ -137,17 +137,15 @@ def test_every_archive_activity_route_reads_on_the_archive_pool_and_never_on_the
     tails = ("activity", f"activity/{FIRST}", "records", "search?q=said", "entry/step:none")
     with _DB():
         _archived_turns()
-        answers: list[int] = []
-        with every_archive_worker_busy() as release, _client() as client:
-            reader = threading.Thread(target=lambda: answers.append(client.get(f"/api/archive/{RUN}/activity").status_code))
-            reader.start()
-            other = client.get("/api/history").status_code
-            waiting = reader.is_alive()
-            release.set()
-            reader.join(timeout=30)
-    assert other == 200
-    assert waiting
-    assert answers == [200]
+        with (
+            patch.object(pools.ARCHIVE, "run", wraps=pools.ARCHIVE.run) as archive_run,
+            patch.object(pools.QUERY, "run", wraps=pools.QUERY.run) as query_run,
+            _client() as client,
+        ):
+            answers = [client.get(f"/api/archive/{RUN}/{tail}").status_code for tail in tails]
+    assert answers == [200, 200, 200, 200, 404]
+    assert [call.args[0] for call in archive_run.call_args_list] == [groom_app._archive_read] * len(tails)
+    assert groom_app._archive_read not in [call.args[0] for call in query_run.call_args_list]
 
 
 def test_an_archive_read_enters_the_archive_inside_the_pooled_thread_and_drops_an_unreadable_index() -> None:

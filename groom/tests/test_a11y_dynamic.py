@@ -16,6 +16,7 @@ from typing import Any
 from unittest.mock import patch
 
 import _quiet_chromium
+from _otlp_support import metrics_request
 from _page_settle import count_pushes, pushes, wait_for_push
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -844,7 +845,7 @@ def _ingest_aged(run_id: str, node: str, points: dict[str, float], age: float, a
     )
 
 
-def _assert_one_clock(page, expected: int | None) -> None:
+def _assert_one_clock(page, expected: int | None, strip_cell: str = "In node") -> None:
     deadline = time.time() + 30
     readings: dict[str, int] = {}
     while time.time() < deadline:

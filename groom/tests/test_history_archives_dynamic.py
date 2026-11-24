@@ -43,43 +43,6 @@ TABLE = "Runs that ended, newest first"
 READING = "Reading the archive for the first time. This takes a few seconds once, then it is instant."
 
 
-HOLD_THE_FIRST_ANSWER = """
-(pattern) => {
-  const real = window.fetch.bind(window);
-  const held = (window.__held = { release: null, read: false });
-  let taken = false;
-  window.fetch = (url, ...rest) => {
-    if (taken || !String(url).includes(pattern)) return real(url, ...rest);
-    taken = true;
-    return new Promise((resolve) => {
-      held.release = () =>
-        real(url, ...rest).then((response) => {
-          const json = response.json.bind(response);
-          response.json = () => {
-            held.read = true;
-            return json();
-          };
-          resolve(response);
-        });
-    });
-  };
-}
-"""
-TWO_FRAMES = "() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))"
-
-
-def _hold_the_first_answer(page, pattern: str) -> None:
-    page.evaluate(HOLD_THE_FIRST_ANSWER, pattern)
-
-
-def _wait_until_asked(page) -> None:
-    page.wait_for_function("() => window.__held.release !== null", timeout=10000)
-
-
-def _release(page) -> None:
-    page.evaluate("() => window.__held.release()")
-
-
 def _telemetry(run: str) -> Path:
     folder = archive.exact_dir(run)
     assert folder is not None
@@ -243,9 +206,10 @@ def test_an_unreadable_summary_shows_the_row_with_no_figures_says_so_and_retry_n
 def test_the_first_open_of_an_archive_says_it_is_reading_then_shows_the_overview_with_an_activity_tab_and_no_files_or_diff_tab() -> None:
     live = _live()
     assert live is not None, _UNAVAILABLE
+    held: list = []
     with _archived("arch-a"):
         page = _archive_page(live, "arch-a")
-        _hold_the_first_answer(page, "/api/archive/")
+        page.route("**/api/archive/**", lambda route: held.append(route))
         try:
             _open_archive(page, "arch-a")
             page.wait_for_selector(f"{DETAIL} .loading", timeout=30000)
@@ -253,6 +217,7 @@ def test_the_first_open_of_an_archive_says_it_is_reading_then_shows_the_overview
             problems_during = page.locator(f"{DETAIL} button.problems-link, {DETAIL} [data-problems]").count()
             held[0].continue_()
             page.wait_for_selector(f"{DETAIL} .ov", timeout=30000)
+            problems_after = page.locator(f"{DETAIL} #detail-problems-link").count()
             tabs = page.locator(f"{DETAIL} [role=tab]").all_inner_texts()
             head = page.locator(f"{DETAIL} .detail-head").inner_text().lower()
             attention = page.locator(f"{DETAIL} #detail-attention-tile").inner_text()
@@ -428,6 +393,7 @@ def test_a_long_run_id_and_repo_label_keep_the_archived_row_inside_the_table_and
 def test_a_slow_answer_for_the_old_range_does_not_replace_the_list_of_the_range_chosen_after_it() -> None:
     live = _live()
     assert live is not None, _UNAVAILABLE
+    held: list = []
     with _archived("arch-a"):
         page = _everything(live)
         try:
@@ -451,7 +417,7 @@ def test_an_archive_that_gets_its_row_later_appears_in_the_table_without_a_reloa
     live = _live()
     assert live is not None, _UNAVAILABLE
     with _archived("arch-a", summarized=False):
-        page = _open_history(live)
+        page = _everything(live)
         try:
             settle(page)
             history.discover_archives()
