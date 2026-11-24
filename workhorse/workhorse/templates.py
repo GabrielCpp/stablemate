@@ -2,7 +2,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import sys
 from collections.abc import Callable, Iterable
 from functools import cache
 from pathlib import Path
@@ -32,16 +31,8 @@ from workhorse.manifest import ManifestContext
 
 NODE_ADD_DIRS = "_node_add_dirs"
 
-_undefined_logger = logging.getLogger("workhorse.templates")
-if not _undefined_logger.handlers:
-    _handler = logging.StreamHandler(sys.stdout)
-    _handler.setFormatter(logging.Formatter("[template] ⚠ %(message)s"))
-    _undefined_logger.addHandler(_handler)
-    _undefined_logger.setLevel(logging.WARNING)
-    _undefined_logger.propagate = False
-
 ResilientUndefined = make_logging_undefined(
-    logger=_undefined_logger, base=ChainableUndefined
+    logger=logging.getLogger("workhorse.templates"), base=ChainableUndefined
 )
 
 
