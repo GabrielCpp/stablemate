@@ -10,16 +10,14 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import pytest
 
-import pytest  # noqa: E402
-
-from workhorse import control  # noqa: E402
-from workhorse.artifacts import ArtifactWriter  # noqa: E402
-from workhorse.cli import main as cli_main  # noqa: E402
-from workhorse.cli import offline  # noqa: E402
-from workhorse.pyflow import Continue, Done, Registry, Workflow  # noqa: E402
-from workhorse.records import LaunchRecord, PyflowCheckpoint, RunRecord  # noqa: E402
+from workhorse import control
+from workhorse.artifacts import ArtifactWriter
+from workhorse.cli import main as cli_main
+from workhorse.cli import offline
+from workhorse.pyflow import Continue, Done, Registry, Workflow
+from workhorse.records import LaunchRecord, PyflowCheckpoint, RunRecord
 from workhorse._vendor.stablemate_core.config import parse_home_config
 
 

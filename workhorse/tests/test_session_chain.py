@@ -11,23 +11,21 @@ from unittest.mock import patch
 
 from pydantic import BaseModel
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from _fakes import FakeBackend, FakeClock  # noqa: E402
-from workhorse import sessions  # noqa: E402
-from workhorse.artifacts import ArtifactWriter  # noqa: E402
-from workhorse.config_run import AgentResilience, RunConfig  # noqa: E402
-from workhorse.context import WorkflowContext  # noqa: E402
-from workhorse.pyflow import Continue, Done, Workflow  # noqa: E402
-from workhorse.pyflow.driver import drive, read_resume  # noqa: E402
-from workhorse.pyflow.engine import RunEnv  # noqa: E402
-from workhorse.records import parse_checkpoint  # noqa: E402
-from workhorse.runner import ladder  # noqa: E402
-from workhorse.runner.failure import (  # noqa: E402
+from _fakes import FakeBackend, FakeClock
+from workhorse import sessions
+from workhorse.artifacts import ArtifactWriter
+from workhorse.config_run import AgentResilience, RunConfig
+from workhorse.context import WorkflowContext
+from workhorse.pyflow import Continue, Done, Workflow
+from workhorse.pyflow.driver import drive, read_resume
+from workhorse.pyflow.engine import RunEnv
+from workhorse.records import parse_checkpoint
+from workhorse.runner import ladder
+from workhorse.runner.failure import (
     BackendInvocationError,
     is_unresumable_session,
 )
-from workhorse.runner.spec import AgentNode  # noqa: E402
+from workhorse.runner.spec import AgentNode
 
 Transition = Any
 

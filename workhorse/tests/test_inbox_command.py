@@ -2,21 +2,18 @@
 
 from __future__ import annotations
 
-import sys
 import tempfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import pytest
 
-import pytest  # noqa: E402
-
-from _fakes import fake_groom  # noqa: E402
-from workhorse import inbox  # noqa: E402
-from workhorse.artifacts import ArtifactWriter  # noqa: E402
-from workhorse.cli import main as cli_main  # noqa: E402
-from workhorse.cli.inbox import INBOX_FILE  # noqa: E402
-from workhorse.pyflow.registry import Registry  # noqa: E402
-from workhorse.records import PyflowCheckpoint, RunRecord  # noqa: E402
+from _fakes import fake_groom
+from workhorse import inbox
+from workhorse.artifacts import ArtifactWriter
+from workhorse.cli import main as cli_main
+from workhorse.cli.inbox import INBOX_FILE
+from workhorse.pyflow.registry import Registry
+from workhorse.records import PyflowCheckpoint, RunRecord
 
 
 def _run_dir(runs: Path, name: str = "demo-t", *, terminal: str | None = None) -> Path:

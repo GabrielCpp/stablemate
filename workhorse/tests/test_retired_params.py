@@ -2,15 +2,10 @@
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from workhorse.pyflow.run import _drop_retired_inputs, _instantiate  # noqa: E402
-from workhorse.pyflow.workflow import Workflow  # noqa: E402
-from workhorse.pyflow.transitions import Done, Transition  # noqa: E402
-from workhorse.pyflow.errors import WorkflowFailed  # noqa: E402
+from workhorse.pyflow.run import _drop_retired_inputs, _instantiate
+from workhorse.pyflow.workflow import Workflow
+from workhorse.pyflow.transitions import Done, Transition
+from workhorse.pyflow.errors import WorkflowFailed
 
 
 class Coder(Workflow):

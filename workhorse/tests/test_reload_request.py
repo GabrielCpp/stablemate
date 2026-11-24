@@ -2,13 +2,8 @@
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from workhorse import control, reload  # noqa: E402
-from workhorse.control import FakeChannel, Request  # noqa: E402
+from workhorse import control, reload
+from workhorse.control import FakeChannel, Request
 
 
 def _armed(*requests: Request) -> FakeChannel:

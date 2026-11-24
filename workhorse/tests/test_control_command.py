@@ -4,25 +4,22 @@ from __future__ import annotations
 
 import io
 import os
-import sys
 import tempfile
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import pytest
 
-import pytest  # noqa: E402
-
-from _fakes import fake_groom  # noqa: E402
-from workhorse import control  # noqa: E402
-from workhorse.artifacts import ArtifactWriter  # noqa: E402
-from workhorse.cli import control as control_cmd  # noqa: E402
-from workhorse.cli import main as cli_main  # noqa: E402
-from workhorse.pyflow.registry import Registry  # noqa: E402
-from workhorse.records import PyflowCheckpoint, RunRecord  # noqa: E402
-from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK  # noqa: E402
+from _fakes import fake_groom
+from workhorse import control
+from workhorse.artifacts import ArtifactWriter
+from workhorse.cli import control as control_cmd
+from workhorse.cli import main as cli_main
+from workhorse.pyflow.registry import Registry
+from workhorse.records import PyflowCheckpoint, RunRecord
+from workhorse._vendor.stablemate_core.clock import SYSTEM_CLOCK
 
 
 def _run_dir(runs: Path, name: str = "demo-t", *, terminal: str | None = None) -> Path:

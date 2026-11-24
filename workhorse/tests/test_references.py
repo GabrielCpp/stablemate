@@ -6,22 +6,20 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from workhorse._vendor.stablemate_core.skill_refs import (  # noqa: E402
+from workhorse._vendor.stablemate_core.skill_refs import (
     MissingSkill,
     RetiredHelper,
     SkillCatalog,
     SkillEntry,
 )
-from workhorse.references import (  # noqa: E402
+from workhorse.references import (
     MissingReference,
     format_missing,
     helpers_called,
     missing_references,
     referenced_names,
 )
-from workhorse.templates import render_string  # noqa: E402
+from workhorse.templates import render_string
 
 HOME_SKILL = Path("/home/dev/.claude/skills")
 

@@ -14,24 +14,22 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from _fakes import FakeBackend, RecordingTelemetry  # noqa: E402
-from workhorse._vendor.stablemate_core.config import CONFIG_PATH_ENV  # noqa: E402
-from workhorse import control, otel, reload  # noqa: E402
-from workhorse.artifacts import ArtifactWriter  # noqa: E402
-from workhorse.cli import offline  # noqa: E402
-from workhorse.config_run import RunConfig  # noqa: E402
-from workhorse.pyflow import run as run_mod  # noqa: E402
-from workhorse.pyflow.driver import drive  # noqa: E402
-from workhorse.pyflow.engine import RunEnv  # noqa: E402
-from workhorse.pyflow.registry import Registry  # noqa: E402
-from workhorse.pyflow.run import RunInvocation, run_pyflow  # noqa: E402
-from workhorse.profile import recorded_profile  # noqa: E402
-from workhorse.pyflow.transitions import Done, Transition  # noqa: E402
-from workhorse.pyflow.workflow import Workflow  # noqa: E402
-from workhorse.rundir import resume_argv  # noqa: E402
-from workhorse.runner import ladder  # noqa: E402
+from _fakes import FakeBackend, RecordingTelemetry
+from workhorse._vendor.stablemate_core.config import CONFIG_PATH_ENV
+from workhorse import control, otel, reload
+from workhorse.artifacts import ArtifactWriter
+from workhorse.cli import offline
+from workhorse.config_run import RunConfig
+from workhorse.pyflow import run as run_mod
+from workhorse.pyflow.driver import drive
+from workhorse.pyflow.engine import RunEnv
+from workhorse.pyflow.registry import Registry
+from workhorse.pyflow.run import RunInvocation, run_pyflow
+from workhorse.profile import recorded_profile
+from workhorse.pyflow.transitions import Done, Transition
+from workhorse.pyflow.workflow import Workflow
+from workhorse.rundir import resume_argv
+from workhorse.runner import ladder
 from workhorse._vendor.stablemate_core.config import parse_home_config
 
 

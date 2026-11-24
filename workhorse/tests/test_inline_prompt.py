@@ -3,29 +3,26 @@
 from __future__ import annotations
 
 import json
-import sys
 import tempfile
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from _fakes import FakeBackend, FakeClock  # noqa: E402
-from workhorse.artifacts import ArtifactWriter  # noqa: E402
-from workhorse.config_run import RunConfig  # noqa: E402
-from workhorse.pyflow import (  # noqa: E402
+from _fakes import FakeBackend, FakeClock
+from workhorse.artifacts import ArtifactWriter
+from workhorse.config_run import RunConfig
+from workhorse.pyflow import (
     Continue,
     Done,
     Registry,
     Workflow,
     WorkflowDefinitionError,
 )
-from workhorse.pyflow.driver import drive  # noqa: E402
-from workhorse.pyflow.engine import RunEnv  # noqa: E402
-from workhorse.runner import ladder  # noqa: E402
-from workhorse.templates import render_text  # noqa: E402
+from workhorse.pyflow.driver import drive
+from workhorse.pyflow.engine import RunEnv
+from workhorse.runner import ladder
+from workhorse.templates import render_text
 
 Transition = Any
 

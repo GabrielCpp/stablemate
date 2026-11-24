@@ -5,7 +5,6 @@ from __future__ import annotations
 import contextlib
 import io
 import json
-import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -14,9 +13,7 @@ from unittest.mock import patch
 import pytest
 from pydantic import BaseModel
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from workhorse.pyflow import (  # noqa: E402
+from workhorse.pyflow import (
     Await,
     Blueprint,
     Continue,
@@ -28,15 +25,15 @@ from workhorse.pyflow import (  # noqa: E402
     resolves_prompt,
     state,
 )
-from workhorse.pyflow.dot import to_dot  # noqa: E402
-from workhorse.pyflow.graph import (  # noqa: E402
+from workhorse.pyflow.dot import to_dot
+from workhorse.pyflow.graph import (
     Edge,
     StateNode,
     Step,
     registry_graphs,
     state_graph,
 )
-from workhorse.pyflow.preflight import preflight  # noqa: E402
+from workhorse.pyflow.preflight import preflight
 
 
 class RegistryAt(Registry):

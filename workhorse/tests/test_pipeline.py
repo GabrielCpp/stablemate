@@ -2,21 +2,18 @@
 
 from __future__ import annotations
 
-import sys
 import tempfile
 from pathlib import Path
 from typing import Any, cast
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from workhorse import worklist as wl  # noqa: E402
-from workhorse.artifacts import ArtifactWriter  # noqa: E402
-from workhorse.config_run import RunConfig  # noqa: E402
-from workhorse.pyflow import DEFAULT_LAPS, Continue, Done, Workflow  # noqa: E402
-from workhorse.pyflow.driver import drive, read_resume  # noqa: E402
-from workhorse.pyflow.engine import RunEnv  # noqa: E402
-from workhorse.records import parse_checkpoint  # noqa: E402
-from workhorse.runner.ladder import AgentRunner  # noqa: E402
+from workhorse import worklist as wl
+from workhorse.artifacts import ArtifactWriter
+from workhorse.config_run import RunConfig
+from workhorse.pyflow import DEFAULT_LAPS, Continue, Done, Workflow
+from workhorse.pyflow.driver import drive, read_resume
+from workhorse.pyflow.engine import RunEnv
+from workhorse.records import parse_checkpoint
+from workhorse.runner.ladder import AgentRunner
 
 Transition = Any
 

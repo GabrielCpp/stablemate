@@ -6,22 +6,19 @@ import ast
 import json
 import logging
 import os
-import sys
 import tempfile
 from pathlib import Path
 from typing import Any, ClassVar
 
 from pydantic import BaseModel
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from _fakes import FakeClock, RecordingTelemetry, present  # noqa: E402
-from workhorse import control, gates, otel, reload  # noqa: E402
-from workhorse.artifacts import ArtifactWriter  # noqa: E402
-from workhorse.control import FakeChannel, Request  # noqa: E402
-from workhorse.config_run import RunConfig  # noqa: E402
-from workhorse.manifest import ManifestContext  # noqa: E402
-from workhorse.pyflow import (  # noqa: E402
+from _fakes import FakeClock, RecordingTelemetry, present
+from workhorse import control, gates, otel, reload
+from workhorse.artifacts import ArtifactWriter
+from workhorse.control import FakeChannel, Request
+from workhorse.config_run import RunConfig
+from workhorse.manifest import ManifestContext
+from workhorse.pyflow import (
     AgentTimeout,
     AgentTurnFailed,
     Await,
@@ -39,14 +36,14 @@ from workhorse.pyflow import (  # noqa: E402
     dry_run,
     state,
 )
-from workhorse.pyflow import engine as pyflow_engine  # noqa: E402
-from workhorse.pyflow import registry as registry_mod  # noqa: E402
-from workhorse.pyflow.driver import Resume, drive, read_resume  # noqa: E402
-from workhorse.pyflow.park import wait_for_answer  # noqa: E402
-from workhorse.pyflow.engine import RunEnv  # noqa: E402
-from workhorse.pyflow.names import NameIndex  # noqa: E402
-from workhorse.records import NodeGraphCheckpoint  # noqa: E402
-from workhorse.runner.failure import BackendInvocationError, TurnDeadlineExceeded  # noqa: E402
+from workhorse.pyflow import engine as pyflow_engine
+from workhorse.pyflow import registry as registry_mod
+from workhorse.pyflow.driver import Resume, drive, read_resume
+from workhorse.pyflow.park import wait_for_answer
+from workhorse.pyflow.engine import RunEnv
+from workhorse.pyflow.names import NameIndex
+from workhorse.records import NodeGraphCheckpoint
+from workhorse.runner.failure import BackendInvocationError, TurnDeadlineExceeded
 
 Transition = Any
 

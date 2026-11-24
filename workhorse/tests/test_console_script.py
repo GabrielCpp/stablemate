@@ -14,7 +14,6 @@ from unittest.mock import patch
 import pytest
 from workhorse._vendor.stablemate_core.schema import HomeConfig
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 packaged = importlib.import_module("workhorse.packaged")
 ManifestContext = importlib.import_module("workhorse.manifest").ManifestContext

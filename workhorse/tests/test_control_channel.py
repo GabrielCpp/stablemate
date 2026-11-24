@@ -4,18 +4,15 @@ from __future__ import annotations
 
 import json
 import socket
-import sys
 import tempfile
 import threading
 from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from _fakes import FakeClock  # noqa: E402
-from workhorse import control  # noqa: E402
-from workhorse.control import (  # noqa: E402
+from _fakes import FakeClock
+from workhorse import control
+from workhorse.control import (
     NULL_CHANNEL,
     FakeChannel,
     Request,
