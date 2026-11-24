@@ -35,6 +35,17 @@ class RunDetail(Screen):
         "groom/groom/assets/dashboard.js::arrivals",
         "groom/groom/assets/dashboard.js::newestKey",
         "groom/groom/assets/dashboard.js::keepInView",
+        "groom/groom/assets/dashboard.js::moveTimeline",
+        "groom/groom/assets/dashboard.js::nextProblem",
+        "groom/groom/assets/dashboard.js::goToRow",
+        "groom/groom/assets/dashboard.js::timelineView",
+        "groom/groom/assets/dashboard.js::orderedKeys",
+        "groom/groom/assets/dashboard.js::setQuery",
+        "groom/groom/assets/dashboard.js::setItem",
+        "groom/groom/assets/dashboard.js::clearFilters",
+        "groom/groom/assets/dashboard.js::searchTranscripts",
+        "groom/groom/assets/dashboard.js::Marked",
+        "groom/groom/assets/dashboard.js::transcriptHit",
     )
     route = "/"
     name = "Run detail"
@@ -190,7 +201,7 @@ class RunDetail(Screen):
     activity_list = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .tl[role="log"]',
         "Run activity",
-        does="the run's moments, oldest first within each group, as a log a screen reader can follow. The list groups them by work item, then by flow pass, then by visit, so an operator finds a moment by where it sits in the run. A run with no work items groups its passes directly under the top level. On a live run it follows: a row that arrives lands at its place and the newest row stays in view, the selected row stays selected and the pane keeps it. An upward scroll pauses the follow, and while paused the rows in view stay where they are and a group that finishes stays open. Scrolling back to the end resumes following and leaves the selection alone, and a scroll that moved nothing does not. After a reconnect the timeline reads the run again and fills the gap. A finished run's turn that the timeline still holds as running reads as ended with no record",
+        does="the run's moments, oldest first within each group, as a log a screen reader can follow. The list groups them by work item, then by flow pass, then by visit, so an operator finds a moment by where it sits in the run. A run with no work items groups its passes directly under the top level. On a live run it follows: a row that arrives lands at its place and the newest row stays in view, the selected row stays selected and the pane keeps it. An upward scroll pauses the follow, and while paused the rows in view stay where they are and a group that finishes stays open. Scrolling back to the end resumes following and leaves the selection alone, and a scroll that moved nothing does not. After a reconnect the timeline reads the run again and fills the gap. A finished run's turn that the timeline still holds as running reads as ended with no record. Search and the work item selector narrow it together, and clearing them restores it",
     )
     activity_item = Button(
         '#detail-panel[aria-labelledby="tab-activity"] .tl button.tl-group',
@@ -251,6 +262,57 @@ class RunDetail(Screen):
         '#detail-panel[aria-labelledby="tab-activity"] .tl .newpill button.newpill-go',
         "new, back to live",
         does="while paused, the count of rows that arrived since the pause, as 'N new · back to live', or 'N new problems' while Problems narrows the timeline. Its region announces the count politely. Pressing it selects the newest row, opens it in the pane, scrolls it into view, clears the pill, resumes following and puts the focus on the follow control. It goes when the run ends",
+    )
+    activity_keys = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .feedbar .hint',
+        "j k move",
+        does="the labels at the right of the timeline's bar, 'j k move' and 'e next problem', each key in a key cap. While the timeline shows and no field, answer box or selector has the focus, j selects the next row and k the previous one, the pane reads the selected row, the row scrolls into view and takes the focus, so Enter and Space act on it. A key that moves to a row out of view pauses a live run's follow, and a key to a row in view keeps it. E selects the next problem after the selection, by the one definition the Overview's attention tile counts, and wraps to the first. It opens the work item, the pass and the fold that hold it. In a run with no problems e reads 'This run has no problems.' and the selection stays. The keys walk only the rows that search and the work item selector leave, and do nothing with a modifier key held",
+    )
+    activity_search = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .feedbar input.act-search',
+        "Search activity",
+        does="the field 'Search rows and transcripts…' in the timeline's bar. Typing narrows the timeline at once to the rows whose node, result or name holds the text, with the case ignored and the spaces collapsed. Rows inside folded headings and folds match too, and show. After a quarter second without a keystroke groom also searches the transcripts of this run, and a turn found only there shows with 'in transcript:' and the matching line. J, k and e typed in it are text and move nothing. Clearing it restores the timeline",
+    )
+    activity_item_filter = Select(
+        '#detail-panel[aria-labelledby="tab-activity"] .feedbar select.h-sel',
+        "Work item",
+        does="the selector at the left of the timeline's bar. Its first option, 'All work items', shows every item. Each other option is a work item of the run, and 'outside any work item' holds the turns with none. Choosing one limits the timeline to it, and the search applies within it. J, k and e pressed while it has the focus move nothing in the timeline. It keeps one width whatever its options",
+        options=("All work items",),
+    )
+    activity_mark = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .tl mark',
+        "match",
+        does="the matched text in a row's node, result or transcript line, set as text inside a highlight, so a match reads by its mark and markup in the row shows as written",
+    )
+    activity_hit = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .tl .w.hit',
+        "in transcript",
+        does="on a turn found in its transcript, 'in transcript:' and the first line that holds the search, cut to 160 characters around the match and set as text, so markup in it shows as written and no script runs",
+    )
+    activity_searching = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .tl .search-note:has(.spin)',
+        "Searching the transcripts of this run…",
+        does="the status while the transcripts of this run are searched. The rows that match the text show meanwhile, and the status goes when the search ends, either way",
+    )
+    activity_search_failed = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .tl .search-note:has(button.retry-search)',
+        "The transcripts of this run could not be searched",
+        does="shown when groom could not search the transcripts, with 'These rows match the row text only.' The rows that match the row text stay. It never reads as a search with no match",
+    )
+    activity_search_retry = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] button.retry-search',
+        "Retry now",
+        does="searches the transcripts again. A search that succeeds adds the transcript matches and clears the failure",
+    )
+    activity_no_match = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .tl .detail-empty:has(button.clear-search)',
+        "Nothing in this run matches",
+        does="shown once the transcript search has answered and no row matches, as 'Nothing in this run matches “<text>”.' with the text the operator searched",
+    )
+    activity_clear = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] button.clear-search',
+        "Clear the search",
+        does="empties the search field and returns the work item selector to 'All work items', which restores the whole timeline",
     )
     activity_turn = Button(
         '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev',

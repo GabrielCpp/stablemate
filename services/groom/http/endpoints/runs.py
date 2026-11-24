@@ -160,7 +160,7 @@ class SearchRun(Endpoint):
         Answer(503, ERROR, "the transcripts could not be searched"),
     )
     source = (APP + "run_search", APP + "_search", "groom/groom/activity.py::search")
-    does = "Searches the transcripts of one run for the text and answers the turns that say it."
+    does = "Searches the transcripts of one run for the text and answers the turns that say it. It reads the turns of this run only, and each match is the turn's key with its first matching line, cut to 160 characters around the match. A turn whose transcript cannot be read fails the whole search, so a partial answer never reads as complete."
     carries = actions.SearchRun
 
 

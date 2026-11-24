@@ -458,7 +458,7 @@ RECORDS = Object(
 MATCHES = Object(
     "Matches",
     run_id=Field(RUN_ID),
-    query=Field(Str(), does="the text asked for, as sent"),
+    query=Field(Str(), does="the text searched: what was asked with its spaces collapsed, cut to 200 characters and lowercased, or empty when it held no text"),
     matches=Field(List(ENTRY), does=EMPTY_BECAUSE),
 )
 
