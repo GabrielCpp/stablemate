@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 import tempfile
 
@@ -24,6 +25,8 @@ def stack(log_dir: str) -> Stack:
     for leftover in (DB, DB + "-wal", DB + "-shm"):
         if os.path.exists(leftover):
             os.remove(leftover)
+    for kept in ("archives", "transcripts"):
+        shutil.rmtree(os.path.join(HOME, kept), ignore_errors=True)
     bin_dir = os.path.join(home, "bin")
     os.makedirs(bin_dir, exist_ok=True)
     docker = os.path.join(bin_dir, "docker")
