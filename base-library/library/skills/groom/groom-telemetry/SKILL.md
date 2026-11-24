@@ -294,4 +294,4 @@ diagnosed and fixed is a bug closed. One that is narrated comes back on the next
   wall-clock limit is workhorse's `WORKHORSE_MAX_RUNTIME_S`, not something to infer here.
 
 Full as-built reference: `groom/README.md` in the stablemate workspace, and groom's service
-book under `services/groom/` (`ostler book search <term> --service services.groom.http`).
+book (`ostler book search <term> --service services.stablemate.groom.http`).

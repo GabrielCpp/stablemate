@@ -2,7 +2,7 @@
 
 Reached from [../SKILL.md](../SKILL.md) when the service is a program a person types, not a server.
 A command is declared like an endpoint and played with the same journeys, cells, input classes, twins,
-witness and report. The worked example is `services/farrier/`.
+witness and report. The worked example is stablemate's own farrier book, which lives in its author's artifacts folder.
 
 ## Declare a command
 
