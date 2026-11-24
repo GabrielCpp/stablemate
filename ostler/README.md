@@ -341,7 +341,9 @@ ostler book graph   services.api          # each record's state graph, as dot an
 ostler book endpoints|screens|matrix|denied|plan services.api   # read the model, no app
 ```
 
-A rule above any one service goes in a page of one of three books, by how far it reaches. The layout:
+A rule above any one service goes in a page of one of three books, by how far it reaches.
+[The artifacts folder](../docs/guide/artifacts-folder.md) draws the whole layout, milestones, designs,
+decisions and notes included. The books in it:
 
 ```
 ai-artifacts/
