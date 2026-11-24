@@ -172,6 +172,14 @@ def test_e_selects_the_next_problem_after_the_selection_and_wraps_to_the_first(t
         _leave(page, context)
 
 
+_FOCUSED = "() => { const one = document.activeElement; return one ? (one.dataset.slug || one.dataset.entry || one.dataset.fold || '') : ''; }"
+_SELECTED_AND_FOCUSED = """() => {
+    const row = document.querySelector('#detail-panel .tl button.ev[aria-current=true]');
+    return !!row && document.activeElement === row;
+}"""
+_PAINTED = "() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))"
+
+
 def test_after_a_key_moves_the_selection_focus_sits_on_the_selected_row_and_enter_and_space_act_on_it(tmp_path):
     page, context = _stepped_page(tmp_path, "key-focus")
     try:
