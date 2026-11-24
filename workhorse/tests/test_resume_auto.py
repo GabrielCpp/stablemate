@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 import tempfile
-import time
 from pathlib import Path
 from unittest.mock import patch
 
@@ -37,11 +37,13 @@ def _main(argv: list[str]) -> None:
     cli_mod.main(argv, workflow="research", registry=_StubRegistry())
 
 
-def _make_run(runs_dir: Path, name: str, *, terminal, with_checkpoint=True, with_run_json=True):
+def _make_run(runs_dir: Path, name: str, *, terminal, with_checkpoint=True, with_run_json=True, mtime=None):
     d = runs_dir / name
     d.mkdir(parents=True)
     if with_checkpoint:
         (d / "checkpoint.json").write_text(json.dumps({"state": "select_gate", "params": {}}))
+        if mtime is not None:
+            os.utime(d / "checkpoint.json", (mtime, mtime))
     if with_run_json:
         (d / "run.json").write_text(json.dumps({
             "workflow": "research", "run_id": name, "terminal": terminal,
@@ -53,7 +55,6 @@ def test_find_latest_resumable_picks_unfinished():
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp)
         _make_run(runs, "research-001", terminal="fail")
-        time.sleep(0.01)
         stopped = _make_run(runs, "research-002", terminal=None)
         got = find_latest_resumable(runs)
         assert got == stopped, got
@@ -77,8 +78,7 @@ def test_find_latest_resumable_ignores_dirs_without_checkpoint():
 def test_find_latest_resumable_picks_newest_of_several_unfinished():
     with tempfile.TemporaryDirectory() as tmp:
         runs = Path(tmp)
-        _make_run(runs, "research-001", terminal=None)
-        time.sleep(0.01)
+        _make_run(runs, "research-001", terminal=None, mtime=1_000_000)
         newest = _make_run(runs, "research-002", terminal=None)
         assert find_latest_resumable(runs) == newest
 
