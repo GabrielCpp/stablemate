@@ -28,20 +28,22 @@ BROKEN = "001-00009-qa-story"
 
 
 @contextmanager
-def _problem_run(run: str, tmp: Path, *, answered: bool = True, broken: bool = False):
+def _problem_run(run: str, tmp: Path, *, answered: bool = True, broken: bool = False, clean: bool = False):
     from groom import store
 
     with _stepped(run, tmp, gate="answered" if answered else "") as name:
         _polls(5, name)
         if broken:
             store.insert_spans([span("ft", "t1", "sa", "qa-story", "agent_turn", BASE + 300, 20, _attrs("sign-in", **{"workhorse.visit.slug": BROKEN}), 1, name) | {"status": "ERROR"}])
+        if clean:
+            store.insert_spans([span("ok", "t1", "sa", "docs", "agent_turn", BASE + 400, 20, _attrs("docs", **{"workhorse.visit.slug": "001-00010-docs"}), 1, name)])
         yield name
 
 
-def _page(tmp_path: Path, run: str, *, activity: bool = True, watched: bool = False, broken: bool = False):
+def _page(tmp_path: Path, run: str, *, activity: bool = True, watched: bool = False, broken: bool = False, clean: bool = False):
     live = _live()
     assert live is not None, _UNAVAILABLE
-    context = _problem_run(run, tmp_path, broken=broken)
+    context = _problem_run(run, tmp_path, broken=broken, clean=clean)
     name = context.__enter__()
     page = _open_watched(live) if watched else _open(live)
     _pick(page, name)
@@ -106,15 +108,19 @@ def test_pressing_problems_narrows_the_timeline_to_its_problem_rows_under_their_
 
 
 def test_the_problems_view_opens_at_its_newest_row(tmp_path):
-    _live_, page, context, _name = _page(tmp_path, "prb-newest")
+    _live_, page, context, name = _page(tmp_path, "prb-newest")
     try:
+        page.set_viewport_size({"width": 1400, "height": 330})
         _on(page)
-        last = page.locator("#detail-panel .tl button.ev").last
-        page.wait_for_function(
-            "(list) => { const a = document.querySelector(list); return a.scrollHeight - a.clientHeight - a.scrollTop < 2; }",
-            arg=LIST,
-        )
-        assert last.is_visible()
+        page.wait_for_function("(list) => { const a = document.querySelector(list); return a.scrollHeight > a.clientHeight; }", arg=LIST)
+        newest = _newest_problem(page, name)
+        row = page.locator(f'#detail-panel .tl button.ev[data-entry="{newest}"]')
+        assert row.count() == 1
+        page.wait_for_function("(list) => { const a = document.querySelector(list); return a.scrollHeight - a.clientHeight - a.scrollTop < 2; }", arg=LIST)
+        shown = page.locator(LIST).bounding_box()
+        placed = row.bounding_box()
+        assert shown is not None and placed is not None
+        assert placed["y"] >= shown["y"] - 1 and placed["y"] + placed["height"] <= shown["y"] + shown["height"] + 1, (shown, placed)
     finally:
         _leave(page, context)
 
@@ -304,6 +310,27 @@ def test_search_and_the_work_item_filter_also_apply_inside_the_problems_view(tmp
         page.locator(SEARCH).fill("churn")
         expect(page.locator("#detail-panel .tl button.ev[data-kind=churn]")).to_have_count(1)
         assert len(_keys(page)) == 1
+    finally:
+        _leave(page, context)
+
+
+def test_the_problems_view_says_so_when_the_work_item_or_the_search_leaves_no_problem_and_each_button_restores_it(tmp_path):
+    from playwright.sync_api import expect
+
+    _live_, page, context, _name = _page(tmp_path, "prb-empty-filters", clean=True)
+    try:
+        _on(page)
+        full = len(_keys(page))
+        page.locator(SELECTOR).select_option(label="docs")
+        notice = page.locator("#detail-panel .tl .detail-empty")
+        expect(notice).to_contain_text("No problems in this work item.")
+        page.get_by_role("button", name="Clear the filters").click()
+        assert len(_keys(page)) == full
+        page.locator(SEARCH).fill("zzz-nothing-says-this")
+        expect(notice).to_contain_text("No problems match “zzz-nothing-says-this”.")
+        page.get_by_role("button", name="Clear the search").click()
+        assert len(_keys(page)) == full
+        expect(page.locator(CHIP)).to_have_attribute("aria-pressed", "true")
     finally:
         _leave(page, context)
 
