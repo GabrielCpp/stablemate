@@ -207,6 +207,15 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     items.sort(key=lambda item: item.get_closest_marker("whole_run") is None)
 
 
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_protocol(item: pytest.Item) -> Iterator[None]:
+    """A command run in-process puts its book root on the import path for good, so each test hands back the path and the `services` it found, after its last fixture is torn down."""
+    from book_todo import import_state_kept
+
+    with import_state_kept():
+        yield
+
+
 @pytest.fixture(autouse=True)
 def _artifacts_dir_is_per_test(tmp_path_factory, monkeypatch):
     """Specs live in the user's artifacts folder, and the shared browser outlives a test, so no test may reach either."""

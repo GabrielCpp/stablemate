@@ -15,9 +15,13 @@ FIXTURE = Path(__file__).parent / "fixtures" / "book_todo"
 
 
 def module(name: str) -> ModuleType:
-    """A module of the fixture book, with the fixture's root on the import path."""
-    if str(FIXTURE) not in sys.path:
-        sys.path.insert(0, str(FIXTURE))
+    """A module of the fixture book, with the fixture's root first on the import path."""
+    root = str(FIXTURE)
+    if sys.path[:1] != [root]:
+        while root in sys.path:
+            sys.path.remove(root)
+        sys.path.insert(0, root)
+        importlib.invalidate_caches()
     return importlib.import_module(name)
 
 
@@ -42,12 +46,29 @@ def run_book(arguments: list[str], port: int, cwd: Path = FIXTURE, web: int | No
                           capture_output=True, text=True, check=False)
 
 
+def loaded() -> dict[str, ModuleType]:
+    """Every loaded module of a `services` package, by name."""
+    return {name: held for name, held in sys.modules.items() if name == "services" or name.startswith("services.")}
+
+
+@contextlib.contextmanager
+def import_state_kept() -> Iterator[None]:
+    """The import path and the loaded `services` modules as the block found them, put back on leaving."""
+    path = list(sys.path)
+    saved = loaded()
+    try:
+        yield
+    finally:
+        sys.path[:] = path
+        for name in loaded():
+            del sys.modules[name]
+        sys.modules.update(saved)
+        importlib.invalidate_caches()
+
+
 @contextlib.contextmanager
 def services_from(path: Path) -> Iterator[None]:
     """The `services` package of the books under `path` in place of any loaded one, put back on leaving."""
-    def loaded() -> dict[str, ModuleType]:
-        return {name: held for name, held in sys.modules.items() if name == "services" or name.startswith("services.")}
-
     saved = loaded()
     for name in saved:
         del sys.modules[name]
