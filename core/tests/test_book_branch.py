@@ -31,6 +31,14 @@ def _branches(repo: Path) -> str:
     return _out(repo, "branch", "--list")
 
 
+@pytest.fixture(autouse=True)
+def _committer(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give git an identity, because landing a branch rebases it and a machine with no git config has none."""
+    for role in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{role}_NAME", "t")
+        monkeypatch.setenv(f"GIT_{role}_EMAIL", "t@example.com")
+
+
 @pytest.fixture
 def world(tmp_path, monkeypatch, cfg_file):
     monkeypatch.setenv(cfgmod.ARTIFACTS_DIR_ENV, str(tmp_path / "artifacts"))
