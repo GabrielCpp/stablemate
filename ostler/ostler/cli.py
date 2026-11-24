@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import shlex
@@ -1190,9 +1191,10 @@ def _book_position(argv: list[str]) -> int | None:
 
 def _cmd_book(cwd: Path | None, book_args: list[str]) -> int:
     """Hand the arguments to the book runtime from the directory that holds `services/`."""
-    if cwd is not None:
-        os.chdir(cwd)
-    return book_cli.main(book_args)
+    if cwd is None:
+        return book_cli.main(book_args)
+    with contextlib.chdir(cwd):
+        return book_cli.main(book_args)
 
 
 def _cmd_layout() -> int:
