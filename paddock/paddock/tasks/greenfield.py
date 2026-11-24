@@ -362,7 +362,7 @@ def commit_baseline(run: Run) -> None:
                                  f"{result.stderr.strip() or result.stdout.strip()}")
 
 
-RUNTIME_IGNORES = (".opencode/", "**/qa/**/*.log")
+RUNTIME_IGNORES = (".opencode/", "**/qa/**/*.log", f"/{'/'.join(BUILD)}/")
 
 IGNORE_HEADER = "# benchmark harness: agent runtime state, not deliverables"
 

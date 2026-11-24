@@ -7,13 +7,14 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from fakes import DOCS, PRODUCTS, fake_run, folder_run
+from fakes import DOCS, PRODUCTS, fake_run, folder_run, init_repo
 
 from ostler.milestones import BOOKS_DIR
 from stablemate_core import config as core_config
 from paddock.runner import CommandResult, RoundInterrupted, Run
 from paddock.tasks import greenfield
 from paddock.tasks.stablemate import TrialError, uv_run
+from smoke import git
 
 FIXTURE = greenfield.Fixture(
     milestone="milestones/m1",
@@ -165,6 +166,20 @@ def test_the_baseline_is_committed_in_every_member(tmp_path: Path) -> None:
     for name in (*PRODUCTS, DOCS):
         assert greenfield.git_commits(run.stage / name) == before[name] + 1
         assert greenfield.IGNORE_HEADER in (run.stage / name / ".gitignore").read_text(encoding="utf-8")
+
+
+def test_the_rounds_own_ledger_never_dirties_the_repo_it_builds(tmp_path: Path) -> None:
+    run = fake_run(tmp_path)
+    init_repo(run.stage, {"main.go": "package main\n"})
+    run.write_json(greenfield.runs_dir(run) / "genesis" / "run.json", {"rc": 0})
+
+    greenfield.ignore_agent_runtime(run)
+    greenfield.commit_baseline(run)
+    run.write_json(greenfield.ledger_path(run), [{"phase": "coder"}])
+    run.write_json(greenfield.runs_dir(run) / "coder" / "run.json", {"rc": None})
+
+    assert git(run.stage, "status", "--porcelain") == ""
+    assert git(run.stage, "ls-files", "artifacts") == ""
 
 
 def test_commits_are_summed_across_members(tmp_path: Path) -> None:
