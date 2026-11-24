@@ -242,13 +242,14 @@ class GroomDashboard(PageSurface):
     def summaries(self, judged: Judged, workflow: str, own: str) -> None:
         now = time.time()
         each = [(f"peer{n}-{own.removeprefix('judged-')}", cost, False, 2, 1, PEER_VISIT) for n, cost in enumerate(judged.peers)]
-        each.append((own, judged.each, judged.estimate, judged.items, 0 if judged.estimate else 1, judged.visit))
+        each.append((own, judged.each, judged.estimate, judged.items, 1 if judged.priced and not judged.estimate else 0, judged.visit))
         rows = []
         spans = []
         for n, (run, cost, estimate, items, priced, visit) in enumerate(each):
             ended = now - 3600 * (n + 1)
             ending = judged.ending if run == own else "success"
-            spent = None if estimate else cost * items
+            unpriced = run == own and not judged.priced
+            spent = None if estimate or unpriced else cost * items
             guess = cost * items if estimate else None
             node = {"node": "qa", "kind": "agent", "visits": 1, "time_s": visit, "samples": 1, "longest_s": visit, "turns": 1, "cost_turns": priced, "cost_usd": spent, "output_tokens": 100, "retries": 0}
             rows.append((run, workflow, "acme", "main", "ready", ending, ended, ended, 3600.0, 7200.0, spent, guess, 4 * priced, 4, items, items, json.dumps([node])))

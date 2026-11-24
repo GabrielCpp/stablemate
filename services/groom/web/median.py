@@ -71,11 +71,11 @@ def plural(count: int, one: str, many: str) -> str:
 
 
 def comparable(judged: Judged) -> bool:
-    return judged.ending == "success" and not judged.estimate and judged.items > 0
+    return judged.ending == "success" and not judged.estimate and judged.priced and judged.items > 0
 
 
 def run_cell(judged: Judged) -> str:
-    if judged.items == 0:
+    if judged.items == 0 or not (judged.priced or judged.estimate):
         return "—"
     if judged.estimate:
         return f"est {each(judged.each)}"
@@ -108,6 +108,8 @@ def tile_cell(judged: Judged) -> str:
         return f"{count} no item finished, so no cost per item"
     if judged.estimate:
         return f"{count} est {each(judged.each)} per item, not compared: {not_compared(judged.ending)}"
+    if not judged.priced:
+        return f"{count} no cost per item without a price"
     if judged.ending != "success":
         return f"{count} {each(judged.each)} per item, not compared: {not_compared(judged.ending)}"
     others = len(judged.peers)
