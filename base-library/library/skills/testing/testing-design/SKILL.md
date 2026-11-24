@@ -244,8 +244,9 @@ counter-case and its proof.
 | 15.6 | The code reaches home, cache, config or environment and no fixture redirected it | The user's machine |
 | 15.7 | The test starts a process, thread or task and no teardown ends it | An earlier run's leftovers |
 | 15.8 | A value shared across tests is changed by one of them | Test order |
+| 15.9 | A module, product or test, changes something outside itself when it is loaded | Which module loaded first |
 
-Reading settles rows 15.1, 15.2, 15.5 and 15.6. The others need the hunt run the reference
+Reading settles rows 15.1, 15.2, 15.5, 15.6 and 15.9. The others need the hunt run the reference
 describes: a pinned copy, random order, a loaded machine. A gate that decides a release runs on a
 copy nobody edits.
 
@@ -270,6 +271,7 @@ Before approving a test — yours or someone else's:
 - [ ] It does not assert a contract a sibling package owns (§13)
 - [ ] Setup a second test file needs has one home, built from small builders (§14)
 - [ ] Every wait is on an event, and none is on the clock (§15.3)
+- [ ] No module the test loads, and no test module, acts outside itself on load (§15.9)
 - [ ] No other row of the §15 table fires, or its counter-case is named (§15)
 
 ## Smells
@@ -283,6 +285,7 @@ Before approving a test — yours or someone else's:
 | Tests skip on the CI box, pass locally | Skipped-to-green suite (§8) |
 | A refactor breaks 40 tests, no behaviour changed | Asserting incidentals (§10) |
 | A test passes alone, fails after another test | Leaked state across tests (§11, §15.8) |
+| A test fails alone, passes after another test | A module it needs was set up by another module's load (§15.9) |
 | A test passes alone, fails in the full suite or under load | Its verdict depends on the clock or a shared address (§15.3 to §15.5) |
 | A gate goes red while someone edits the checkout | A test reads the live tree (§15.1, §15.2) |
 | The warning pile grows by 5 per commit | A real warning is being lost in the noise (§12) |

@@ -121,9 +121,31 @@ fixture.
 
 **Proof.** Run the suite in random order, then run the test alone. Same verdict.
 
+## 15.9 A module acts outside itself when it is loaded
+
+**Trigger.** A statement at the top level of a module, product or test, changes something the
+module does not own: the search path for imports, the environment, the working directory, a signal
+handler, an exit hook, the root logger, a file, a socket, a process, or a value held by another
+module.
+
+**Why it flakes.** Loading happens once per process, in whatever order the run reaches the modules.
+The change is in place for every test that runs after the load and for none that runs before. A
+test then passes only when some other module was loaded first, and fails alone.
+
+**Fix.** Loading a module builds that module's own values and nothing else: a constant, a table, a
+compiled pattern, a configured object of a library it uses. The outside change moves into a
+function, and whoever needs it calls it: the entry point for the product, a fixture for a test. A
+fixture undoes the change at teardown. A setting the runner offers, such as a search path in its
+configuration file, replaces a statement that edits the path.
+
+**Counter-case.** None. A skip the runner offers at the top of a test module is the runner's own
+mechanism and changes nothing outside the module.
+
+**Proof.** Run each test file alone, in a fresh process. Same verdict as in the suite.
+
 ## The hunt
 
-Reading finds rows 15.1, 15.2, 15.5 and 15.6 whole. Rows 15.3, 15.4, 15.7 and 15.8 hide in shapes
+Reading finds rows 15.1, 15.2, 15.5, 15.6 and 15.9 whole. Rows 15.3, 15.4, 15.7 and 15.8 hide in shapes
 no table lists, so a run judges them:
 
 1. Pin a copy of the code that nobody edits.

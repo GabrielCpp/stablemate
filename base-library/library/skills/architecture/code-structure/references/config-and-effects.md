@@ -97,3 +97,35 @@ not which function happened to have the value in scope.
 
 Effects settle where the data was convenient, and that is how a pure decision function ends up
 holding the only copy of a persistence rule.
+
+## 4.4 Loading a module changes nothing outside it
+
+**Statement.** A module's top level builds the module's own values. It changes nothing the module
+does not own.
+
+**Trigger.** A top-level statement, outside any function, that does one of these:
+
+- Edits the import search path, the environment or the working directory.
+- Installs a signal handler or an exit hook, or configures the root logger.
+- Opens a file, a socket or a connection, or starts a process, a thread or a task.
+- Writes into a value another module holds.
+
+**Fix.** Put the statement in a function with a name that says what it does. The entry point calls
+it once, and a test calls it from a fixture that undoes it. An object that needs cleanup at exit
+registers the cleanup when it first acquires the thing to clean, not when its module loads.
+
+```text
+search_path.insert(0, here)          # ✗ every later import in the process resolves differently
+at_exit(READER.shutdown)             # ✗ a hook for a reader nobody may ever start
+
+def install(): search_path.insert(0, here)      # ✓ the entry point decides
+def start(self): ...; at_exit(self.shutdown)    # ✓ registered when there is something to stop
+```
+
+A load-time effect runs once per process, at a moment nobody chose. Code that depends on it works
+only when the right module happened to load first, so a test passes in the suite and fails alone.
+A caller cannot opt out of it, and a test cannot undo it.
+
+**Counter-case.** Building a value the module owns is not an effect: a constant, a lookup table, a
+compiled pattern, a logger for the module's own name, a library object the module configures and
+keeps. A script's entry block, which runs only when the file is the program, is the entry point.

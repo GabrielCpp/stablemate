@@ -57,7 +57,7 @@ reason the rule exists. Each carries a quarter of the rule set:
 - **[references/boundaries.md](references/boundaries.md)** — rules 3.1–3.3. Values written and read
   back, returns with several pieces, and payloads from a schema you do not own. Read it when
   designing a checkpoint, a wire format, or a reader for another tool's output.
-- **[references/config-and-effects.md](references/config-and-effects.md)** — rules 4.1–4.3. Where
+- **[references/config-and-effects.md](references/config-and-effects.md)** — rules 4.1–4.4. Where
   configuration may be read and where a side effect may live. Read it when adding a setting, a
   file path, a default parameter, a cache write, or a `sleep`.
 
@@ -164,6 +164,7 @@ but this is the exception that is real.
 | [4.1](references/config-and-effects.md) | config read, or an environment fact written, below the edge | inject immutable settings |
 | [4.2](references/config-and-effects.md) | a decision function that writes or sleeps | split; inject the clock |
 | [4.3](references/config-and-effects.md) | an effect in a function named for something else | move it to the invariant's owner |
+| [4.4](references/config-and-effects.md) | a top-level statement that changes something outside its module | move it into a function the entry point calls |
 | [5](#5-the-question-that-catches-most-of-the-above) | a test patching a private name | add the injection point |
 | [6.1](references/control-flow.md) | `elif` chain comparing one value to literals | a table keyed by kind |
 | [6.2](references/control-flow.md) | two bodies differing only in literals | one function, one record per variant |
