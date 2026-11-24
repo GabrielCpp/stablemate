@@ -357,7 +357,7 @@ def run_pyflow(invocation: RunInvocation) -> int:
 
     logsetup.setup()
     otel.install(invocation.telemetry)
-    otel.start_run(name, writer.run_id, str(writer.run_dir))
+    otel.start_run(name, writer.run_id, str(writer.run_dir), writer.worktree_path)
     writer.record_launch(
         [sys.executable, *sys.argv],
         resume_argv(

@@ -63,7 +63,7 @@ def _host(recorder: Recorder) -> otel.TelemetryHost:
     """A host that always builds `recorder`, with the collector probe and the test-process guard taken out of the picture — left real, the probe would answer from whatever is listening on the dev machine and these tests would pass or fail by environment."""
     return otel.TelemetryHost(
         settings=dataclasses.replace(otel.OtelSettings(), forced=True),
-        build=lambda workflow, run_id, run_dir, settings: recorder,
+        build=lambda workflow, run_id, run_dir, settings, workspace: recorder,
     )
 
 

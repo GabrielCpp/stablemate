@@ -275,7 +275,7 @@ def _invocation(tmp: str, active: Any = None) -> RunInvocation:
         run_id="t",
         telemetry=otel.TelemetryHost(
             settings=dataclasses.replace(otel.OtelSettings(), forced=True),
-            build=lambda workflow, run_id, run_dir, settings: active
+            build=lambda workflow, run_id, run_dir, settings, workspace: active
             or otel._NullTelemetry(),
         ),
     )

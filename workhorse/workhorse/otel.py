@@ -323,6 +323,7 @@ class TelemetryFactory(Protocol):
         run_id: str,
         run_dir: str | None,
         settings: OtelSettings,
+        workspace: str,
     ) -> Telemetry | None: ...
 
 
@@ -367,8 +368,25 @@ def _build_logs(resource: Any, endpoint: str) -> Any:
     return provider
 
 
+def resource_attributes(
+    workflow: str, run_id: str, run_dir: str | None, workspace: str
+) -> dict[str, Any]:
+    """The attributes every span, metric and log of this run carries; ``workspace`` is the checkout the run works in, falling back to the invoking repo."""
+    return {
+        "service.name": "workhorse",
+        "run_id": run_id,
+        "workflow": workflow,
+        "repo": os.environ.get("REPO_NAME", ""),
+        "branch": os.environ.get("REPO_BRANCH", ""),
+        "run_dir": run_dir or "",
+        "process.pid": os.getpid(),
+        "workspace": workspace or os.environ.get("AGENT_REPO_DIR") or os.getcwd(),
+        "workhorse.resume_generation": _resume_generation(run_dir),
+    }
+
+
 def _build(
-    workflow: str, run_id: str, run_dir: str | None, settings: OtelSettings
+    workflow: str, run_id: str, run_dir: str | None, settings: OtelSettings, workspace: str
 ) -> _Telemetry | None:
     try:
         from opentelemetry import trace as trace_api
@@ -392,19 +410,7 @@ def _build(
             )
         return None
 
-    resource = Resource.create(
-        {
-            "service.name": "workhorse",
-            "run_id": run_id,
-            "workflow": workflow,
-            "repo": os.environ.get("REPO_NAME", ""),
-            "branch": os.environ.get("REPO_BRANCH", ""),
-            "run_dir": run_dir or "",
-            "process.pid": os.getpid(),
-            "workspace": os.environ.get("AGENT_REPO_DIR") or os.getcwd(),
-            "workhorse.resume_generation": _resume_generation(run_dir),
-        }
-    )
+    resource = Resource.create(resource_attributes(workflow, run_id, run_dir, workspace))
     tracer_provider = TracerProvider(resource=resource)
     tracer_provider.add_span_processor(
         BatchSpanProcessor(OTLPSpanExporter(endpoint=f"{settings.endpoint}/v1/traces"))
@@ -448,7 +454,9 @@ class TelemetryHost:
     active: Telemetry = _NULL
     usage_taps: list[list[TurnUsage]] = field(default_factory=list)
 
-    def start_run(self, workflow: str, run_id: str, run_dir: str | None = None) -> None:
+    def start_run(
+        self, workflow: str, run_id: str, run_dir: str | None = None, workspace: str = ""
+    ) -> None:
         """Configure the SDK and open the run's root span."""
         if self.active.enabled() or self.settings.forced is False:
             return
@@ -459,7 +467,7 @@ class TelemetryHost:
             return
         try:
             self.active = (
-                self.build(workflow, run_id, run_dir, self.settings) or _NULL
+                self.build(workflow, run_id, run_dir, self.settings, workspace) or _NULL
             )
         except Exception as exc:
             print(
@@ -503,9 +511,11 @@ def enabled() -> bool:
     return _host.active.enabled()
 
 
-def start_run(workflow: str, run_id: str, run_dir: str | None = None) -> None:
+def start_run(
+    workflow: str, run_id: str, run_dir: str | None = None, workspace: str = ""
+) -> None:
     """Open the installed host's run."""
-    _host.start_run(workflow, run_id, run_dir)
+    _host.start_run(workflow, run_id, run_dir, workspace)
 
 
 def end_run(

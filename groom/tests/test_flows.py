@@ -321,7 +321,7 @@ def _engine_spans() -> list[dict]:
     provider = TracerProvider()
     provider.add_span_processor(SimpleSpanProcessor(exporter))
 
-    def build(workflow, run_id, run_dir, settings):
+    def build(workflow, run_id, run_dir, settings, workspace):
         telemetry = otel._Telemetry(trace, provider.get_tracer("t"), Meter(), lambda: None, 30.0)
         telemetry.start_root(workflow)
         return telemetry

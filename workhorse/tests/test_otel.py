@@ -177,8 +177,8 @@ def _gate(forced, reachable, under_test=False):
     host = otel.TelemetryHost(
         settings=dataclasses.replace(otel.OtelSettings(), forced=forced),
         probe=lambda endpoint, timeout_s: (probes.append(endpoint), reachable)[1],
-        build=lambda workflow, run_id, run_dir, settings: (
-            built.append((workflow, run_id, run_dir)),
+        build=lambda workflow, run_id, run_dir, settings, workspace: (
+            built.append((workflow, run_id, run_dir, workspace)),
             FakeTelemetry(),
         )[1],
         under_test=lambda: under_test,
@@ -205,7 +205,7 @@ def test_auto_activates_when_the_collector_answers():
         otel.start_run("wf", "run-1")
         assert otel.enabled() is True
         assert probes == [otel.OtelSettings().endpoint]
-        assert built == [("wf", "run-1", None)]
+        assert built == [("wf", "run-1", None, "")]
 
 
 def test_auto_stays_noop_when_no_collector_is_listening():
@@ -228,7 +228,7 @@ def test_force_on_skips_the_probe():
         otel.start_run("wf", "run-1")
         assert otel.enabled() is True
         assert probes == []
-        assert built == [("wf", "run-1", None)]
+        assert built == [("wf", "run-1", None, "")]
 
 
 def test_auto_declines_in_a_test_process():
@@ -243,7 +243,19 @@ def test_force_on_still_wins_in_a_test_process():
     with _gate(forced=True, reachable=False, under_test=True) as (_, built):
         otel.start_run("wf", "run-1")
         assert otel.enabled() is True
-        assert built == [("wf", "run-1", None)]
+        assert built == [("wf", "run-1", None, "")]
+
+
+def test_the_workspace_a_run_works_in_reaches_the_build():
+    with _gate(forced=True, reachable=False) as (_, built):
+        otel.start_run("wf", "run-1", None, "/worktrees/run-1")
+        assert built == [("wf", "run-1", None, "/worktrees/run-1")]
+
+
+def test_the_resource_names_the_worktree_over_the_invoking_repo(monkeypatch):
+    monkeypatch.setenv("AGENT_REPO_DIR", "/repo")
+    assert otel.resource_attributes("wf", "run-1", None, "/worktrees/run-1")["workspace"] == "/worktrees/run-1"
+    assert otel.resource_attributes("wf", "run-1", None, "")["workspace"] == "/repo"
 
 
 def test_under_test_detects_this_very_process():
