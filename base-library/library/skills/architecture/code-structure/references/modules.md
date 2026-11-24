@@ -280,7 +280,7 @@ directories that each carry their own manifest.
 
 **Fix.** Find the library's home in this order, and stop at the first that answers:
 
-1. a decision under `docs/decisions/*/decision.md` of the artifacts folder that says where code two services share lives;
+1. a product page that says where code two services share lives (`ostler book search shared library --kind product`);
 2. the workspace the repository already has, such as `go.work`, `pnpm-workspace.yaml`, the
    `workspaces` of the root `package.json`, `[tool.uv.workspace]` or the root pubspec's
    `workspace:`, and the folder its libraries already sit in.
@@ -300,17 +300,11 @@ two services share lives under `libs/<name>`, one manifest each, listed in the w
 coder run, return `blocked` with the proposal as the question and your recommendation in it. In a
 session, put the proposal to the user in chat and wait for the answer.
 
-Record the answer as a decision, so the next share follows the convention without asking. Run
-`ostler decisions add <short-kebab-slug> --summary "<the question, in one line>"`. It files
-`decision.md` in a folder named by the slug under the decisions folder of the artifacts directory, prints its path, and refuses a slug that is already taken. Fill the four headings in the
-printed file:
-
-- `## Question`: where does code two services share live?
-- `## Decided`: the convention, in one or two sentences.
-- `## Grounded in`: who answered, and where.
-- `## Context`: the copy that raised it, and what was at stake.
-
-The command does not commit. Commit the decision with the change that follows the answer.
+Record the answer as a product page, so the next share follows the convention without asking. Write
+`products/<product>/<slug>.md` in the artifacts folder, or `product/<slug>.md` where the repository keeps
+its book. Start it with `date:`, `sources:` and `status: accepted` lines, then prose. The first sentence is
+the convention, in one or two sentences. Then say who answered and where, the copy that raised it and what
+was at stake. Commit the page with the change that follows the answer.
 
 A copy left in each service because no shared home existed is the start of a fork. The second
 service fixes its copy, the first never hears about it, and each later service copies whichever

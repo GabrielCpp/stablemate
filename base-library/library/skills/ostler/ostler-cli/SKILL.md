@@ -1,6 +1,6 @@
 ---
 name: ostler-cli
-description: "Drive the ostler tool: a repo's planning graph of epics, stories, seeds, the register and decisions, short handles and id allocation, templates, the QA run of a hand-written qa_plan.py, local stacks with `ostler env`, and the CLI command interface AND the `from ostler import Ostler` Python API workflow scripts use in-process. Load it to read or change the planning graph, to run or repair a QA plan, to bring up a stack, or to call ostler from a workflow node. The service book under services/ is written with ostler-book."
+description: "Drive the ostler tool: a repo's planning graph of epics, stories, seeds, the register, short handles and id allocation, templates, the QA run of a hand-written qa_plan.py, local stacks with `ostler env`, and the CLI command interface AND the `from ostler import Ostler` Python API workflow scripts use in-process. Load it to read or change the planning graph, to run or repair a QA plan, to bring up a stack, or to call ostler from a workflow node. The service book under services/ is written with ostler-book."
 tags: [cli, python, docs]
 commit_checks:
   - run: scripts/check_staged_files.py
@@ -47,9 +47,10 @@ Everything else an agent writes outside the code also goes to the artifacts fold
 | milestone | `products/<product>/milestones/NNNN-<slug>/milestone.md` | `ostler path milestone <slug>` |
 | design note | `products/<product>/designs/<slug>.md` | `ostler path design <slug>` |
 | working notes, untracked | `notes/<repo>/<slug>/` | `ostler path notes <slug>` |
-| standing decision | `docs/decisions/<slug>/decision.md` | `ostler decisions add <slug>` |
 
 `<product>` is `book.product` in the repository's `agents.yml`, else the repository's name. Repositories that name the same product share its pages, milestones and designs. `<repo>` files what one codebase owns: its service books, register and notes.
+
+A decision tied to one service is a file in that service book's `decisions/`. An answer that spans services is a product page. Read both with `ostler book search <term> --kind decision|product`.
 
 The milestones order the work: a milestone's `dependsOn` milestones first, then its `epics:` list in
 order. `okf.milestone_epics()` returns that list.

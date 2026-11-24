@@ -66,17 +66,16 @@ is lost to the next reader. A file is not.
 - **A settled decision** goes where the repo keeps its rules. Where the repo keeps a
   book, that is a `rule:` bullet on the concept that covers it, or a new concept when
   none does.
-- **A rejected alternative** becomes a decision. Run
-  `ostler decisions add <short-kebab-slug> --summary "<the question, in one line>"`. It files
-  `decision.md` in a folder named by the slug under the repo's docs home, prints its path, and
-  refuses a slug that is already taken. The coder's resolver files the same way, and the dev scope
-  reads it before it asks. The reader is the next agent about to propose the same path. Fill the
-  four headings in the printed file:
-
-  - `## Question`: the question, as a question.
-  - `## Decided`: the path taken, and the alternative it rejects, in one or two sentences.
-  - `## Grounded in`: the file and line that decided it, or my answer to Q<n> of this grill.
-  - `## Context`: the plan this grill stress-tested, and what was at stake.
+- **A rejected alternative or a settled answer** goes in a file. When it concerns one service
+  of a repo that keeps a book, write `decisions/<slug>.md` in that service's book. Start it with
+  `story:`, `date:` and `elements:` lines, then prose. When it spans services, or the repo has no
+  book, write the product page `products/<product>/<slug>.md` in the artifacts folder instead
+  (`product/<slug>.md` where the repo keeps its book). Start it with `date:`, `sources:` and
+  `status:` lines, then prose. In both, the first sentence is the path taken and the alternative
+  it rejects. Then give the question, the file and line that decided it or my answer to Q<n> of
+  this grill, and the plan this grill stress-tested with what was at stake. The coder's resolver
+  writes the same way, and the dev scope reads it before it asks. The reader is the next agent
+  about to propose the same path.
 
 - **An unresolved objection** is work nobody has scheduled. File it on the Register:
 
