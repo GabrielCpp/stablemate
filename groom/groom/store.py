@@ -22,7 +22,7 @@ from typing import Any, ParamSpec, TypeVar
 
 from platformdirs import user_data_dir
 
-from groom import prices, problems
+from groom import memory, prices, problems
 from groom.flows import build_flows
 from groom.models import (
     ARCHIVED_METRICS,
@@ -1382,7 +1382,9 @@ def _run_spans(run: str, keep: Callable[[str], bool] = _kept_attr) -> list[dict[
         " WHERE run_id = ? ORDER BY start_ts",
         (run, run),
     )
-    return [_run_span(row, keep) for row in cursor]
+    spans = [_run_span(row, keep) for row in cursor]
+    memory.note_read(len(spans))
+    return spans
 
 
 @reading

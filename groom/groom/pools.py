@@ -10,6 +10,8 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, TypeVar
 
+from groom import memory
+
 logger = logging.getLogger("groom.pools")
 
 _T = TypeVar("_T")
@@ -57,7 +59,7 @@ class Pool:
     async def run(self, fn: Callable[..., _T], /, *args: Any, **kwargs: Any) -> _T:
         """``asyncio.to_thread``, on this pool instead of the shared default one."""
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self.executor(), functools.partial(fn, *args, **kwargs))
+        return await loop.run_in_executor(self.executor(), functools.partial(memory.trimmed, fn, *args, **kwargs))
 
     def shutdown(self) -> None:
         """Drop the executor; the next :meth:`run` builds a fresh one."""
