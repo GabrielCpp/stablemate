@@ -78,6 +78,12 @@ def _drive(tmp_path: Path, run: str, check, *, tab: bool = True, **given) -> Non
             page.close()
 
 
+def _asked_of(page) -> list[str]:
+    asked: list[str] = []
+    page.on("request", lambda request: asked.append(request.url))
+    return asked
+
+
 def test_an_archived_run_has_the_activity_tab_with_the_timeline_the_filters_and_the_keys_of_an_ended_run(tmp_path):
     from playwright.sync_api import expect
 
@@ -229,15 +235,52 @@ def test_metric_samples_of_an_archived_run_stay_hidden_until_the_control_asks_fo
 def test_search_covers_the_rows_and_the_transcripts_of_an_archived_run(tmp_path):
     from playwright.sync_api import expect
 
-    def check(page, name):
-        box = page.locator(f"{PANEL} input[type=search], {PANEL} .feedbar input")
-        box.first.fill("free port")
-        expect(page.locator(f"{PANEL} .tl button.ev")).to_have_count(1)
-        expect(page.locator(f"{PANEL} .tl button.ev").first).to_contain_text("qa-story")
-        box.first.fill(FAILED)
-        expect(page.locator(f"{PANEL} .tl button.ev").first).to_contain_text(FAILED)
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    with _archived_activity(tmp_path, "arch-search") as name:
+        page = _opened(live, name)
+        asked = _asked_of(page)
+        try:
+            _activity(page)
+            box = page.locator(f"{PANEL} input[type=search], {PANEL} .feedbar input").first
+            box.fill("free port")
+            expect(page.locator(f"{PANEL} .tl button.ev")).to_have_count(1)
+            expect(page.locator(f"{PANEL} .tl button.ev").first).to_contain_text("qa-story")
+            box.fill(FAILED)
+            expect(page.locator(f"{PANEL} .tl button.ev").first).to_contain_text(FAILED)
+            box.fill("Port 5432 is held")
+            hit = page.locator(f"{PANEL} .tl button.ev .hit")
+            expect(hit).to_have_count(1)
+            expect(hit).to_contain_text("in transcript:")
+            expect(hit).to_contain_text("Port 5432 is held")
+            searches = [url for url in asked if "/search" in url]
+            assert searches and all(f"/api/archive/{name}/search" in url for url in searches), searches
+            assert not [url for url in asked if f"/api/run/{name}/" in url]
+        finally:
+            page.close()
 
-    _drive(tmp_path, "arch-search", check)
+
+def test_a_failed_step_of_an_archived_run_is_read_from_the_archive_by_the_e_key(tmp_path):
+    from playwright.sync_api import expect
+
+    live = _live()
+    assert live is not None, _UNAVAILABLE
+    with _archived_activity(tmp_path, "arch-entry") as name:
+        page = _opened(live, name)
+        asked = _asked_of(page)
+        try:
+            _activity(page)
+            page.locator(f"{PANEL} .tl button.ev").first.click()
+            page.keyboard.press("e")
+            reading = page.locator(f'{PANEL} .rd[data-reading="step"]')
+            expect(reading).to_have_attribute("data-state", "failed")
+            expect(reading.locator(".err-box")).to_contain_text("port 5432 is already allocated")
+            expect(page.locator(f"{PANEL} .retry-entry")).to_have_count(0)
+            entries = [url for url in asked if "/entry/" in url]
+            assert entries and all(f"/api/archive/{name}/entry/" in url for url in entries), entries
+            assert not [url for url in asked if f"/api/run/{name}/" in url]
+        finally:
+            page.close()
 
 
 def test_an_archive_whose_files_are_gone_says_activity_cannot_be_read_and_the_overview_keeps_the_summary(tmp_path):
