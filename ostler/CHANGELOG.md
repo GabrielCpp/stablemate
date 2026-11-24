@@ -1,5 +1,115 @@
 # Changelog
 
+## [6.0.0](https://github.com/GabrielCpp/stablemate/compare/ostler-v5.0.0...ostler-v6.0.0) (2026-11-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* **ostler:** the decisions add command, the ADR store and the API methods decision_add and propose_decision are removed with no replacement. Write the decision file or the product page by hand.
+* **ostler:** book run --fresh-data exits 1 where the book states no reload and runs on no managed copy. It used to warn and play on the old data.
+* **ostler:** Screen.reached_from is removed. State leads_to on the interaction that opens the screen, or inside on a screen another one hosts.
+* **core:** QaTool, QaTable.tools and HomeConfig.qa_tools are removed from the schema.
+* **ostler:** ostler qa tools list is removed, and the qa tools preflight no longer runs.
+* **ostler:** `ostler todo` and Ostler.todo, todo_add, todo_prune, todo_reorder and epics_index are gone. ostler no longer reads or writes docs/epics/index.md, and layout apply no longer repoints it.
+* **ostler:** a shelf holding `NNNN-slug` epic folders refuses every command until `ostler layout apply` renames them.
+
+### Features
+
+* **core:** let a power tier name its compaction window ([0e06e1d](https://github.com/GabrielCpp/stablemate/commit/0e06e1de7fc328a2c4dea65918bffc250995ec99))
+* **core:** name the folder of a repository's service books ([1796703](https://github.com/GabrielCpp/stablemate/commit/1796703bf800844e3d0b2b36fb20e08f0f04b80c))
+* **core:** open and land a book branch in the artifacts repository ([5a7a818](https://github.com/GabrielCpp/stablemate/commit/5a7a818447780f8d6b9202c6461333cb253d4c7f))
+* **core:** resolve the book home from agents.yml and the artifacts repo ([b94c7f9](https://github.com/GabrielCpp/stablemate/commit/b94c7f9609aa52312206f58bc651c73ca791cef4))
+* **farrier:** merge library settings files into ~/.claude/settings.json ([3e134f1](https://github.com/GabrielCpp/stablemate/commit/3e134f1d44ab0833e39cd5305b3d909cdc03aaae))
+* **farrier:** ship the base library inside the farrier wheel ([9c71dba](https://github.com/GabrielCpp/stablemate/commit/9c71dba3f1a202a3c5fd470c82305e56f4461e6d))
+* **ostler:** add Watched, the model row of a watched file ([ab62dcc](https://github.com/GabrielCpp/stablemate/commit/ab62dcc035aca74b442d282cab5718056eb1bf49))
+* **ostler:** fail a play on what a book states and never plays ([0f93c00](https://github.com/GabrielCpp/stablemate/commit/0f93c00b8bc5d5d90cff13fb6b8b4fad8cf129d3))
+* **ostler:** filter list by the repo that minted the epics ([5263bd7](https://github.com/GabrielCpp/stablemate/commit/5263bd732d4907efec99e87cdb48ad21c0bfb4ec))
+* **ostler:** follow which code mentions a change to name its plays ([9f570e2](https://github.com/GabrielCpp/stablemate/commit/9f570e2e3b59741f587d66b402b5793a9d009791))
+* **ostler:** give a QA scenario a wall-clock ceiling ([b30ed4d](https://github.com/GabrielCpp/stablemate/commit/b30ed4d938cab14effceff7fe0ebe02ed907ec60))
+* **ostler:** keep milestones and designs under their product ([036f150](https://github.com/GabrielCpp/stablemate/commit/036f15033dc2f39649f63c604a55f8f755ed9639))
+* **ostler:** let a book describe a system outside the repository ([2982938](https://github.com/GabrielCpp/stablemate/commit/2982938d2105be0b54cf47edd331f911ee63e30e))
+* **ostler:** let a stack fixture name the code repository ([bf09b71](https://github.com/GabrielCpp/stablemate/commit/bf09b710b4e9ee13631d6c8dcfb3c6c7c0db9510))
+* **ostler:** let a stack's secrets file name the code repository ([ad95b9a](https://github.com/GabrielCpp/stablemate/commit/ad95b9ad92a33631611ad60ee883b78c18a89142))
+* **ostler:** let an object hold itself with Itself ([a348290](https://github.com/GabrielCpp/stablemate/commit/a3482909113677e30737c18b8faa09bd264f903d))
+* **ostler:** list milestone epics by id and refuse incomplete epics ([967a24d](https://github.com/GabrielCpp/stablemate/commit/967a24d8ca24bb108cfd04f361e470caa4e09994))
+* **ostler:** list the fields a play saw with one value only ([1186efd](https://github.com/GabrielCpp/stablemate/commit/1186efd5a5cc8b17aaa3c57b2331225a07a4ef5f))
+* **ostler:** list the files a book needs to load ([8c9793f](https://github.com/GabrielCpp/stablemate/commit/8c9793f555e2384c0876f7bfc781251bc76a1a08))
+* **ostler:** list the product book per product ([f3327f6](https://github.com/GabrielCpp/stablemate/commit/f3327f620c1412f6278df9a6f37fd4d6dbd45860))
+* **ostler:** list what a book states and no play exercised ([caa1b9b](https://github.com/GabrielCpp/stablemate/commit/caa1b9b4751f7624a7d36a55dec3547a87837e4c))
+* **ostler:** move a book into its repository folder ([e75062b](https://github.com/GabrielCpp/stablemate/commit/e75062b70937ffd7def181cd113b3b65861b3af6))
+* **ostler:** name epic and story folders by their ids ([136ae76](https://github.com/GabrielCpp/stablemate/commit/136ae7630fd458b586c2bd7c415f906451c34b88))
+* **ostler:** name the plays a code change calls for ([b6d70a6](https://github.com/GabrielCpp/stablemate/commit/b6d70a6694f317979eb460d289261f575f216d5b))
+* **ostler:** open and land a book branch from the command line ([2c497b9](https://github.com/GabrielCpp/stablemate/commit/2c497b954c2e79ea73cb6ade6b354f746dd82734))
+* **ostler:** order the work by milestones and drop the epics queue ([be9527d](https://github.com/GabrielCpp/stablemate/commit/be9527d144416db14a5ee2b85d0d30416ff0973f))
+* **ostler:** read product, team and company books beside services ([a5ae8fe](https://github.com/GabrielCpp/stablemate/commit/a5ae8fe2f81ec551a0c6dfe62f1889411ba18f34))
+* **ostler:** read stale and verified from a story's own commits ([94ba52c](https://github.com/GabrielCpp/stablemate/commit/94ba52ca923c74c633a58c2218dca37f01a2ad94))
+* **ostler:** record who owns an environment copy and prune strays ([a1b1eb0](https://github.com/GabrielCpp/stablemate/commit/a1b1eb01688ec3d33ad248cc09628a5b4896c140))
+* **ostler:** reload a book's data before a play that asks for it ([e671920](https://github.com/GabrielCpp/stablemate/commit/e671920d0760c64e7cd99c14225d3135e6102058))
+* **ostler:** render environments with the code checkout ([a9cab2a](https://github.com/GabrielCpp/stablemate/commit/a9cab2a7f5c3321bde5530b3dba55619760de589))
+* **ostler:** reset a copy to the data it started with ([d4ccfc9](https://github.com/GabrielCpp/stablemate/commit/d4ccfc941e83de3880fe5db683a33c4ffd6dc4f0))
+* **ostler:** resolve the book home through core, keep this repo in repo ([bfec193](https://github.com/GabrielCpp/stablemate/commit/bfec193f768b7bdffa7753a6ccc29da18c29f823))
+* **ostler:** say progress on stderr and end a run on its verdict ([73ba625](https://github.com/GabrielCpp/stablemate/commit/73ba6257d4e2d50b813a00760cb9c17af34dfb7d))
+* **ostler:** search business pages beside the service books ([660e488](https://github.com/GabrielCpp/stablemate/commit/660e488a7185c5ffbefae1e528a9d193b6474008))
+* **ostler:** select a story's plays from its own commits ([b25e5e0](https://github.com/GabrielCpp/stablemate/commit/b25e5e089f72c8998555e887bdd0bd00728801b9))
+* **ostler:** select plays from the book changes a story makes ([bf10409](https://github.com/GabrielCpp/stablemate/commit/bf10409d242bdde9c85225f44fda40d1f8c44efd))
+* **ostler:** select the plays of what uses a changed book name ([7056a0f](https://github.com/GabrielCpp/stablemate/commit/7056a0f247c8b1c9b6cdd35ab5f508b3ee0b1b9b))
+* **ostler:** share one headless chromium across a machine's runs ([1615695](https://github.com/GabrielCpp/stablemate/commit/161569587ed05c98216189de696ed8918ce1d3a6))
+* **ostler:** state how each screen is reached and play it ([cab53d2](https://github.com/GabrielCpp/stablemate/commit/cab53d2ee36b431ead01afae4c553ef83a19e240))
+* **ostler:** tell what a story plays from what its change reaches ([813a23a](https://github.com/GabrielCpp/stablemate/commit/813a23a607e0010c461a1f88b4234afd571f9a57))
+* **ostler:** try each input on an endpoint that passes the call on ([c9c4213](https://github.com/GabrielCpp/stablemate/commit/c9c42131943d5c78598a80bb2eab6be3b91eba5e))
+* **ostler:** type a page token and compare it by presence ([750a25b](https://github.com/GabrielCpp/stablemate/commit/750a25b99032457e13e2d0fee5fcc5ea80f943d5))
+
+
+### Bug Fixes
+
+* **core:** let a test forget remembered warnings and cached reads ([1bfe2c5](https://github.com/GabrielCpp/stablemate/commit/1bfe2c5557c5968cdbe793c6d9e8615e7b9f47e4))
+* **ostler:** bind a mentioned name to the file that defines it ([07ac7f0](https://github.com/GabrielCpp/stablemate/commit/07ac7f06535151fec7a1985a7d346b7cd81cff16))
+* **ostler:** file decisions and ADRs in the artifacts folder ([2a04f82](https://github.com/GabrielCpp/stablemate/commit/2a04f8286b3de0f0cf50ab2005b2f51dc77cf831))
+* **ostler:** judge a linked worktree's old layout by its main checkout ([1cfbad8](https://github.com/GabrielCpp/stablemate/commit/1cfbad8f5f4aa5509c94a03dfeb22ea58581a76d))
+* **ostler:** judge only the epics the repo minted in doctor ([5ca5e61](https://github.com/GabrielCpp/stablemate/commit/5ca5e61be80378dd0074dc28ca7991568895d0fa))
+* **ostler:** keep one blank line under a rewritten section ([df2d1d7](https://github.com/GabrielCpp/stablemate/commit/df2d1d7817cbb365c84f1dc9ae99c2f3526f01a5))
+* **ostler:** keep the addresses of a copy across a reset ([d6e4187](https://github.com/GabrielCpp/stablemate/commit/d6e41877c607427bfa2e920585bc229f9d4d21c0))
+* **ostler:** keep the book index in the user cache ([32fd21d](https://github.com/GabrielCpp/stablemate/commit/32fd21d18bdcd771638a672f246e6ebe776b8a67))
+* **ostler:** keep the witness report's never-seen list bounded ([b6b5ea4](https://github.com/GabrielCpp/stablemate/commit/b6b5ea472b80c24b1c83a8ad4626465c850f5b1b))
+* **ostler:** leave out actions an earlier import of the book left behind ([a21fbb8](https://github.com/GabrielCpp/stablemate/commit/a21fbb8edb306661807d636b6fe6a5c6301a8a03))
+* **ostler:** let a record call for the whole book only when touched ([1fb04fc](https://github.com/GabrielCpp/stablemate/commit/1fb04fca51546212d54e3a5d9c4c7020086c1dcb))
+* **ostler:** list a copy with finished one-shot jobs as running ([c243063](https://github.com/GabrielCpp/stablemate/commit/c243063c880307c7d2a8a4ac6cc03afe36d5c52f))
+* **ostler:** list an element no play reaches, keep the plan narrow ([a31844c](https://github.com/GabrielCpp/stablemate/commit/a31844cc3844bcc6d96ec088af0b74474f3997cb))
+* **ostler:** load only the stacks of the repositories a command knows ([1b17877](https://github.com/GabrielCpp/stablemate/commit/1b178777c4a351836c7eb0fce03bd58015fffe27))
+* **ostler:** match a form action a screen sends without a crash ([1121017](https://github.com/GabrielCpp/stablemate/commit/1121017f05ad0003cec8e4029ed9590b7fd95651))
+* **ostler:** name a stack copy after its code repository ([3c65e8f](https://github.com/GabrielCpp/stablemate/commit/3c65e8ff84bc5acac6ac84f30d80d0d067761a68))
+* **ostler:** read a milestone's books from the known repositories ([c0196f8](https://github.com/GabrielCpp/stablemate/commit/c0196f835ad298e6aa63617305b04d198b4175fd))
+* **ostler:** read a repo secrets file from the main checkout ([c0d06fa](https://github.com/GabrielCpp/stablemate/commit/c0d06fa834c89a54956a023bccc45f6f0cf25023))
+* **ostler:** read no book from a book root with no services folder ([cf2b855](https://github.com/GabrielCpp/stablemate/commit/cf2b855496717e41795a012669c51e00189bcf9a))
+* **ostler:** read product pages from the book branch ([16034db](https://github.com/GabrielCpp/stablemate/commit/16034dbf7e6310c9c66d0518dcfbc7f669999b57))
+* **ostler:** read service books one repository folder deep ([a4803d3](https://github.com/GabrielCpp/stablemate/commit/a4803d3e2722cdd4deec99e45736b5756261b4eb))
+* **ostler:** read stacks and milestone books per repository folder ([31dea3a](https://github.com/GabrielCpp/stablemate/commit/31dea3ae08b109992dc1d56265a31651f43ccbad))
+* **ostler:** read the code checkout when a book's root is its own tree ([49afcac](https://github.com/GabrielCpp/stablemate/commit/49afcac60219eb0e8d3fa4843deb27619831d605))
+* **ostler:** register the reader's exit hook on first use, not on load ([65b85cd](https://github.com/GabrielCpp/stablemate/commit/65b85cd6098c5d0fd9a6560a2ea1787a6794b41e))
+* **ostler:** report a screen component named name as a finding ([9b6d810](https://github.com/GabrielCpp/stablemate/commit/9b6d81015d349326a4f658448b7114568b764c86))
+* **ostler:** report a step that crashed with an empty message ([ad7daae](https://github.com/GabrielCpp/stablemate/commit/ad7daae36fdff19ac75b886748a3149d97531b79))
+* **ostler:** report shelf files in doctor --path instead of crashing ([3622e3e](https://github.com/GabrielCpp/stablemate/commit/3622e3e7a10ef8647a88462abcbef95072f6da03))
+* **ostler:** return to the caller's folder after book -C ([2db2e6a](https://github.com/GabrielCpp/stablemate/commit/2db2e6aca188b6e2622928ff2251ac218bce9b41))
+* **ostler:** say what shows that a book of an outside system still holds ([facdc45](https://github.com/GabrielCpp/stablemate/commit/facdc4543f3a1ad6b7aaa4e3fccd7c7ad27e0178))
+* **ostler:** take back the short story ids ostler prints ([958bd35](https://github.com/GabrielCpp/stablemate/commit/958bd35ff4c22fa7dd7c87b8292bc9cb3bd315b6))
+* **ostler:** write a book report to a temp folder by default ([597119a](https://github.com/GabrielCpp/stablemate/commit/597119a812b0a4d42c29961b91da11b5bb43ae13))
+
+
+### Performance Improvements
+
+* keep a folder's repository identity while its git layout holds ([0a31568](https://github.com/GabrielCpp/stablemate/commit/0a31568c543351e4b2b2be60b33ca686a3835fa2))
+* **ostler:** compute the index epoch's fixed inputs once per process ([24c02ac](https://github.com/GabrielCpp/stablemate/commit/24c02ac045e4923b0125a9ceaff2afc46cb6c855))
+* **ostler:** place frozen callers before playwright walks the stack ([1170bd4](https://github.com/GabrielCpp/stablemate/commit/1170bd4fe1fccc0028d3e1b3b70c4af92b4fcc18))
+* **ostler:** search a large book by decoding only the rows a term hits ([d6a99a5](https://github.com/GabrielCpp/stablemate/commit/d6a99a5d9f4a1063528d0873e8ead99c46629f06))
+
+
+### Code Refactoring
+
+* **core:** drop config.book_home for books.book_home ([5086eb5](https://github.com/GabrielCpp/stablemate/commit/5086eb5268247be2ab8ee7eefe9675ef62d9f0f7))
+* **core:** drop the qa tools keys from both config schemas ([bd68e8c](https://github.com/GabrielCpp/stablemate/commit/bd68e8c9f4826cc155bf7c2bb31d7b81ad1a9c93))
+* **ostler:** keep one decision store, the service book ([a3e6785](https://github.com/GabrielCpp/stablemate/commit/a3e6785abec79a52c2ee0a239944671b7e6b5bf4))
+* **ostler:** run a qa tool from PATH with no opt-in ([ed25516](https://github.com/GabrielCpp/stablemate/commit/ed255169adf5e83fa17d775f8c56ad23192cb464))
+
 ## [5.0.0](https://github.com/GabrielCpp/stablemate/compare/ostler-v4.0.0...ostler-v5.0.0) (2026-10-29)
 
 

@@ -1,5 +1,99 @@
 # Changelog
 
+## [5.0.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-workflows-v4.1.0...workhorse-workflows-v5.0.0) (2026-11-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* **workflows:** catch_up does one batch of 15 notes a run by default (batch_notes, batches, play_minutes), and a green book with a note its DECLINED.md does not cover is filed.
+* **workflows:** a book whose check is green is current even when the skill history has moved, and catch-up no longer plays a whole book.
+* **workflows:** workhorse-author no longer accepts mode=parity-survey, nor the baseline_inventory and parity_survey_dir parameters.
+* **workflows:** `workhorse-author run` no longer accepts
+
+### Features
+
+* **ostler:** let a book describe a system outside the repository ([2982938](https://github.com/GabrielCpp/stablemate/commit/2982938d2105be0b54cf47edd331f911ee63e30e))
+* **ostler:** resolve the book home through core, keep this repo in repo ([bfec193](https://github.com/GabrielCpp/stablemate/commit/bfec193f768b7bdffa7753a6ccc29da18c29f823))
+* **workflows:** drop the author parity-survey mode ([5359147](https://github.com/GabrielCpp/stablemate/commit/53591475ff698a407cd13057d63f14fe55b412bb))
+* **workflows:** drop the author survey mode ([44c470a](https://github.com/GabrielCpp/stablemate/commit/44c470a0f2508cb4bc3fb4cdfebde693f0273048))
+* **workflows:** end a story's book QA with a capped review turn ([4fcb16a](https://github.com/GabrielCpp/stablemate/commit/4fcb16a756e41c0bf27c0cd3d1de79ac998b0b0e))
+* **workflows:** end every coder turn at turn_minutes ([32d0842](https://github.com/GabrielCpp/stablemate/commit/32d08423f47d7bbd4e255df35b236cc921a36fe0))
+* **workflows:** gate author on the milestone epic contract ([4a591d5](https://github.com/GabrielCpp/stablemate/commit/4a591d59bfe8a40f37486d20a0617b1f2e804103))
+* **workflows:** launch the coder from the milestones ([5b69ebb](https://github.com/GabrielCpp/stablemate/commit/5b69ebb13b004990812d142b93a32330242460ac))
+* **workflows:** move a book onto the format from its own check ([4a3884a](https://github.com/GabrielCpp/stablemate/commit/4a3884a242777fb2aafc6657778d268407d9006f))
+* **workflows:** move a book onto the format in batches ([966981f](https://github.com/GabrielCpp/stablemate/commit/966981f5e8d6566f5878293b06940b2080146aa6))
+* **workflows:** never play a whole book for a story ([901b108](https://github.com/GabrielCpp/stablemate/commit/901b1088560e92cd61304bea92c8a31e7864b86a))
+* **workflows:** open and land the book branch with the coder's code ([f1e659b](https://github.com/GabrielCpp/stablemate/commit/f1e659b6e531af2ad095f8918d54bc6dbada31ce))
+* **workflows:** play a finished book on freshly loaded data ([a562aea](https://github.com/GabrielCpp/stablemate/commit/a562aea6ec8885c00bc4f738b931fe4522a6e86b))
+* **workflows:** play a story's direct selection on one time budget ([c82ba9c](https://github.com/GabrielCpp/stablemate/commit/c82ba9c15deeff47e4c1662acc85d77aee5baca3))
+* **workflows:** raise the default coder turn allowance to 180 minutes ([da495a3](https://github.com/GabrielCpp/stablemate/commit/da495a34eb2acc1ba147b4395dec6cd0d6ebaf56))
+* **workflows:** read a story's change one way across the coder ([93ec80a](https://github.com/GabrielCpp/stablemate/commit/93ec80a0de35f287afcdca08337876b7f700b476))
+* **workflows:** read a story's own commits in the coder's book QA ([157bba6](https://github.com/GabrielCpp/stablemate/commit/157bba6ae90f63e798fd6302dbff12a45092c742))
+* **workflows:** resolve the book root through core ([d7b9397](https://github.com/GabrielCpp/stablemate/commit/d7b93978155fcf6a05e6847bc22780d929fe5bc0))
+* **workflows:** select the story QA plays from the diff ([94f585a](https://github.com/GabrielCpp/stablemate/commit/94f585a8acd310f3491a8664e80a7561d7626268))
+* **workflows:** send the coder's turns to the business pages ([9038332](https://github.com/GabrielCpp/stablemate/commit/9038332f68b7e63e3b2c6fadc165628e3ba0ad3b))
+* **workflows:** send the coder's turns to the wider books ([0e824d9](https://github.com/GabrielCpp/stablemate/commit/0e824d989ad577ee6aa2eaffeb54533b479e1130))
+* **workflows:** write resolver product pages to the product folder ([4578973](https://github.com/GabrielCpp/stablemate/commit/45789737ea18c897d9f68d6fa9a6c4b6e8c19f97))
+* **workhorse:** draw each transition once and say why on the arrow ([53e096f](https://github.com/GabrielCpp/stablemate/commit/53e096ffa48d8b3532ff046b4bece0103b328450))
+
+
+### Bug Fixes
+
+* **base-library:** judge workspace members from the staged tree ([e9fa4a7](https://github.com/GabrielCpp/stablemate/commit/e9fa4a72d9bf9418ea939c41c8d2bd99e3a55a36))
+* **base-library:** keep configured paths in the staged type check ([2da268a](https://github.com/GabrielCpp/stablemate/commit/2da268a092918436177e39c2258306bc5a3d5608))
+* **ostler:** keep the book index in the user cache ([32fd21d](https://github.com/GabrielCpp/stablemate/commit/32fd21d18bdcd771638a672f246e6ebe776b8a67))
+* **ostler:** load only the stacks of the repositories a command knows ([1b17877](https://github.com/GabrielCpp/stablemate/commit/1b178777c4a351836c7eb0fce03bd58015fffe27))
+* **ostler:** name a stack copy after its code repository ([3c65e8f](https://github.com/GabrielCpp/stablemate/commit/3c65e8ff84bc5acac6ac84f30d80d0d067761a68))
+* **ostler:** say what shows that a book of an outside system still holds ([facdc45](https://github.com/GabrielCpp/stablemate/commit/facdc4543f3a1ad6b7aaa4e3fccd7c7ad27e0178))
+* **workflows:** accept a spec file as evidence of a fixed finding ([51e499c](https://github.com/GabrielCpp/stablemate/commit/51e499c15e747607eb1f00636400ca8b4e68bbf6))
+* **workflows:** allow workhorse-agent 6.x ([1975107](https://github.com/GabrielCpp/stablemate/commit/1975107b63bcd67a6680c09ebe63c25ad25ffc26))
+* **workflows:** allow workhorse-agent 6.x, ostler 6.x ([27a7682](https://github.com/GabrielCpp/stablemate/commit/27a76821121d931db84c38635f60a852335b1b94))
+* **workflows:** cap the width of play output sent to the book writer ([f49b332](https://github.com/GabrielCpp/stablemate/commit/f49b332db9312393006dcd95c8e33e5e5b3c4c86))
+* **workflows:** commit a book with every file it imports ([54e7742](https://github.com/GabrielCpp/stablemate/commit/54e77422fdc1390975792991712d7d811da8e6bc))
+* **workflows:** do the whole format move, and say how far it went ([84089be](https://github.com/GabrielCpp/stablemate/commit/84089be2d7453d7deaacfff6c35f16c7ac294f59))
+* **workflows:** fill a plan that names no service from the story ([bf7b28c](https://github.com/GabrielCpp/stablemate/commit/bf7b28c4a811e24e0a66603c8b50bd42d8ab3d5b))
+* **workflows:** follow epic and story folders named by their ids ([0ba3cb1](https://github.com/GabrielCpp/stablemate/commit/0ba3cb1425bfe5a9c9135980561697ac905f83a1))
+* **workflows:** give each new refusal of a book commit its own fix turn ([448a8d0](https://github.com/GabrielCpp/stablemate/commit/448a8d0de427f2ecb2de4e3a8a807f4708335b5b))
+* **workflows:** hand the writer a play's verdict, not its progress ([f5a2c6f](https://github.com/GabrielCpp/stablemate/commit/f5a2c6fe2ea6a9cc4e9324805e3429d097249ac6))
+* **workflows:** have the screen writer state typed links ([6a38e4c](https://github.com/GabrielCpp/stablemate/commit/6a38e4c78fea72cb7b3de464fdd55a138406bf10))
+* **workflows:** index a book before reading its calls ([97b7028](https://github.com/GabrielCpp/stablemate/commit/97b702881d78f01be91c3d2be4084506ba2940a7))
+* **workflows:** judge a recorded finding again and never replay it ([48a2624](https://github.com/GabrielCpp/stablemate/commit/48a2624a0ebbaa9cdc78018cc9830016474baadc))
+* **workflows:** keep the coder's build turn from playing a whole book ([2bcb960](https://github.com/GabrielCpp/stablemate/commit/2bcb960eaa10cb9eef49615c5ec01b5e94a53726))
+* **workflows:** keep the story trailer in the last block ([69f49c1](https://github.com/GabrielCpp/stablemate/commit/69f49c17bd1591567b2649bfa7cf66abcb92fc04))
+* **workflows:** leave a shared stack copy the run did not start ([1ea089f](https://github.com/GabrielCpp/stablemate/commit/1ea089f31907956d7168ad16309408debc5a7b0a))
+* **workflows:** let a story play reset the copy its run holds ([27e116f](https://github.com/GabrielCpp/stablemate/commit/27e116f27eae25b6c4cab3355e74f40e5233a7ba))
+* **workflows:** make the coder name the paths of every commit ([cef2740](https://github.com/GabrielCpp/stablemate/commit/cef27404171b88b7d29b5dfe3a990f6059ee3a95))
+* **workflows:** meet the commit checks before a book is played ([e53fd2b](https://github.com/GabrielCpp/stablemate/commit/e53fd2b17fa5e685fc44da8f6c5a21c4f85b692f))
+* **workflows:** name service books through their repository folder ([b337d1e](https://github.com/GabrielCpp/stablemate/commit/b337d1eb51ac726baca203c3a1359d9e93a3490a))
+* **workflows:** pass a story review when no finding blocks the coder ([6eeefc3](https://github.com/GabrielCpp/stablemate/commit/6eeefc3d5793e9f921f60f28807b81a3460f5a71))
+* **workflows:** pass an outside-system book through book QA ([0dc4961](https://github.com/GabrielCpp/stablemate/commit/0dc4961d9585c2c78a9820cc8654a0a59e0b38a0))
+* **workflows:** pass the plays gate for an outside-system book ([618864c](https://github.com/GabrielCpp/stablemate/commit/618864c31d126d846484370280d392842376fc9d))
+* **workflows:** read and commit the approved milestone in its product ([fc19237](https://github.com/GabrielCpp/stablemate/commit/fc192375f401c054ff868feb2902b557b1c3dc87))
+* **workflows:** read each service's code repo in book QA ([977c8cb](https://github.com/GabrielCpp/stablemate/commit/977c8cb4888336b59d2e20e4d86471bb50a4bee6))
+* **workflows:** read standing answers from the book, not docs/decisions ([26e199d](https://github.com/GabrielCpp/stablemate/commit/26e199d06ed1157aa11e4930433ff9d7d88f9806))
+* **workflows:** read standing decisions from ostler's decisions root ([8207c9a](https://github.com/GabrielCpp/stablemate/commit/8207c9aebc1c45b470e96d82b8756cafbcf32b38))
+* **workflows:** replay a book a commit fix turn changed ([413218a](https://github.com/GabrielCpp/stablemate/commit/413218ac859fb08314b1b01fab2a386903fc5967))
+* **workflows:** stage a tracked file under an ignored folder ([7857f32](https://github.com/GabrielCpp/stablemate/commit/7857f325ac24b5a406a8fa98c15a62f82e391858))
+* **workflows:** stop a book writer replaying and importing a book ([0b9c4a9](https://github.com/GabrielCpp/stablemate/commit/0b9c4a9d5c8e5c15be4d218d9d9afa7e72e18726))
+* **workflows:** tell a writer how to wait on a play ([3cb3edc](https://github.com/GabrielCpp/stablemate/commit/3cb3edc27d51c197cb4124dc91d84fc25a078cd6))
+* **workflows:** tell the review a step that saw nothing proves nothing ([e54744f](https://github.com/GabrielCpp/stablemate/commit/e54744fbe440c1b48c19c9bf9dc85743a38a8866))
+* **workflows:** time a service gate out on silence, not on wall time ([50f1fd4](https://github.com/GabrielCpp/stablemate/commit/50f1fd4ae7c0900c9c37bae4c862d7a6c3049edc))
+
+
+### Performance Improvements
+
+* **workflows:** ask git once per check pass what the item changed ([6e57607](https://github.com/GabrielCpp/stablemate/commit/6e57607f54340c75588c7387b553604496355956))
+
+
+### Code Refactoring
+
+* **workflows:** call the author repo root by the name it has in kit ([56e7573](https://github.com/GabrielCpp/stablemate/commit/56e75734510910b8621a082d566a807cac2a8f25))
+* **workflows:** draft every author document through one loop ([aa90b49](https://github.com/GabrielCpp/stablemate/commit/aa90b492bce935d123098386b09fc8174a403a3d))
+* **workflows:** drain the author stages from one table ([44691b7](https://github.com/GabrielCpp/stablemate/commit/44691b794ffda560c72e73e86509e372b5ac8e57))
+* **workflows:** drop the qa tools table from the coder's QA prompt ([aa125b6](https://github.com/GabrielCpp/stablemate/commit/aa125b600c6eb655bb735ba6a8a5f8a1a23adc89))
+* **workflows:** end review-debt at its trends report ([49c05e3](https://github.com/GabrielCpp/stablemate/commit/49c05e309387d00630fcec1ee01fd2c8a768c6ec))
+* **workflows:** run finalize's closing checks from one list ([5e5c4b8](https://github.com/GabrielCpp/stablemate/commit/5e5c4b8871da0df9bb4a2ef1d4dfc47e9eca52b8))
+
 ## [4.1.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-workflows-v4.0.1...workhorse-workflows-v4.1.0) (2026-10-29)
 
 

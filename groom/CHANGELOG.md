@@ -1,5 +1,77 @@
 # Changelog
 
+## [2.1.0](https://github.com/GabrielCpp/stablemate/compare/groom-v2.0.1...groom-v2.1.0) (2026-11-24)
+
+
+### Features
+
+* **groom:** answer a run's outbox and inbox through the channel ([6261782](https://github.com/GabrielCpp/stablemate/commit/6261782e608e3e75e9ad8b90a6e9584a78b39134))
+* **groom:** page when one agent turn keeps compacting ([9ee821c](https://github.com/GabrielCpp/stablemate/commit/9ee821caca385e76eda95827cc292ff5915e25e7))
+* **groom:** price the gpt-6.x codex models ([a75d89c](https://github.com/GabrielCpp/stablemate/commit/a75d89ce1ea3a3679760c5debefd81e8703c581e))
+* **groom:** purge runs quiet for longer than a number of days ([bbbf9ba](https://github.com/GabrielCpp/stablemate/commit/bbbf9badf58dda5406502eb8e1055cde411a9af3))
+* **groom:** push a run's feed into a claude session as a channel ([28aa5a3](https://github.com/GabrielCpp/stablemate/commit/28aa5a3f38bc8c38d3ad381fe803d4d4677d267e))
+* **groom:** push the fleet on events instead of a clock ([d0bb1ef](https://github.com/GabrielCpp/stablemate/commit/d0bb1efc0de52c8069c728e8aee15dd523659f9c))
+* **groom:** push the open run on events and drop the live clock ([d568feb](https://github.com/GabrielCpp/stablemate/commit/d568feb85ef6e1c0605749ef9454da8b97e6c74a))
+* **groom:** refresh diff and files when the workspace changes ([2f28261](https://github.com/GabrielCpp/stablemate/commit/2f282612478bd1321a08e2d395bd5ed54bb09edf))
+* **groom:** refresh dispatch and history on revision changes ([6b8f341](https://github.com/GabrielCpp/stablemate/commit/6b8f34107a7ac0ae204952a7c481666698b54d1b))
+* **groom:** return the token estimate with a run's turn spans ([b26bb0a](https://github.com/GabrielCpp/stablemate/commit/b26bb0a2cc76dffcd54ea334c03129f0e7ac24de))
+* **groom:** send a heartbeat on the dashboard socket ([904bba5](https://github.com/GabrielCpp/stablemate/commit/904bba54ba026819ff3833076e1ca72baa74516b))
+* **groom:** show files and diff for a running native run ([c299420](https://github.com/GabrielCpp/stablemate/commit/c2994200beb3c5e8e900a27af789f88d817c42e3))
+* **workhorse:** name a native run's worktree in its telemetry resource ([26debf3](https://github.com/GabrielCpp/stablemate/commit/26debf36c92807166a06250df8a4c2558c39d512))
+
+
+### Bug Fixes
+
+* **groom:** announce a standing gate to a feed that connects with since ([3d46348](https://github.com/GabrielCpp/stablemate/commit/3d4634862029ccfd9921969507e2e8d850f9ba21))
+* **groom:** bind the history lock to the loop that serves the app ([4ab1e95](https://github.com/GabrielCpp/stablemate/commit/4ab1e951602d5871fd022988cde6ba1725bc89af))
+* **groom:** charge nothing for a claude turn that spent no tokens ([a989506](https://github.com/GabrielCpp/stablemate/commit/a98950676537af760caf1bfd2572dd8db6c40c66))
+* **groom:** count a turn that ended on an error as a retry, not a lap ([89528b9](https://github.com/GabrielCpp/stablemate/commit/89528b97382a54844c9b1a24c6669764d9a13760))
+* **groom:** count only arrivals after the pause in the problems view ([1fbb4d9](https://github.com/GabrielCpp/stablemate/commit/1fbb4d90c814a8a0f7aa66b167911628c19800bd))
+* **groom:** count only the logs the timeline can place in a pass ([0f1d822](https://github.com/GabrielCpp/stablemate/commit/0f1d822ee8b36832fab15ff9f9956dd87370b0ef))
+* **groom:** count the runs in By node heading of a run with no peer ([4977ebf](https://github.com/GabrielCpp/stablemate/commit/4977ebfd3fbcd7beab2dcd49da0b7266eb021aac))
+* **groom:** drop the summary wake when its loop stops ([077547b](https://github.com/GabrielCpp/stablemate/commit/077547b43de314f529ab83d0c0ede3337a93646f))
+* **groom:** follow a transcript when the system refuses the file watch ([bbf6a08](https://github.com/GabrielCpp/stablemate/commit/bbf6a08f72a9fbfbc77f55a4b6f332e635f39c10))
+* **groom:** head the unreadable step pane at the level below the page ([3c71158](https://github.com/GabrielCpp/stablemate/commit/3c711581ee279b10caad940c77d38a34ea3426e1))
+* **groom:** judge By node against the same comparable runs as the cost ([0746c12](https://github.com/GabrielCpp/stablemate/commit/0746c129a622495ea5e4d07a228cd272b1d5a562))
+* **groom:** keep a failed agent turn selected across the problems toggle ([25a20f5](https://github.com/GabrielCpp/stablemate/commit/25a20f5acf97fbdb2cfcfe73b0f0b2b43ffe7bb5))
+* **groom:** keep the bordered monospace box around a step's logs ([5409161](https://github.com/GabrielCpp/stablemate/commit/5409161f85b5da603540aab037db0e121c0a90ee))
+* **groom:** keep the plain minus on a live run's By node ([877066e](https://github.com/GabrielCpp/stablemate/commit/877066e9c10bd35859937b7f9f0e771a94234b94))
+* **groom:** key a pane's norm revision by its own workflow ([122fc47](https://github.com/GabrielCpp/stablemate/commit/122fc473f047623da3c8dfe12345a75ad236dcfb))
+* **groom:** leave runs with no workflow out of every median ([0e6c7b7](https://github.com/GabrielCpp/stablemate/commit/0e6c7b7b744176d750e596831a2717fe12ce1e1e))
+* **groom:** leave the timeline keys to the run list off the runs screen ([4f39e8f](https://github.com/GabrielCpp/stablemate/commit/4f39e8fc46d001397c19d7c60d3551d714daa299))
+* **groom:** lift the no-cost ink on a selected run row to 4.5:1 ([3ab0fe8](https://github.com/GabrielCpp/stablemate/commit/3ab0fe8f2f9577eb9420cdc8b00ab070447fe410))
+* **groom:** list an archive whose manifest cannot be read as unreadable ([12e5c8e](https://github.com/GabrielCpp/stablemate/commit/12e5c8edd039528b251de6e1067405c0978d9cca))
+* **groom:** log an error when a failure is swallowed or a task dies ([8634372](https://github.com/GabrielCpp/stablemate/commit/863437298104a2e9e846e4072d1c740e10b31cab))
+* **groom:** push a detail when the activity request reads new lines ([2d524df](https://github.com/GabrielCpp/stablemate/commit/2d524dfb83e1b2ad496853b64d042dfe1c700389))
+* **groom:** read a running turn's result from its joined chunks ([a76432c](https://github.com/GabrielCpp/stablemate/commit/a76432cb38a0cdfa87e12c96290e2aefaa8c58b4))
+* **groom:** read only the session lines of a claude turn record ([a90224a](https://github.com/GabrielCpp/stablemate/commit/a90224ada1f672321d6ed77825071fd3e14f1e65))
+* **groom:** read the diff again when it opens after a workspace change ([30c27d9](https://github.com/GabrielCpp/stablemate/commit/30c27d9686e0a3f0967b2423995c251036205425))
+* **groom:** refuse a records cursor no row can carry ([3bb2bf7](https://github.com/GabrielCpp/stablemate/commit/3bb2bf76b2de78f32e766b142c1bc195fd1100c6))
+* **groom:** resume a paused follow only on a scroll that moved down ([a97c891](https://github.com/GabrielCpp/stablemate/commit/a97c8911a88b6b23563745328948c2c4db3208a5))
+* **groom:** resume following when a redraw beats the scroll ([28e86ff](https://github.com/GabrielCpp/stablemate/commit/28e86ffd05ade9453f2b00b8c553ed61221a502b))
+* **groom:** retry a failed overview refresh until the figures catch up ([399d4ba](https://github.com/GabrielCpp/stablemate/commit/399d4ba56be1a12bb79797999faa4fef2fca2d51))
+* **groom:** say a zero median gives no percent and name it ([a2ce70a](https://github.com/GabrielCpp/stablemate/commit/a2ce70ac2763949d1887f0623a27d07594770795))
+* **groom:** see a scratch run under a temp folder nested in /tmp ([d7e30dc](https://github.com/GabrielCpp/stablemate/commit/d7e30dcf30ea0163aa94b05b9dc3d65ccafdf497))
+* **groom:** send no fleet frame for a change nobody sees ([420a83c](https://github.com/GabrielCpp/stablemate/commit/420a83ca494d3ca7b930a87ffaeb019548ca2291))
+* **groom:** share one reader of session lines and tool subjects ([07abf95](https://github.com/GabrielCpp/stablemate/commit/07abf95a1334f4ada8d9022ee2f073c64079b56e))
+* **groom:** show a heading's time as the overview shows it ([a295644](https://github.com/GabrielCpp/stablemate/commit/a2956443826eb85338cdc895c564b86488989283))
+* **groom:** tick the running turn's duration in the terminal client ([3b88304](https://github.com/GabrielCpp/stablemate/commit/3b88304e67b417770d9615f81b8e48a846ab8986))
+
+
+### Performance Improvements
+
+* **groom:** compute a run row's figures from a lean span read ([72b6efc](https://github.com/GabrielCpp/stablemate/commit/72b6efc848d7a0db5c2a72ba84cf1c0c3a9bb86e))
+* **groom:** hand freed memory back after a large read ([bbc6326](https://github.com/GabrielCpp/stablemate/commit/bbc6326cda11602041954d77f1e6d278ee43e3bb))
+* **groom:** stream a run's spans and keep only the fields readers use ([5408949](https://github.com/GabrielCpp/stablemate/commit/540894951528d4bfcb4b0e0b153e4f20e69d273a))
+
+
+### Code Refactoring
+
+* **groom:** drop turn_passes, which only a test called ([3da976b](https://github.com/GabrielCpp/stablemate/commit/3da976bf0af40e9d2238fcff1259b108228704e5))
+* **groom:** read a tool result through the one shared reader ([6960cc8](https://github.com/GabrielCpp/stablemate/commit/6960cc83aa085aca8319830bf3870318cba7e78c))
+* **groom:** resolve an archive and drop its bad index in one place ([0947cdf](https://github.com/GabrielCpp/stablemate/commit/0947cdf2927f97aa84912648c2674478c63abc7b))
+* **groom:** share the dirty-checkout builder between the diff tests ([8f17af8](https://github.com/GabrielCpp/stablemate/commit/8f17af806b5caba1d7ef009a9b94e5565398f267))
+
 ## [2.0.1](https://github.com/GabrielCpp/stablemate/compare/groom-v2.0.0...groom-v2.0.1) (2026-10-29)
 
 
