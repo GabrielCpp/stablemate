@@ -172,6 +172,7 @@ class _Live:
     def __init__(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         base = Path(self.tmp.name)
+        self._previous_db = os.environ.get("GROOM_DB")
         os.environ["GROOM_DB"] = str(base / "groom.db")
 
         from groom import app as app_module
@@ -234,6 +235,13 @@ class _Live:
             self._summaries_patch.stop()
             self.server.should_exit = True
             self.thread.join(timeout=10)
+            from groom import store
+
+            store.reset()
+            if self._previous_db is None:
+                os.environ.pop("GROOM_DB", None)
+            else:
+                os.environ["GROOM_DB"] = self._previous_db
             self.tmp.cleanup()
 
 

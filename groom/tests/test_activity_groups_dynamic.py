@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import re
-import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -58,10 +57,10 @@ def _open_all(page) -> None:
             head.click()
 
 
-def test_each_work_item_gets_a_heading_with_state_time_and_cost_and_only_the_one_in_progress_starts_open() -> None:
+def test_each_work_item_gets_a_heading_with_state_time_and_cost_and_only_the_one_in_progress_starts_open(tmp_path: Path) -> None:
     from playwright.sync_api import expect
 
-    page, context = _opened(Path(tempfile.mkdtemp()), "grp-items")
+    page, context = _opened(tmp_path, "grp-items")
     try:
         heads = _heads(page, "tl-group")
         expect(heads).to_have_count(2)
@@ -78,8 +77,8 @@ def test_each_work_item_gets_a_heading_with_state_time_and_cost_and_only_the_one
         context.__exit__(None, None, None)
 
 
-def test_inside_a_work_item_each_flow_pass_gets_a_heading_with_state_time_and_cost() -> None:
-    page, context = _opened(Path(tempfile.mkdtemp()), "grp-passes")
+def test_inside_a_work_item_each_flow_pass_gets_a_heading_with_state_time_and_cost(tmp_path: Path) -> None:
+    page, context = _opened(tmp_path, "grp-passes")
     try:
         _heads(page, "tl-group").nth(0).click()
         heads = _heads(page, "tl-flow")
@@ -93,10 +92,10 @@ def test_inside_a_work_item_each_flow_pass_gets_a_heading_with_state_time_and_co
         context.__exit__(None, None, None)
 
 
-def test_a_finished_flow_pass_starts_folded_and_the_pass_holding_the_open_turn_starts_open() -> None:
+def test_a_finished_flow_pass_starts_folded_and_the_pass_holding_the_open_turn_starts_open(tmp_path: Path) -> None:
     from playwright.sync_api import expect
 
-    page, context = _opened(Path(tempfile.mkdtemp()), "grp-start")
+    page, context = _opened(tmp_path, "grp-start")
     try:
         _heads(page, "tl-group").nth(0).click()
         for number in range(2):
@@ -107,10 +106,10 @@ def test_a_finished_flow_pass_starts_folded_and_the_pass_holding_the_open_turn_s
         context.__exit__(None, None, None)
 
 
-def test_selecting_a_heading_opens_or_closes_it_by_pointer_and_by_keyboard() -> None:
+def test_selecting_a_heading_opens_or_closes_it_by_pointer_and_by_keyboard(tmp_path: Path) -> None:
     from playwright.sync_api import expect
 
-    page, context = _opened(Path(tempfile.mkdtemp()), "grp-toggle")
+    page, context = _opened(tmp_path, "grp-toggle")
     try:
         first = _heads(page, "tl-group").nth(0)
         first.click()
@@ -131,8 +130,8 @@ def test_selecting_a_heading_opens_or_closes_it_by_pointer_and_by_keyboard() -> 
         context.__exit__(None, None, None)
 
 
-def test_a_node_that_runs_twice_has_two_rows_one_per_visit() -> None:
-    page, context = _opened(Path(tempfile.mkdtemp()), "grp-visits")
+def test_a_node_that_runs_twice_has_two_rows_one_per_visit(tmp_path: Path) -> None:
+    page, context = _opened(tmp_path, "grp-visits")
     try:
         _open_all(page)
         rows = page.locator("#detail-panel .tl button.ev.turn")
@@ -143,10 +142,10 @@ def test_a_node_that_runs_twice_has_two_rows_one_per_visit() -> None:
         context.__exit__(None, None, None)
 
 
-def test_a_run_of_passed_steps_folds_to_one_line_and_selecting_it_opens_and_closes_one_row_per_step() -> None:
+def test_a_run_of_passed_steps_folds_to_one_line_and_selecting_it_opens_and_closes_one_row_per_step(tmp_path: Path) -> None:
     from playwright.sync_api import expect
 
-    page, context = _opened(Path(tempfile.mkdtemp()), "grp-fold")
+    page, context = _opened(tmp_path, "grp-fold")
     try:
         _open_all(page)
         fold = page.locator("#detail-panel .tl button.ev.steps").first
@@ -166,8 +165,8 @@ def test_a_run_of_passed_steps_folds_to_one_line_and_selecting_it_opens_and_clos
         context.__exit__(None, None, None)
 
 
-def test_a_failed_step_stands_as_its_own_row_between_two_folds() -> None:
-    page, context = _opened(Path(tempfile.mkdtemp()), "grp-failed")
+def test_a_failed_step_stands_as_its_own_row_between_two_folds(tmp_path: Path) -> None:
+    page, context = _opened(tmp_path, "grp-failed")
     try:
         _open_all(page)
         first = page.locator("#detail-panel [data-pass^='pass:sign-in|qa|1']")
@@ -178,8 +177,8 @@ def test_a_failed_step_stands_as_its_own_row_between_two_folds() -> None:
         context.__exit__(None, None, None)
 
 
-def test_a_failed_step_a_gate_a_retry_and_a_churn_alert_each_get_a_row_with_a_different_mark() -> None:
-    page, context = _opened(Path(tempfile.mkdtemp()), "grp-marks", polls=5)
+def test_a_failed_step_a_gate_a_retry_and_a_churn_alert_each_get_a_row_with_a_different_mark(tmp_path: Path) -> None:
+    page, context = _opened(tmp_path, "grp-marks", polls=5)
     try:
         _open_all(page)
         marks = {}
@@ -197,10 +196,10 @@ def test_a_failed_step_a_gate_a_retry_and_a_churn_alert_each_get_a_row_with_a_di
         context.__exit__(None, None, None)
 
 
-def test_selecting_a_problem_row_shows_its_name_its_time_and_its_one_line_result_in_the_pane() -> None:
+def test_selecting_a_problem_row_shows_its_name_its_time_and_its_one_line_result_in_the_pane(tmp_path: Path) -> None:
     from playwright.sync_api import expect
 
-    page, context = _opened(Path(tempfile.mkdtemp()), "grp-stub", polls=5)
+    page, context = _opened(tmp_path, "grp-stub", polls=5)
     try:
         _open_all(page)
         wanted = {
@@ -224,10 +223,10 @@ def test_selecting_a_problem_row_shows_its_name_its_time_and_its_one_line_result
         context.__exit__(None, None, None)
 
 
-def test_selecting_a_turn_inside_a_group_reads_as_it_did() -> None:
+def test_selecting_a_turn_inside_a_group_reads_as_it_did(tmp_path: Path) -> None:
     from playwright.sync_api import expect
 
-    page, context = _opened(Path(tempfile.mkdtemp()), "grp-turn")
+    page, context = _opened(tmp_path, "grp-turn")
     try:
         _open_all(page)
         turns = page.locator("#detail-panel .tl button.ev.turn")
@@ -240,8 +239,8 @@ def test_selecting_a_turn_inside_a_group_reads_as_it_did() -> None:
         context.__exit__(None, None, None)
 
 
-def test_the_running_turn_has_its_own_mark_as_the_last_row_of_its_flow_pass() -> None:
-    page, context = _opened(Path(tempfile.mkdtemp()), "grp-live", running=True)
+def test_the_running_turn_has_its_own_mark_as_the_last_row_of_its_flow_pass(tmp_path: Path) -> None:
+    page, context = _opened(tmp_path, "grp-live", running=True)
     try:
         last = page.locator("#detail-panel [data-pass] ").last
         rows = last.locator("button.ev")
@@ -256,8 +255,8 @@ def test_the_running_turn_has_its_own_mark_as_the_last_row_of_its_flow_pass() ->
         context.__exit__(None, None, None)
 
 
-def test_a_heading_stays_in_view_while_its_rows_scroll() -> None:
-    page, context = _opened(Path(tempfile.mkdtemp()), "grp-sticky")
+def test_a_heading_stays_in_view_while_its_rows_scroll(tmp_path: Path) -> None:
+    page, context = _opened(tmp_path, "grp-sticky")
     try:
         _open_all(page)
         page.evaluate("document.querySelector('#detail-panel .tl').style.maxHeight = '170px'")
@@ -272,12 +271,12 @@ def test_a_heading_stays_in_view_while_its_rows_scroll() -> None:
         context.__exit__(None, None, None)
 
 
-def test_a_run_with_no_work_items_groups_its_rows_directly_under_the_flow_pass() -> None:
+def test_a_run_with_no_work_items_groups_its_rows_directly_under_the_flow_pass(tmp_path: Path) -> None:
     from playwright.sync_api import expect
 
     live = _live()
     assert live is not None, _UNAVAILABLE
-    with _run("grp-flat", Path(tempfile.mkdtemp()), turns=False) as run:
+    with _run("grp-flat", tmp_path, turns=False) as run:
         spans = [span("r1", "t1", "", "coder", "run:coder", BASE, 900, {}, 1, run), *_pass("a", "qa", BASE + 10, "", [("lint", 5, "UNSET")], turn=(100, 2.0))]
         for one in spans:
             one["run_id"] = run
@@ -293,8 +292,8 @@ def test_a_run_with_no_work_items_groups_its_rows_directly_under_the_flow_pass()
             page.close()
 
 
-def test_a_heading_adds_up_to_the_overview_figures_for_its_work_item() -> None:
-    page, context = _opened(Path(tempfile.mkdtemp()), "grp-figures")
+def test_a_heading_adds_up_to_the_overview_figures_for_its_work_item(tmp_path: Path) -> None:
+    page, context = _opened(tmp_path, "grp-figures")
     try:
         heading = _heads(page, "tl-group").nth(1).inner_text()
         page.get_by_role("tab", name="Overview").click()
@@ -308,8 +307,8 @@ def test_a_heading_adds_up_to_the_overview_figures_for_its_work_item() -> None:
         context.__exit__(None, None, None)
 
 
-def test_headings_and_rows_keep_a_role_a_name_and_state_in_words_and_pass_an_axe_scan() -> None:
-    page, context = _opened(Path(tempfile.mkdtemp()), "grp-a11y", running=True, polls=5)
+def test_headings_and_rows_keep_a_role_a_name_and_state_in_words_and_pass_an_axe_scan(tmp_path: Path) -> None:
+    page, context = _opened(tmp_path, "grp-a11y", running=True, polls=5)
     try:
         _open_all(page)
         for head in _heads(page, "tl-group").all() + _heads(page, "tl-flow").all():
@@ -324,10 +323,10 @@ def test_headings_and_rows_keep_a_role_a_name_and_state_in_words_and_pass_an_axe
         context.__exit__(None, None, None)
 
 
-def test_a_state_with_no_node_folds_opens_with_steps_and_reads_in_the_pane() -> None:
+def test_a_state_with_no_node_folds_opens_with_steps_and_reads_in_the_pane(tmp_path: Path) -> None:
     from playwright.sync_api import expect
 
-    page, context = _opened(Path(tempfile.mkdtemp()), "grp-states", states=True)
+    page, context = _opened(tmp_path, "grp-states", states=True)
     try:
         _open_all(page)
         row = page.locator('#detail-panel .tl button[data-entry="step:bs"]')
