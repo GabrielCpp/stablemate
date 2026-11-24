@@ -1803,6 +1803,11 @@ function shownKeys(rows, items) {
   return keys;
 }
 
+function failedEntry(items, accepts) {
+  for (const item of items) for (const pass of item.passes) for (const entry of pass.entries) if (failedTurn(entry) && accepts(entry)) return entry;
+  return null;
+}
+
 function arrivals(activity) {
   if (!activity.seen) return 0;
   let count = 0;
@@ -1959,6 +1964,11 @@ function showNewestProblem() {
   const held = store.get().activity;
   const view = timelineView(held);
   if (orderedKeys(view, held.rows).some((one) => one.key === held.selected)) return true;
+  const turned = failedEntry(held.items, (entry) => entry.turn === held.selected);
+  if (turned && view.items.some((item) => item.passes.some((pass) => pass.entries.some((entry) => entry.key === turned.key)))) {
+    openRow(turned.key);
+    return true;
+  }
   let best = "";
   let at = -Infinity;
   for (const item of view.items) {
@@ -1977,8 +1987,11 @@ function showNewestProblem() {
 }
 
 function setProblems(on) {
-  store.set({ activity: { ...store.get().activity, problems: on, note: "" } });
+  const held = store.get().activity;
+  const shown = on ? null : failedEntry(held.items, (entry) => entry.key === held.selected);
+  store.set({ activity: { ...held, problems: on, note: "" } });
   if (on) showNewestProblem();
+  else if (shown) openRow(shown.turn);
 }
 
 function openProblems() {

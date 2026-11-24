@@ -490,6 +490,23 @@ def test_a_selected_row_that_is_in_the_problems_view_stays_selected_and_turning_
         _leave(page, context)
 
 
+def test_a_selected_failed_agent_turn_stays_selected_across_the_problems_toggle(tmp_path):
+    from playwright.sync_api import expect
+
+    _live_, page, context, _name = _page(tmp_path, "prb-keep-failed-turn", broken=True)
+    try:
+        _open_all(page)
+        page.locator(f'#detail-panel .tl button.ev[data-slug="{BROKEN}"]').click()
+        assert _selected_key(page) == BROKEN
+        _on(page)
+        assert _selected_key(page) == "failed:ft"
+        page.locator(CHIP).click()
+        expect(page.locator(CHIP)).to_have_attribute("aria-pressed", "false")
+        assert _selected_key(page) == BROKEN
+    finally:
+        _leave(page, context)
+
+
 def test_a_row_hidden_by_the_item_filter_or_the_search_follows_the_same_rule_when_problems_is_pressed(tmp_path):
     from playwright.sync_api import expect
 
