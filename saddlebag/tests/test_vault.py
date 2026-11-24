@@ -190,6 +190,14 @@ def test_retag_keeps_metadata_and_set_metadata_keeps_tags(kv_store: tuple[VaultS
     assert secret is not None and secret.metadata == {"z": "1"} and secret.tags == {("c", "d")}
 
 
+def test_update_rewrites_the_record(kv_store: tuple[VaultStore, FakeKv]) -> None:
+    store, _ = kv_store
+    store.create(Secret("login", "gab", "d", "V", frozenset({("a", "b")}), metadata={"k": "v"}))
+    store.update(Secret("login", "ana", "d", "V", frozenset({("a", "b")}), metadata={"k": "v"}))
+    secret = store.get("login")
+    assert secret is not None and secret.username == "ana" and secret.tags == {("a", "b")} and secret.metadata == {"k": "v"}
+
+
 def test_set_metadata_on_a_missing_secret_is_an_error(kv_store: tuple[VaultStore, FakeKv]) -> None:
     store, kv = kv_store
     kv.absent = True

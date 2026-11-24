@@ -7,7 +7,7 @@ from typing import Any
 
 from ostler.book import Actor, Exited, Rule
 
-from ..fixtures import (CreateArgs, DoctorArgs, EnvImportArgs, EnvSetArgs, ExecArgs, ExportArgs,
+from ..fixtures import (CreateArgs, DoctorArgs, EditArgs, EnvImportArgs, EnvSetArgs, ExecArgs, ExportArgs,
                         FillArgs, GuardInstallArgs, ImportArgs, ServeArgs, SetArgs, TypeArgs, UnmetaArgs, UnsetArgs)
 from . import world, words
 from .files import BACKEND_DAEMON, BROKEN, CONFIG, EXPORT, FOREIGN
@@ -41,6 +41,14 @@ def _exists(a: CreateArgs, s: Store, by: Actor | None) -> bool:
 
 def _invalid_var(a: CreateArgs, s: Store, by: Actor | None) -> bool:
     return a.var is not None and words.VAR.fullmatch(a.var) is None
+
+
+def _nothing_to_edit(a: EditArgs, s: Store, by: Actor | None) -> bool:
+    return a.username is None and a.description is None and a.var is None
+
+
+def _edit_invalid_var(a: EditArgs, s: Store, by: Actor | None) -> bool:
+    return bool(a.var) and words.VAR.fullmatch(a.var or "") is None
 
 
 def _bad_tag(a: Request, s: Store, by: Actor | None) -> bool:
@@ -117,6 +125,10 @@ invalid_name = Rule[CreateArgs, Store](
     "saddlebag: invalid secret name {quoted_name}: use letters, digits, '.', '_' and '-'", _invalid_name, FAILED)
 already_exists = Rule[CreateArgs, Store]("saddlebag: secret {name} already exists", _exists, FAILED)
 invalid_var = Rule[CreateArgs, Store]("saddlebag: invalid environment variable name {quoted_var}", _invalid_var, FAILED)
+
+nothing_to_edit = Rule[EditArgs, Store](
+    "saddlebag: give at least one of --username, --description or --var", _nothing_to_edit, USAGE)
+edit_invalid_var = Rule[EditArgs, Store]("saddlebag: invalid environment variable name {quoted_var}", _edit_invalid_var, FAILED)
 
 no_such_field_to_set = Rule[SetArgs, Store](
     USAGE_SET + "argument --field: invalid choice: {quoted_field} (choose from 'password', 'totp')",

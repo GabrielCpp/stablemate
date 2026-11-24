@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import replace
 from collections.abc import Callable
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
@@ -29,6 +30,9 @@ from saddlebag.store import SecretStore, StoreUnavailable
 logger = logging.getLogger(__name__)
 
 VAULT_TOKEN_FILE = Path("~/.vault-token")
+
+
+EDITABLE = ("username", "description", "var")
 
 
 class RequestError(Exception):
@@ -185,6 +189,18 @@ class Verbs:
         merged = {**secret.metadata, **_metadata(args)}
         self.store.set_metadata(secret.name, merged)
         return {"name": secret.name, "metadata": dict(sorted(merged.items()))}
+
+    def verb_edit(self, args: dict[str, Any]) -> dict[str, Any]:
+        secret = self._existing(args)
+        given = {key: _text(args, key, required=False) or None for key in EDITABLE if key in args}
+        if not given:
+            raise RequestError("give at least one of username, description or var")
+        var = given.get("var")
+        if var is not None:
+            _checked(validate_var, var)
+        edited = replace(secret, **given)
+        self.store.update(edited)
+        return {"secret": edited.to_dict()}
 
     def verb_unmeta(self, args: dict[str, Any]) -> dict[str, Any]:
         secret = self._existing(args)

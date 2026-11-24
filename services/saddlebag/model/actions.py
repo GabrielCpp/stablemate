@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 from ostler.book import Action, Actor, Create, Delete, Show, Transaction, Update
 
-from ..fixtures import (CreateArgs, DoctorArgs, EnvClassifyArgs, EnvImportArgs, EnvKeysArgs, EnvSetArgs, EnvShowArgs,
+from ..fixtures import (CreateArgs, DoctorArgs, EditArgs, EnvClassifyArgs, EnvImportArgs, EnvKeysArgs, EnvSetArgs, EnvShowArgs,
                         ExecArgs, ExportArgs, FillArgs, GuardBareArgs, GuardHookArgs, GuardInstallArgs, ImportArgs, ListArgs,
                         LookArgs, MetaArgs, RemoveArgs, ServeArgs, SetArgs, TagArgs, TagsArgs, TypeArgs, UnmetaArgs, UnsetArgs,
                         UntagArgs, VersionArgs)
@@ -116,6 +116,19 @@ class RunCreate(Action[CreateArgs, Store]):
             metadata=tuple(sorted(p for p in (words.meta_of(t) for t in a.meta or ()) if p is not None)))
         says = document({"secret": entry(record)}) if a.json else (f"created {a.name}",)
         return Transaction(Create(s.secrets, record), says=says)
+
+
+class RunEdit(Action[EditArgs, Store]):
+    accept = EditArgs
+    rules = (rules.nothing_to_edit, rules.no_daemon, rules.no_secret, rules.edit_invalid_var)
+
+    @staticmethod
+    def reduce(a: EditArgs, s: Store, by: Actor | None) -> Transaction:
+        given = {key: value or None for key, value in (("username", a.username), ("description", a.description),
+                                                       ("var", a.var)) if value is not None}
+        record = replace(s.secrets[a.name], **given)
+        says = document({"secret": entry(record)}) if a.json else (f"edited {a.name}",)
+        return Transaction(Update(s.secrets, a.name, record), says=says)
 
 
 class RunSet(Action[SetArgs, Store]):

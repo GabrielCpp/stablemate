@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from dataclasses import replace
 from typing import Any
 
 import keyring
@@ -204,6 +205,17 @@ def test_a_meta_field_reads_from_the_record(store: KeyringStore, backend: FakeBa
     assert store.value("login", "meta.absent") is None
     assert store.value("ghost", "meta.phone") is None
     assert backend.items == {}
+
+
+def test_update_rewrites_the_record_and_keeps_the_stored_fields(store: KeyringStore, backend: FakeBackend) -> None:
+    store.set_value("login", "password", "hunter2hunter2")
+    record = store.get("login")
+    assert record is not None
+    store.update(replace(record, username="ana", fields=frozenset()))
+    secret = store.get("login")
+    assert secret is not None and secret.username == "ana" and secret.fields == {"password"}
+    with pytest.raises(StoreUnavailable, match="no such secret"):
+        store.update(replace(record, name="ghost"))
 
 
 def test_set_metadata_on_a_missing_record_is_refused(store: KeyringStore) -> None:

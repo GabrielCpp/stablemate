@@ -452,6 +452,39 @@ def test_metadata_is_created_edited_dropped_and_listed(running: Running, run: Ru
     assert entry["metadata"] == {"phone": "+15555550199", "role": "admin"}
 
 
+def test_edit_changes_the_username_and_keeps_the_rest(running: Running, run: Run, capsys: pytest.CaptureFixture[str]) -> None:
+    assert run("secret", "create", "qa_admin", "--username", "old@example.com", "--var", "QA_PW", "--tag", "role=admin") == 0
+    assert run("secret", "set", "qa_admin", stdin=PASSWORD + "\n") == 0
+    capsys.readouterr()
+    assert run("secret", "edit", "qa_admin", "--username", "new@example.com") == 0
+    assert "edited qa_admin" in capsys.readouterr().out
+    secret = running.vault.get("qa_admin")
+    assert secret is not None
+    assert secret.username == "new@example.com" and secret.var == "QA_PW" and secret.tags == {("role", "admin")}
+    assert secret.fields == {"password"}
+
+
+def test_edit_with_an_empty_value_clears_the_field(running: Running, run: Run) -> None:
+    assert run("secret", "create", "qa_admin", "--username", "ana", "--description", "the admin", "--var", "QA_PW") == 0
+    assert run("secret", "edit", "qa_admin", "--username", "", "--var", "") == 0
+    secret = running.vault.metadata["qa_admin"]
+    assert secret.username is None and secret.var is None and secret.description == "the admin"
+
+
+def test_edit_with_nothing_to_change_is_a_usage_error(running: Running, run: Run, capsys: pytest.CaptureFixture[str]) -> None:
+    seed(running)
+    assert run("secret", "edit", "login") == 2
+    assert "give at least one of --username, --description or --var" in capsys.readouterr().err
+
+
+def test_edit_refuses_a_bad_var_and_an_unknown_secret(running: Running, run: Run, capsys: pytest.CaptureFixture[str]) -> None:
+    seed(running)
+    assert run("secret", "edit", "login", "--var", "a-b") == 1
+    assert "invalid environment variable name 'a-b'" in capsys.readouterr().err
+    assert run("secret", "edit", "ghost", "--username", "x") == 1
+    assert "no such secret: ghost" in capsys.readouterr().err
+
+
 def test_unmeta_of_an_unknown_key_is_an_error(running: Running, run: Run, capsys: pytest.CaptureFixture[str]) -> None:
     seed(running)
     assert run("secret", "unmeta", "login", "nope") == 1

@@ -162,7 +162,7 @@ carries `environment=<slug>`, the tag the stack root's `secrets: saddlebag:` nam
 |---|---|
 | `serve` | run the daemon; token from stdin, the OS keyring or a 0600 file; `--keep-token` stores one |
 | `list` `tags` | query by tag; neither can emit a value |
-| `secret create` `set` `unset` `remove` `tag` `untag` `meta` `unmeta` | manage a secret; `set` reads its value from stdin; `meta K=V` adds or overwrites printable metadata, `unmeta KEY` drops it |
+| `secret create` `edit` `set` `unset` `remove` `tag` `untag` `meta` `unmeta` | manage a secret; `edit` changes its username, description or var, and an empty value clears one; `set` reads its value from stdin; `meta K=V` adds or overwrites printable metadata, `unmeta KEY` drops it |
 | `fill` | type a secret's username, password or current TOTP code into a browser field |
 | `type` | type a secret's username, password, current TOTP code or metadata value into the focused field of an Android device |
 | `exec` | run a command with matching secrets in its environment |

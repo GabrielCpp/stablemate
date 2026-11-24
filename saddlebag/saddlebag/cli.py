@@ -152,6 +152,20 @@ def cmd_create(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_edit(args: argparse.Namespace) -> int:
+    given = {key: value for key in ("username", "description", "var") if (value := getattr(args, key)) is not None}
+    if not given:
+        return _error("give at least one of --username, --description or --var", 2)
+    reply = _ask("edit", {"name": args.name, **given})
+    if isinstance(reply, int):
+        return reply
+    if args.json:
+        _emit(reply.result)
+    else:
+        print(f"edited {args.name}")
+    return 0
+
+
 def cmd_set(args: argparse.Namespace) -> int:
     value = sys.stdin.read().rstrip("\r\n")
     if not value.strip():
@@ -576,6 +590,13 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--meta", action="append", default=[], metavar="K=V", help="printable metadata; repeatable")
     c.add_argument("--json", action="store_true")
     c.set_defaults(func=cmd_create)
+    ed = ssub.add_parser("edit", help="change a secret's username, description or var; an empty value clears it")
+    ed.add_argument("name")
+    ed.add_argument("--username")
+    ed.add_argument("--description")
+    ed.add_argument("--var", help="environment variable `exec` fills with the password")
+    ed.add_argument("--json", action="store_true")
+    ed.set_defaults(func=cmd_edit)
     st = ssub.add_parser("set", help="store a value read from stdin")
     st.add_argument("name")
     st.add_argument("--field", choices=VALUE_FIELDS, default="password")

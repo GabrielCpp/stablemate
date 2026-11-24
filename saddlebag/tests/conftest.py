@@ -72,6 +72,9 @@ class FakeVault:
     def set_metadata(self, name: str, metadata: Mapping[str, str]) -> None:
         self.metadata[name] = replace(self.metadata[name], metadata=dict(metadata))
 
+    def update(self, secret: Secret) -> None:
+        self.metadata[secret.name] = replace(secret, fields=frozenset())
+
 
 class FakeBackend(KeyringBackend):
     """A dict-backed keyring backend."""

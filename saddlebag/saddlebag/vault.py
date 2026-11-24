@@ -128,3 +128,8 @@ class VaultStore:
         if secret is None:
             raise VaultError(f"no such secret: {name}")
         self._write_metadata(replace(secret, metadata=dict(metadata)))
+
+    def update(self, secret: Secret) -> None:
+        if self.get(secret.name) is None:
+            raise VaultError(f"no such secret: {secret.name}")
+        self._write_metadata(secret)

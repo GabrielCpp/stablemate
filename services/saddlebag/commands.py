@@ -98,6 +98,27 @@ class Create(Command):
               f"{MODELS}::validate_meta_key")
 
 
+class Edit(Command):
+    does = "Change a secret's username, description or variable after it was created. An empty value clears the field."
+    program = "saddlebag"
+    argv = ("secret", "edit", Positional("name"), Flag("--username", "username"), Flag("--description", "description"),
+            Flag("--var", "var"), Switch("--json", "json"))
+    args = Object(
+        "EditArgs", name=NAME,
+        username=text("the new login name, printed in the clear; empty clears it", a_plain_name="bo", nothing="",
+                      a_name_with_a_dot="bo.c"),
+        description=text("what the secret is for; empty clears it", a_short_phrase="the acme admin", nothing=""),
+        var=text("the variable exec fills with the password; empty clears it", a_name_with_a_dash="a-b", nothing=""),
+        json=JSON)
+    answers = (
+        Exit(0, Lines(), "edited NAME, or the record as JSON"),
+        Exit(1, STDERR, "the store cannot be reached, no such secret, or the variable is not valid"),
+        Exit(2, STDERR, "none of --username, --description or --var is given"),
+    )
+    carries = act.RunEdit
+    source = (f"{CLI}::cmd_edit", f"{VERBS}::Verbs.verb_edit", f"{MODELS}::validate_var")
+
+
 class SetValue(Command):
     does = "Store the value read from stdin as a secret's password or TOTP seed."
     program = "saddlebag"
@@ -450,6 +471,6 @@ class Serve(Command):
               "saddlebag/saddlebag/route.py")
 
 
-ALL = (Version, Inventory, Tags, Create, SetValue, Unset, Remove, TagSecret, UntagSecret, Meta, Unmeta, Fill, TypeInto, Exec,
+ALL = (Version, Inventory, Tags, Create, Edit, SetValue, Unset, Remove, TagSecret, UntagSecret, Meta, Unmeta, Fill, TypeInto, Exec,
        EnvShow, EnvKeys, EnvClassify, EnvImport, EnvSet, Export, Import, GuardHook, GuardInstall, GuardBare, Doctor, Serve,
        Look)

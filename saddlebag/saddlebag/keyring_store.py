@@ -171,3 +171,6 @@ class KeyringStore:
 
     def set_metadata(self, name: str, metadata: Mapping[str, str]) -> None:
         self._catalogue.put(replace(self._record(name), metadata=dict(metadata)))
+
+    def update(self, secret: Secret) -> None:
+        self._catalogue.put(replace(secret, fields=self._record(secret.name).fields))

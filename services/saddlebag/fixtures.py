@@ -141,6 +141,23 @@ class RemoveArgs(Fixture):
 
 
 @dataclass
+class EditArgs(Fixture):
+    name: str | None = None
+    username: str | None = None
+    description: str | None = None
+    var: str | None = None
+    json: bool | None = None
+
+    @property
+    def quoted_var(self) -> str:
+        return repr(self.var)
+
+    @classmethod
+    def examples(cls, state: Any, by: Actor | None) -> Iterable[Self]:
+        return tuple(cls(name=r.name, username="bo") for r in state.secrets)
+
+
+@dataclass
 class Pair(Fixture):
     name: str | None = None
     first: str | None = None
@@ -444,6 +461,11 @@ def acme(*, json: bool | None = None) -> CreateArgs:
 
 def beta() -> CreateArgs:
     return create(BETA, var=BETA_VAR, tag=["env=ci", "team=b"])
+
+
+def edit(name: str | None = ACME, *, username: str | None = "bo", description: str | None = None,
+         var: str | None = None, json: bool | None = None) -> EditArgs:
+    return EditArgs(name=name, username=username, description=description, var=var, json=json)
 
 
 def set_value(name: str | None = ACME, value: str | None = ACME_PASSWORD, *, field: str | None = None) -> SetArgs:

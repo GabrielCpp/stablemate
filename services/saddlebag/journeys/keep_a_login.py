@@ -11,7 +11,7 @@ from .. import fixtures as f
 
 class KeepALogin(Journey):
     """A person registers the acme login with its username, variable, tags and metadata, stores its password,
-    reads the inventory, tags and untags it, adds and drops metadata, clears the password and removes the login."""
+    changes its username, reads the inventory, tags and untags it, adds and drops metadata, clears the password and removes the login."""
 
     alone = True
 
@@ -19,6 +19,7 @@ class KeepALogin(Journey):
         return (
             c.Create(f.acme()),
             c.SetValue(f.set_value()),
+            c.Edit(f.edit()),
             c.Inventory(f.list_()),
             c.Inventory(f.list_(json=True)),
             c.Tags(f.tags()),
