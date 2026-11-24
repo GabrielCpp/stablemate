@@ -386,7 +386,7 @@ OVERVIEW = Object(
     compare=Field(
         Map(Str()),
         nullable=True,
-        does="null while the run is live or its summary is not read yet. For an ended run it holds the run's cost per item against the median of the other successful runs of its workflow, with the run's ending and workflow. The By node medians then read the other successful runs only when the run itself succeeded",
+        does="null while the run is live or its summary is not read yet. For an ended run it holds the run's cost per item against the median of the other comparable runs of its workflow, with the run's ending and workflow. A comparable run ended in success, reported a price and finished an item, and is no estimate. The By node medians read the same comparable runs, and only for a run that is comparable itself",
     ),
     norm_runs=Field(Int(), does="the largest count of comparable successful runs behind any node's median, shown in the By node heading; 0 when no node has a norm"),
     items=Field(

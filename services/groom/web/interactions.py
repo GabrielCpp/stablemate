@@ -74,7 +74,7 @@ class ReadActivity(Interaction[Push]):
 class ReadTheMedian(Interaction[Judged]):
     source = ("groom/groom/assets/dashboard.js", "groom/groom/medians.py")
     screen = History
-    does = "chooses the workflow of ended runs in History. The run's cell under $/item vs median and the median cell of the totals say how the run compares with the other successful runs of its workflow"
+    does = "chooses the workflow of ended runs in History. The run's cell under $/item vs median and the median cell of the totals say how the run compares with the other comparable runs of its workflow. A comparable run ended in success, reported a price and finished an item, and is no estimate. The totals count adds the judged run when it is comparable"
     carries = JudgeRun
 
 
