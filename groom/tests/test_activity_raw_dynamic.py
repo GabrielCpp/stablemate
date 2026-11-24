@@ -375,13 +375,16 @@ def test_pressing_raw_again_returns_to_the_timeline_with_the_selection_as_it_was
     def check(page, name):
         _open_items(page)
         _chip(page, "steps").click()
-        page.locator("#detail-panel .tl button.ev[data-entry]").first.click()
-        chosen = page.locator("#detail-panel .tl button.ev[aria-current=true]").first.get_attribute("data-entry")
-        assert chosen
+        rows = page.locator("#detail-panel .tl button.ev[data-entry]")
+        initial = page.locator("#detail-panel .tl button.ev[aria-current=true]").first.get_attribute("data-entry")
+        rows.last.click()
+        chosen = rows.last.get_attribute("data-entry")
+        assert chosen and chosen != initial
+        expect(page.locator(f'#detail-panel .tl button[data-entry="{chosen}"]')).to_have_attribute("aria-current", "true")
         _raw(page)
         _chip(page, "raw").click()
         expect(_chip(page, "raw")).to_have_attribute("aria-pressed", "false")
-        expect(page.locator(f'#detail-panel .tl button[data-entry="{chosen}"]')).to_be_visible()
+        expect(page.locator(f'#detail-panel .tl button[data-entry="{chosen}"]')).to_have_attribute("aria-current", "true")
         expect(page.locator("#detail-panel .rd")).to_be_visible()
 
     _drive(tmp_path, "raw-return", check)
