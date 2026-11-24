@@ -293,7 +293,7 @@ class GroomDashboard(PageSurface):
         return workflow, own
 
     def express(self, request: Any, outcome: Done) -> tuple[object, ...] | None:
-        return outcome.view
+        return None if isinstance(request, FilterTheList) else outcome.view
 
     def median(self, judged: Judged) -> Done:
         workflow, own = self.judge(judged)
