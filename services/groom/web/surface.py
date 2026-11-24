@@ -4,6 +4,7 @@ and the page is read for what it shows."""
 from __future__ import annotations
 
 import json
+import re
 import secrets
 import sqlite3
 import time
@@ -290,6 +291,9 @@ class GroomDashboard(PageSurface):
         self.browser.fill(History.workflow, workflow)
         return workflow, own
 
+    def express(self, request: Any, outcome: Done) -> tuple[object, ...] | None:
+        return outcome.view
+
     def median(self, judged: Judged) -> Done:
         workflow, own = self.judge(judged)
         cell = self.browser.page.locator(MEDIAN)
@@ -304,10 +308,10 @@ class GroomDashboard(PageSurface):
         page = self.browser.page
         page.click(f"#history tr.hrow:has-text('{own}')")
         page.wait_for_selector(f"#history-detail {TILE}")
-        tile = " ".join(page.locator(TILE).inner_text().split()).removeprefix("Work items ")
+        tile = re.sub(r"^work items ", "", " ".join(page.locator(TILE).inner_text().split()), flags=re.IGNORECASE)
         page.click(BREAKDOWN)
         page.wait_for_selector(NODE_TABLE)
-        heading = " ".join(page.locator(HEADING).inner_text().split())
+        heading = " ".join((page.locator(HEADING).text_content() or "").split())
         agent = page.evaluate(NODE_CELL, ["qa"])
         step = page.evaluate(NODE_CELL, ["lint"])
         self.settle()
