@@ -514,8 +514,8 @@ The token window stays the trigger, and Enclosing unit gives it the function's n
   and both refusals name the two builds. Fix: a library with its own manifest, listed in
   the existing workspace, declared by each build. Counter-case: two languages share a
   contract, not a library, and two repositories keep their copies.
-- Home decision: **Exists** as the `docs/decisions/` records the operator resolver reads
-  first (log 20). **Reshape** the dev scope prompt: it receives the run's decisions
+- Home decision: **Exists** as the product pages the operator resolver reads
+  first (log 20). **Reshape** the dev scope prompt: it receives the run's product
   folder, blocks with a proposal when the extraction changes how the code ships, and
   writes the operator's answer as a record before building. The resolver needs no change,
   because the escalation already carries the producer's notes to the operator verbatim.

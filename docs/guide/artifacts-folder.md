@@ -20,8 +20,6 @@ hand.
   services/<repo>/<name>/                         service book of one service of one repository
     decisions/<slug>.md                           why, tied to an element of that service
   services/<repo>/ops/stack.yml                   the repository's stack root
-  docs/decisions/<slug>/decision.md               a standing answer you gave an agent
-  docs/adrs/<slug>/adr.md                         an architecture decision record
 
   epics/<epic-id>/epic.md                         untracked from here down
   epics/<epic-id>/stories/<story-id>/story.md
@@ -42,7 +40,7 @@ artifacts repository ignores it.
 | epic folder | `ostler path epic <slug>` |
 | story file | `ostler path story <story-id>` |
 | spec folder | `ostler path spec <story-id>` |
-| decision | `ostler decisions add <slug>` |
+| decision | written by hand into the service book's `decisions/`, listed by `ostler book decisions <module>` |
 | product, team and company pages | `ostler book pages` |
 | service book | `ostler book files <module>` |
 
@@ -80,9 +78,9 @@ product's pages and its own service books. It reads another repository's book on
 - The code, and its `agents.yml`.
 - Run folders under `.agents/`.
 - The book, for a tool that publishes its own: `book.home: repo` keeps `services/<name>/` and
-  `product/` in the repository. Milestones, designs, decisions and notes still go to the
+  `product/` in the repository. Milestones, designs and notes still go to the
   artifacts folder.
 
-A repository or an artifacts folder that still holds `docs/decisions`, `docs/adrs` or
+A repository or an artifacts folder that still holds `docs/decisions` or
 `docs/milestones` is in the old layout. `ostler` refuses to read it and prints the commands that
 move it.
