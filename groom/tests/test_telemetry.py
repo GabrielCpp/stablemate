@@ -416,6 +416,38 @@ def test_node_costs_totals_agent_spend_and_exposes_the_rework_ratio():
         assert rows["implement-plan"]["share"] == 0.25
 
 
+def _failed(node: str, work_id: str, span_id: str, kind: str, start: float) -> dict:
+    turn = _turn(node, work_id, 0.0, span_id, start=start)
+    turn["labels"]["error.kind"] = kind
+    return turn
+
+
+def test_a_turn_that_ended_on_an_error_is_a_retry_and_no_lap():
+    with _TelemetryEnv():
+        store.insert_spans(
+            otlp.parse_traces(
+                _trace_request(
+                    [
+                        _failed("review", "story-a", "21" * 8, "cap", 1000.0),
+                        _failed("review", "story-a", "22" * 8, "cap", 1010.0),
+                        _turn("review", "story-a", 1.0, "23" * 8, start=1020.0),
+                        _failed("review", "story-a", "24" * 8, "timeout", 1030.0),
+                        _turn("review", "story-a", 2.0, "25" * 8, start=1040.0),
+                        _turn("review", "story-b", 1.0, "26" * 8, start=1050.0),
+                        _failed("write", "story-a", "27" * 8, "cap", 1060.0),
+                    ]
+                )
+            )
+        )
+
+        rows = {row["node"]: row for row in store.loop_convergence(min_work_items=1)}
+
+        assert set(rows) == {"review"}
+        assert (rows["review"]["turns"], rows["review"]["retries"]) == (3, 3)
+        assert (rows["review"]["max_laps"], rows["review"]["excess_turns"]) == (2, 1)
+        assert rows["review"]["excess_cost_usd"] == 2.0
+
+
 def test_loop_convergence_reports_the_shape_of_a_lap_distribution():
     """The mean cannot tell "every story took two passes" from "one story took five", and those want different fixes."""
     with _TelemetryEnv():

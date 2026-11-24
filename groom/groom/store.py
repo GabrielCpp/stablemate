@@ -960,7 +960,7 @@ MIN_LOOP_WORK_ITEMS = 3
 
 @dataclass(frozen=True, slots=True)
 class Lap:
-    """One turn of a loop, as the three numbers ranking it needs."""
+    """One turn of a loop, as the three numbers ranking it needs. A `retry` ended on an error and the runner sent the same lap again."""
 
     cost: float | None
     suspect_zero: bool
@@ -968,6 +968,7 @@ class Lap:
     seconds: float = 0.0
     output_tokens: int = 0
     start_ts: float = 0.0
+    retry: bool = False
 
 
 def _node_laps(
@@ -997,6 +998,7 @@ def _node_laps(
             " json_extract(attrs_json, '$.work_id') AS work_id,"
             f" {_charge} AS cost_usd, {_cost} = 0 AND COALESCE({_output}, 0) > 0 AS suspect_zero,"
             " est_cost_usd, start_ts,"
+            " json_extract(attrs_json, '$.\"error.kind\"') IS NOT NULL AS retry,"
             f" COALESCE({_duration} / 1000.0, end_ts - start_ts) AS seconds,"
             f" COALESCE({_output}, 0) AS output_tokens"
             f" FROM spans LEFT JOIN charges USING (span_id) WHERE {' AND '.join(clauses)}"
@@ -1016,6 +1018,7 @@ def _node_laps(
             float(row["seconds"]),
             int(row["output_tokens"]),
             float(row["start_ts"]),
+            bool(row["retry"]),
         )
         laps.setdefault(row["node"], {}).setdefault(item, []).append(lap)
     return laps
@@ -1030,7 +1033,7 @@ def loop_convergence(
 ) -> list[dict[str, Any]]:
     """Per-node lap distributions: which review→rework loops converge, and what the ones that don't are costing."""
     laps = _node_laps(run, workflow, since_ts)
-    report = [_loop_row(node, items) for node, items in laps.items()]
+    report = [row for node, items in laps.items() if (row := _loop_row(node, items)) is not None]
     report = [row for row in report if row["work_items"] >= min_work_items]
     report.sort(
         key=lambda row: (-(row["excess_cost_usd"] or 0.0), -row["excess_turns"])
@@ -1094,7 +1097,12 @@ def run_work_items(run: str) -> list[dict[str, Any]]:
     return rows
 
 
-def _loop_row(node: str, items: dict[tuple[str, str], list[Lap]]) -> dict[str, Any]:
+def _loop_row(node: str, turns_of: dict[tuple[str, str], list[Lap]]) -> dict[str, Any] | None:
+    """A node's lap distribution, or None when no turn of it ran to an answer. A turn that ended on an error is a retry and no lap."""
+    retries = sum(1 for laps in turns_of.values() for lap in laps if lap.retry)
+    items = {item: kept for item, laps in turns_of.items() if (kept := [lap for lap in laps if not lap.retry])}
+    if not items:
+        return None
     counts = sorted(len(laps) for laps in items.values())
     turns, work_items = sum(counts), len(counts)
     exit_rate = work_items / turns
@@ -1116,6 +1124,7 @@ def _loop_row(node: str, items: dict[tuple[str, str], list[Lap]]) -> dict[str, A
         "est_turns": len(estimated),
         "zero_cost_turns": sum(1 for lap in every if lap.suspect_zero),
         "excess_turns": turns - work_items,
+        "retries": retries,
         "exit_rate": exit_rate,
         "mean_laps": turns / work_items,
         "median_laps": counts[work_items // 2],

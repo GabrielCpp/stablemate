@@ -425,7 +425,7 @@ def _format_loops(rows: list[dict]) -> str:
         )
     header = (
         f"{'node':<28}{'items':>6}{'turns':>6}{'exit':>7}{'mean':>6}"
-        f"{'max':>5}{'at-max':>7}{'>=3':>6}{'excess$':>9}{'verdict':>11}"
+        f"{'max':>5}{'at-max':>7}{'>=3':>6}{'retries':>8}{'excess$':>9}{'verdict':>11}"
     )
     lines = [header, "-" * len(header)]
     for row in rows:
@@ -435,6 +435,7 @@ def _format_loops(rows: list[dict]) -> str:
             f"{row['exit_rate'] * 100:>6.0f}%{row['mean_laps']:>6.2f}"
             f"{row['max_laps']:>5}{row['at_max']:>7}"
             f"{row['share_ge3'] * 100:>5.0f}%"
+            f"{row['retries']:>8}"
             f"{(f'{excess:.2f}' if excess is not None else '-'):>9}"
             f"{row['verdict']:>11}"
         )
@@ -476,6 +477,10 @@ def _format_loops(rows: list[dict]) -> str:
                 " prices.toml names their model."
             )
         lines.append("")
+    lines.append(
+        "retries = turns that ended on an error, such as a usage cap, and ran again. They"
+    )
+    lines.append("are no laps and count in no other column.")
     lines.append(
         "exit = how often this gate accepts, per lap. at-max counts the work items that"
     )
