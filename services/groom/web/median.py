@@ -89,7 +89,7 @@ def totals_cell(judged: Judged) -> str:
     pool = (*judged.peers, judged.each) if comparable(judged) else judged.peers
     who = f"median per {judged.workflow} item"
     if len(pool) >= FLOOR:
-        return f"${statistics.median(pool):.2f} {who}, {plural(len(pool), 'comparable run', 'comparable runs')}"
+        return f"{each(statistics.median(pool))} {who}, {plural(len(pool), 'comparable run', 'comparable runs')}"
     only = f"only {plural(len(pool), 'comparable run', 'comparable runs')}" if pool else "no comparable run yet"
     return f"— {who}: {only}, and it takes {FLOOR}"
 

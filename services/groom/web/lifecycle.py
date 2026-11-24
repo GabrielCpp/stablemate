@@ -86,6 +86,7 @@ HISTORY_SCENES = (Scene("(none)", "History holds the ended runs of a workflow no
 
 HISTORY_ACTIONS: dict[str, Callable[[Dashboard], object]] = {
     "judge a run that cost more": lambda m: ReadTheMedian(judging()),
+    "judge a run with dearer peers": lambda m: ReadTheMedian(judging(peers=(20.0, 22.0, 24.0, 26.0, 28.0))),
     "judge a run that cost less": lambda m: ReadTheMedian(judging(each=0.5)),
     "judge a run with four other runs": lambda m: ReadTheMedian(judging(peers=(1.0, 2.0, 3.0, 4.0))),
     "judge a run that failed": lambda m: ReadTheMedian(judging(ending="failed")),
