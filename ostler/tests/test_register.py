@@ -212,3 +212,19 @@ def test_backlog_list_over_an_empty_shelf_says_none(tmp_path: Path, capsys) -> N
     assert run(tmp_path, "backlog", "list") == 0
 
     assert capsys.readouterr().out.strip() == "(none)"
+
+
+def test_a_record_filed_before_the_decision_field_went_still_loads(tmp_path: Path) -> None:
+    graph = load(tmp_path)
+    old = artifacts() / "backlogs/api-service/billing/acme-3/record.md"
+    old.parent.mkdir(parents=True)
+    old.write_text(
+        "---\nid: acme-3\nrepo: api-service\narea: billing\npattern: untriaged\nfiled_by: person\n"
+        "summary: A thing\nstatus: open\ndecision: ''\nreason: ''\n---\n"
+    )
+
+    read = register.records(graph)
+
+    assert [r.id for r in read.records] == ["acme-3"]
+    assert read.unreadable == ()
+    assert "decision" not in register.Record.model_fields

@@ -9,28 +9,15 @@ from pathlib import Path
 import pytest
 
 from conftest import git, milestones_root, repository, write, write_prefix
-from ostler import Ostler, adr, index, layout, register, textindex
+from ostler import Ostler, layout
 from ostler._vendor.stablemate_core import config as core_config
 from ostler.cli import main
 from ostler.model import load
 
 
 @pytest.fixture
-def artifacts_docs() -> Path:
-    return Path(os.environ[core_config.ARTIFACTS_DIR_ENV]).resolve() / "docs"
-
-
-def test_a_decision_of_a_repository_in_no_workspace_is_filed_in_the_artifacts_folder(
-    tmp_path, capsys, artifacts_docs,
-):
-    repo = repository(tmp_path / "api-service")
-
-    code = main(["-C", str(repo), "decisions", "add", "use-x", "--repo", "api-service", "--summary", "X"])
-
-    assert code == 0
-    assert capsys.readouterr().out.strip() == str(artifacts_docs / "decisions/use-x/decision.md")
-    assert (artifacts_docs / "decisions/use-x/decision.md").is_file()
-    assert not (repo / "docs").exists()
+def artifacts() -> Path:
+    return Path(os.environ[core_config.ARTIFACTS_DIR_ENV]).resolve()
 
 
 def test_a_milestone_is_filed_under_its_product_in_the_artifacts_folder_and_queried(tmp_path, capsys):
@@ -148,74 +135,92 @@ def test_a_member_milestone_is_found_from_the_member_checkout(tmp_path, monkeypa
     assert Ostler(artifacts).graph.milestones == []
 
 
-def test_repositories_sharing_the_folder_see_each_others_decisions_and_never_reuse_a_slug(tmp_path):
-    first = repository(tmp_path / "api-service")
-    second = repository(tmp_path / "web-app")
-    assert main(["-C", str(first), "decisions", "add", "first-one", "--summary", "A"]) == 0
-    assert main(["-C", str(second), "decisions", "add", "second-one", "--summary", "B"]) == 0
-
-    with index.session(second, directory=str(tmp_path / "idx"), enabled=True):
-        found = textindex.search(load(second), "one", root="decisions")
-
-    assert sorted(Path(hit["path"]).parent.name for hit in found) == ["first-one", "second-one"]
-    assert main(["-C", str(second), "decisions", "add", "first-one", "--summary", "C"]) == 1
+DECISION = "---\nrepo: api-service\nstatus: accepted\nsummary: s\n---\n"
+PAGE_NOTE = (
+    "Each moved page needs `date:` and `status:` lines in place of its frontmatter, and a page that "
+    "explains one element of one service moves to that service's `decisions/` folder."
+)
 
 
-def test_a_proposed_adr_is_committed_when_the_artifacts_folder_is_a_repository(tmp_path, artifacts_docs):
+def test_a_decision_in_the_artifacts_folder_is_refused_with_a_git_move_to_the_product(tmp_path, artifacts):
+    repo = repository(tmp_path / "api-service")
+    write(artifacts / "docs/decisions/x/decision.md", DECISION)
+
+    with pytest.raises(layout.LayoutMoveRequired) as raised:
+        load(repo)
+
+    message = str(raised.value)
+    assert f"mkdir -p {artifacts}/products/api-service" in message
+    assert f"git -C {artifacts} mv docs/decisions/x/decision.md products/api-service/x.md" in message
+    assert message.endswith(PAGE_NOTE)
+
+
+def test_a_decision_in_a_code_repository_is_refused_with_a_plain_move_and_an_index_removal(tmp_path, artifacts):
+    repo = repository(tmp_path / "api-service")
+    write(repo / "docs/decisions/x/decision.md", DECISION)
+
+    with pytest.raises(layout.LayoutMoveRequired) as raised:
+        load(repo)
+
+    message = str(raised.value)
+    assert f"mkdir -p {artifacts}/products/api-service" in message
+    assert f"mv {repo}/docs/decisions/x/decision.md {artifacts}/products/api-service/x.md" in message
+    assert f"git -C {repo} rm -r --cached docs/decisions" in message
+    assert message.endswith(PAGE_NOTE)
+
+
+def test_a_taken_target_moves_to_the_next_free_numbered_name(tmp_path, artifacts):
+    repo = repository(tmp_path / "api-service")
+    write(repo / "docs/decisions/x/decision.md", DECISION)
+    write(artifacts / "docs/decisions/x/decision.md", DECISION)
+    write(artifacts / "products/api-service/x.md", "date: 2026-11-24\n\nTaken.\n")
+
+    with pytest.raises(layout.LayoutMoveRequired) as raised:
+        load(repo)
+
+    message = str(raised.value)
+    assert f"{artifacts}/products/api-service/x-2.md" in message
+    assert f"git -C {artifacts} mv docs/decisions/x/decision.md products/api-service/x-3.md" in message
+
+
+def test_the_printed_commands_clear_the_refusal(tmp_path, artifacts):
+    repo = repository(tmp_path / "api-service")
     core_config.ensure_artifacts_repo()
-    home = repository(tmp_path / "api-service")
-    graph = load(home)
-    filing = register.file_record(
-        graph, repo="api-service", area="cart", pattern="guard-the-total", summary="s",
-        filed_by="qa", record_id="acme-1", body="b",
-    )
-    assert filing.ok, filing.message
-
-    result = adr.propose(
-        load(home), slug="guard-every-total", title="Guard every total", context="c",
-        decision="d", consequences="q", evidence=["acme-1"],
-    )
-
-    assert result.ok, result.message
-    tracked = subprocess.run(
-        ["git", "-C", str(artifacts_docs.parent), "ls-files", "docs/adrs"],
-        capture_output=True, text=True, check=True, timeout=30,
-    ).stdout.split()
-    assert tracked == ["docs/adrs/guard-every-total/adr.md"]
-
-
-def test_a_repository_still_holding_a_decision_is_refused_with_the_move(tmp_path, artifacts_docs):
-    repo = repository(tmp_path / "api-service")
-    write(repo / "docs/decisions/x/decision.md", "---\nrepo: api-service\nsummary: s\n---\n")
-
+    write(artifacts / "docs/decisions/x/decision.md", DECISION)
+    git("-C", str(artifacts), "add", "docs")
+    git("-C", str(artifacts), "-c", "core.hooksPath=/dev/null", "-c", "user.name=t",
+        "-c", "user.email=t@example.com", "commit", "--quiet", "-m", "old")
     with pytest.raises(layout.LayoutMoveRequired) as raised:
         load(repo)
 
-    assert f"mv {repo}/docs/decisions/x {artifacts_docs}/decisions/x" in str(raised.value)
-    assert "git -C" in str(raised.value)
+    for line in str(raised.value).splitlines()[1:-2]:
+        subprocess.run(line.strip(), shell=True, check=True, timeout=30)
+
+    load(repo)
+    assert (artifacts / "products/api-service/x.md").is_file()
 
 
-def test_a_taken_slug_moves_to_a_name_with_the_repository(tmp_path, artifacts_docs):
+def test_a_decision_with_no_repo_key_is_not_refused(tmp_path):
     repo = repository(tmp_path / "api-service")
-    write(repo / "docs/decisions/x/decision.md", "---\nrepo: api-service\nsummary: s\n---\n")
-    write(artifacts_docs / "decisions/x/decision.md", "---\nrepo: web-app\nsummary: s\n---\n")
-
-    with pytest.raises(layout.LayoutMoveRequired) as raised:
-        load(repo)
-
-    assert f"{artifacts_docs}/decisions/x-api-service" in str(raised.value)
-
-
-def test_a_file_with_no_ostler_shape_is_not_refused(tmp_path):
-    repo = repository(tmp_path / "api-service")
+    write(repo / "docs/decisions/x/decision.md", "# notes\n")
     write(repo / "docs/decisions/notes.md", "# notes\n")
 
     load(repo)
 
 
+def test_the_decisions_command_is_gone(tmp_path, capsys):
+    repo = repository(tmp_path / "api-service")
+
+    with pytest.raises(SystemExit) as raised:
+        main(["-C", str(repo), "decisions", "add", "x", "--summary", "s"])
+
+    assert raised.value.code == 2
+    assert not (Path(os.environ[core_config.ARTIFACTS_DIR_ENV]) / "docs").exists()
+
+
 def _repository_with_old_folders_and_a_worktree(tmp_path) -> tuple[Path, Path]:
     main_checkout = repository(tmp_path / "api-service")
-    write(main_checkout / "docs/decisions/x/decision.md", "---\nrepo: api-service\nsummary: s\n---\n")
+    write(main_checkout / "docs/decisions/x/decision.md", DECISION)
     write(main_checkout / "docs/milestones/0001-a/milestone.md", "---\ntype: milestone\ntitle: A\nstatus: proposed\n---\n")
     git("-C", str(main_checkout), "add", "docs")
     git("-C", str(main_checkout), "-c", "user.name=t", "-c", "user.email=t@example.com",
@@ -225,9 +230,8 @@ def _repository_with_old_folders_and_a_worktree(tmp_path) -> tuple[Path, Path]:
     return main_checkout, linked
 
 
-def test_a_linked_worktree_is_not_refused_once_the_main_checkout_has_moved_its_documents(tmp_path):
+def test_a_linked_worktree_is_not_refused_once_the_main_checkout_has_moved_its_documents(tmp_path, artifacts):
     main_checkout, linked = _repository_with_old_folders_and_a_worktree(tmp_path)
-    artifacts = Path(os.environ[core_config.ARTIFACTS_DIR_ENV]).resolve()
     git("-C", str(main_checkout), "rm", "-r", "--quiet", "docs")
     git("-C", str(main_checkout), "-c", "user.name=t", "-c", "user.email=t@example.com",
         "commit", "--quiet", "-m", "moved")
@@ -236,14 +240,13 @@ def test_a_linked_worktree_is_not_refused_once_the_main_checkout_has_moved_its_d
     layout.check(artifacts, linked)
 
 
-def test_a_linked_worktree_is_judged_by_its_main_checkout_and_the_commands_name_it(tmp_path):
+def test_a_linked_worktree_is_judged_by_its_main_checkout_and_the_commands_name_it(tmp_path, artifacts):
     main_checkout, linked = _repository_with_old_folders_and_a_worktree(tmp_path)
-    artifacts = Path(os.environ[core_config.ARTIFACTS_DIR_ENV]).resolve()
 
     with pytest.raises(layout.LayoutMoveRequired) as raised:
         layout.check(artifacts, linked)
 
     message = str(raised.value)
-    assert f"mv {main_checkout}/docs/decisions/x" in message
+    assert f"mv {main_checkout}/docs/decisions/x/decision.md {artifacts}/products/api-service/x.md" in message
     assert f"mv {main_checkout}/docs/milestones/0001-a" in message
     assert str(linked) not in message

@@ -22,8 +22,19 @@ def index_home(tmp_path, monkeypatch) -> Path:
     return resolved
 
 
-def adrs() -> Path:
-    return Path(os.environ["STABLEMATE_ARTIFACTS_DIR"]).resolve() / "docs" / "adrs"
+NOTES_KIND = """
+notes:
+  kinds:
+    - name: note
+      doc_root: notes
+      default_path: docs/notes
+      path_template: "{name}.md"
+"""
+
+
+def notes(repo: Path) -> Path:
+    write(repo / ".agents/templates.yml", NOTES_KIND)
+    return repo / "docs" / "notes"
 
 
 def _concept(slug: str, title: str, body: str) -> str:
@@ -62,30 +73,29 @@ def test_rows_for_gives_preamble_and_section_rows(repo: Path):
 
 
 def test_title_match_outranks_body_match(repo: Path):
-    write(adrs() / "area/a.md", _concept("a", "Zebra crossing", "nothing relevant"))
-    write(adrs() / "area/b.md", _concept("b", "Other", "a zebra appears here"))
+    write(notes(repo) / "area/a.md", _concept("a", "Zebra crossing", "nothing relevant"))
+    write(notes(repo) / "area/b.md", _concept("b", "Other", "a zebra appears here"))
     hits = _search(repo, "zebra")
-    assert [h["path"] for h in hits][:2] == [
-        str(adrs() / "area/a.md"), str(adrs() / "area/b.md")]
+    assert [h["path"] for h in hits][:2] == ["docs/notes/area/a.md", "docs/notes/area/b.md"]
     assert hits[0]["score"] > hits[1]["score"]
 
 
 def test_porter_stemming_finds_parallel(repo: Path):
-    write(adrs() / "area/p.md", _concept("p", "Speed", "uses parallelism widely"))
+    write(notes(repo) / "area/p.md", _concept("p", "Speed", "uses parallelism widely"))
     hits = _search(repo, "parallel")
-    assert any(h["path"] == str(adrs() / "area/p.md") for h in hits)
+    assert any(h["path"] == "docs/notes/area/p.md" for h in hits)
 
 
 def test_refresh_is_incremental(repo: Path, index_home: Path):
-    write(adrs() / "area/rec.md", _concept("rec", "Rec", "first text"))
-    write(adrs() / "area/rec2.md", _concept("rec2", "Rec 2", "second text"))
+    write(notes(repo) / "area/rec.md", _concept("rec", "Rec", "first text"))
+    write(notes(repo) / "area/rec2.md", _concept("rec2", "Rec 2", "second text"))
     store = index.IndexStore(repo, directory=index_home)
     first = _refresh(repo, store)
     assert first.indexed == first.files > 0
     assert _refresh(repo, store).indexed == 0
-    write(adrs() / "area/rec.md", _concept("rec", "Rec", "changed text"))
+    write(notes(repo) / "area/rec.md", _concept("rec", "Rec", "changed text"))
     assert _refresh(repo, store).indexed == 1
-    (adrs() / "area/rec2.md").unlink()
+    (notes(repo) / "area/rec2.md").unlink()
     report = _refresh(repo, store)
     assert (report.indexed, report.removed) == (0, 1)
     graph = load(repo)
@@ -117,7 +127,7 @@ def test_second_refresh_reads_no_file(repo: Path, index_home: Path, monkeypatch)
 
 
 def test_touch_without_change_reindexes_nothing(repo: Path, index_home: Path):
-    page = adrs() / "area/rec.md"
+    page = notes(repo) / "area/rec.md"
     write(page, _concept("rec", "Rec", "some text"))
     store = index.IndexStore(repo, directory=index_home)
     _refresh(repo, store)
@@ -162,30 +172,30 @@ def test_a_refresh_drops_the_rows_of_a_copy_below_a_spec(repo: Path, index_home:
 
 
 def test_type_and_root_filters(repo: Path):
-    write(adrs() / "area/c.md", _concept("c", "Gizmo", "gizmo concept"))
-    write(adrs() / "area/f.md",
+    write(notes(repo) / "area/c.md", _concept("c", "Gizmo", "gizmo concept"))
+    write(notes(repo) / "area/f.md",
           "---\ntype: flow\nslug: f\ntitle: Gizmo flow\n---\n\n# Gizmo flow\n\ngizmo steps\n")
     both = {h["type"] for h in _search(repo, "gizmo")}
     assert {"concept", "flow"} <= both
     assert {h["type"] for h in _search(repo, "gizmo", etype="flow")} == {"flow"}
     assert _search(repo, "gizmo", root="epics") == []
-    assert {h["root"] for h in _search(repo, "gizmo", root="adrs")} == {"adrs"}
+    assert {h["root"] for h in _search(repo, "gizmo", root="notes")} == {"notes"}
 
 
 def test_default_search_leaves_out_plans_and_history(repo: Path):
-    write(adrs() / "demo/concepts/okapi.md", _concept("okapi", "Okapi", "okapi today"))
+    write(notes(repo) / "demo/concepts/okapi.md", _concept("okapi", "Okapi", "okapi today"))
     specs = load(repo).doc_roots["specs"]
     write(specs / "STORY-1/plan.md", "---\ntype: spec.plan\n---\n\n# Plan\n\nThe okapi plan.\n")
-    assert {h["root"] for h in _search(repo, "okapi")} == {"adrs"}
+    assert {h["root"] for h in _search(repo, "okapi")} == {"notes"}
     assert {h["root"] for h in _search(repo, "okapi", root="specs")} == {"specs"}
-    assert {h["root"] for h in _search(repo, "okapi", root="all")} == {"adrs", "specs"}
+    assert {h["root"] for h in _search(repo, "okapi", root="all")} == {"notes", "specs"}
     assert {h["root"] for h in _search(repo, "okapi", etype="spec.plan")} == {"specs"}
 
 
 def test_one_page_cannot_fill_the_hits(repo: Path):
     sections = "".join(f"## Part {n}\n\nokapi okapi okapi\n\n" for n in range(5))
-    write(adrs() / "demo/concepts/many.md", _concept("many", "Okapi many", sections))
-    write(adrs() / "demo/concepts/one.md", _concept("one", "One", "an okapi once"))
+    write(notes(repo) / "demo/concepts/many.md", _concept("many", "Okapi many", sections))
+    write(notes(repo) / "demo/concepts/one.md", _concept("one", "One", "an okapi once"))
     paths = [h["path"] for h in _search(repo, "okapi", limit=3)]
     assert len(paths) == 3
     assert sum(path.endswith("many.md") for path in paths) == 2
@@ -230,3 +240,8 @@ def test_cli_index_build_json(repo: Path, index_home: Path, capsys):
 def test_cli_match_rejects_bad_syntax(repo: Path, index_home: Path, capsys):
     assert main(["-C", str(repo), "search", '"unterminated', "--match"]) == 2
     assert capsys.readouterr().out.startswith("error:")
+
+
+def test_no_document_root_is_named_adrs(repo: Path):
+    assert "adrs" not in load(repo).doc_roots
+    assert "decisions" not in load(repo).doc_roots

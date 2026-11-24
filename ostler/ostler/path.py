@@ -38,21 +38,6 @@ def register_root(graph: Graph) -> Path:
     return graph.doc_roots["register"]
 
 
-def decisions_root_in(root: Path) -> Path:
-    """Where the decisions live for *root*: ``docs/decisions`` in the artifacts dir."""
-    return doc_root_in(root, "decisions")
-
-
-def adr_root_in(root: Path) -> Path:
-    """Where the decision records live for *root*: ``docs/adrs`` in the artifacts dir."""
-    return doc_root_in(root, "adrs")
-
-
-def adr_root(graph: Graph) -> Path:
-    """Where the decision records live for this graph."""
-    return graph.doc_roots["adrs"]
-
-
 def resolve_spec_arg(root: Path, spec: Path) -> Path:
     """A ``--spec`` value as an absolute path: as typed, else under the specs root, else under *root*."""
     if spec.is_absolute():

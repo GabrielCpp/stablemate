@@ -8,9 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ostler import adr as adr_mod
 from ostler import crud, doctor
-from ostler import decisions as decisions_mod
 from ostler import milestones as milestones_mod
 from ostler import ids as ids_mod
 from ostler import index as index_mod
@@ -260,7 +258,7 @@ class Ostler:
         return milestones_mod.ui_services(self.graph, names, self._code())
 
     def search(self, q: str, *, etype: str | None = None) -> builtins.list[dict]:
-        """Ranked full-text search over the current book and decisions (``ostler search``)."""
+        """Ranked full-text search over the current book (``ostler search``)."""
         return query_mod.search(self.graph, q, etype)
 
     def query(self, name: str, arg: str) -> builtins.list[dict]:
@@ -341,22 +339,6 @@ class Ostler:
         )
         self._graph = None
         return filing
-
-    def propose_decision(
-        self,
-        *,
-        slug: str,
-        title: str,
-        context: str,
-        decision: str,
-        consequences: str,
-        evidence: Iterable[str],
-    ) -> Result:
-        """Propose the decision *slug* from *evidence* records and bind them to it; the decision file is committed only where the docs home is the artifacts repo."""
-        return self._apply(adr_mod.propose(
-            self._fresh(), slug=slug, title=title, context=context, decision=decision,
-            consequences=consequences, evidence=evidence,
-        ))
 
     def doctor(self, *, epic: str | None = None, check_schema: bool = True) -> QaOutcome:
         """The referential-integrity check (``ostler doctor``); ``data`` is the report dict."""
@@ -554,13 +536,6 @@ class Ostler:
             symbols=symbols, body=body, record_id=record_id,
         )
         return self._apply(register_mod.filing_result(filing))
-
-    def decision_add(self, slug: str, *, summary: str, repo: str = "") -> Result:
-        """File an empty decision under ``docs/decisions/<slug>/`` of the artifacts folder (``ostler decisions add``); *repo* defaults to the repository holding this instance's root."""
-        start = self._root if self._root is not None else Path.cwd()
-        return decisions_mod.add(
-            self._fresh(), slug, repo=repo or decisions_mod.default_repo(start), summary=summary,
-        )
 
     def backlog_import(
         self, source: str | Path, *, repo: str

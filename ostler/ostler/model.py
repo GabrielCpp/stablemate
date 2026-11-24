@@ -441,21 +441,15 @@ def load_config(root: Path) -> OrganizationTable:
     return manifest.organization
 
 
-BUILTIN_DOC_ROOTS: dict[str, str] = {
-    "decisions": "docs/decisions",
-    "adrs": "docs/adrs",
-}
-
-
 def doc_roots(
     root: Path,
     kinds: Sequence[dynamic_registry.TemplateKind] | None = None,
     *,
     start: Path | None = None,
 ) -> dict[str, Path]:
-    """Where each kind of document lives: milestones under their product in the artifacts dir, found from the code checkout *start* (else *root*), decisions and ADRs under ``docs/`` of the artifacts dir, epics, specs and the register at the top level of the artifacts dir, and each template kind under *root*."""
+    """Where each kind of document lives: milestones under their product in the artifacts dir, found from the code checkout *start* (else *root*), epics, specs and the register at the top level of the artifacts dir, and each template kind under *root*."""
     artifacts = core_config.resolve_artifacts_dir()
-    roots = {key: artifacts / default for key, default in BUILTIN_DOC_ROOTS.items()}
+    roots: dict[str, Path] = {}
     roots["milestones"] = books.milestones_home(start or root, artifacts) or artifacts / "products" / "-" / "milestones"
     roots["epics"] = artifacts / "epics"
     roots["specs"] = artifacts / "specs"

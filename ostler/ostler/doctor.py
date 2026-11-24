@@ -9,11 +9,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ostler import adr as adr_mod
 from ostler import dynamic_registry
 from ostler import ids as ids_mod
 from ostler import milestones as milestones_mod
-from ostler import path as path_mod
 from ostler import register as register_mod
 from ostler import registry, schemas, select
 from ostler.finding import Finding
@@ -150,7 +148,6 @@ def _run(graph: Graph, epic_filter: str | None, check_schema: bool,
 
     _check_removed_doc_roots(graph, f)
     _check_register_records(graph, f)
-    _check_decisions(graph, f)
     milestones_mod.check_milestones(graph, f)
     if check_schema:
         _check_conformance(graph, f)
@@ -210,38 +207,6 @@ def _check_register_records(graph: Graph, findings: list[Finding]) -> None:
             f"{path}: not a readable record, so the listing skips it — fix its frontmatter "
             f"(id, repo, area, pattern, filed_by, summary) or delete the folder",
             path=str(path), line=1))
-
-
-def _check_decisions(graph: Graph, findings: list[Finding]) -> None:
-    """A decision and its evidence name each other: every evidence id resolves to a record, and that record's `decision` names the decision."""
-    shelved = set(ids_mod.shelf_ids(graph))
-    read = adr_mod.decisions(graph)
-    bound = {r.id: r.decision for r in register_mod.records(graph).records}
-    decided = {d.id for d in read.decisions}
-    for decision in read.decisions:
-        where = str(path_mod.adr_root(graph) / decision.id / adr_mod.ADR_FILE)
-        for record_id in decision.evidence:
-            if record_id not in shelved:
-                findings.append(Finding(
-                    "error", "decision-evidence-unresolved",
-                    f"decision '{decision.id}' cites evidence '{record_id}', which resolves to no record "
-                    f"on the shelf",
-                    suggestion="restore the record, or remove the id from the decision's `evidence`",
-                    path=where, line=1))
-            elif record_id in bound and bound[record_id] != decision.id:
-                findings.append(Finding(
-                    "error", "decision-back-link-missing",
-                    f"decision '{decision.id}' lists record '{record_id}', whose `decision` is "
-                    f"'{bound[record_id] or 'empty'}'",
-                    suggestion=f"set `decision: {decision.id}` on the record, or remove it from the evidence",
-                    path=where, line=1))
-    for record_id, named in sorted(bound.items()):
-        if named and named not in decided:
-            findings.append(Finding(
-                "error", "decision-back-link-missing",
-                f"record '{record_id}' names decision '{named}', and no decision file has that id",
-                suggestion="restore the decision file, or clear the record's `decision`",
-                ref=record_id))
 
 
 def _check_epic_folders(graph: Graph, findings: list[Finding]) -> None:

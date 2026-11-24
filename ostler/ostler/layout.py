@@ -2,31 +2,19 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 from ostler import markdown
 from ostler._vendor.stablemate_core import books, config as core_config
 
-KEPT_DOCUMENTS = (("decisions", "decision.md"), ("adrs", "adr.md"))
+DECISION_NOTE = (
+    "Each moved page needs `date:` and `status:` lines in place of its frontmatter, and a page that "
+    "explains one element of one service moves to that service's `decisions/` folder."
+)
 
 
 class LayoutMoveRequired(RuntimeError):
     """The artifacts dir or the docs home still holds a folder from the old layout; the message prints the moves."""
-
-
-def _slug(text: str) -> str:
-    from ostler.decisions import SLUG_MAX
-
-    return re.sub(r"-{2,}", "-", re.sub(r"[^a-z0-9]+", "-", text.lower())).strip("-")[:SLUG_MAX].strip("-")
-
-
-def _adr_slug(file: Path) -> str:
-    try:
-        title = str((markdown.split(file.read_text(encoding="utf-8")).frontmatter or {}).get("title") or "")
-    except (OSError, ValueError):
-        title = ""
-    return _slug(title) or _slug(file.stem) or "decision"
 
 
 def _move(source: Path, target: Path, repo: Path | None) -> list[str]:
@@ -47,17 +35,11 @@ def moves(artifacts: Path, home: Path) -> list[str]:
         lines += _move(epic, artifacts / "epics" / epic.name, artifacts if same else None)
     if epics and same:
         lines.append(f"git -C {artifacts} rm -r --cached epics")
-    old_adr = artifacts / "adr"
-    if old_adr.is_dir():
-        for file in sorted(old_adr.glob("*.md")):
-            lines += _move(file, artifacts / "docs" / "adrs" / _adr_slug(file) / "adr.md", artifacts if same else None)
     return list(dict.fromkeys(lines))
 
 
-def _kept_repo(document: Path, kind: str) -> str | None:
-    """The repository a decision names, an empty string for an ADR; None when *document* has no ostler shape."""
-    if kind != "decisions":
-        return ""
+def _decision_repo(document: Path) -> str | None:
+    """The repository a decision names; None when *document* has no ostler shape."""
     try:
         repo = (markdown.split(document.read_text(encoding="utf-8")).frontmatter or {}).get("repo")
     except (OSError, ValueError):
@@ -73,25 +55,38 @@ def kept_home(home: Path) -> Path:
     return identity.main_folder
 
 
-def kept_moves(artifacts: Path, home: Path) -> list[str]:
-    """The shell commands that bring the decisions and ADRs *home* still holds under its ``docs/`` into the artifacts dir; a taken slug moves to ``<slug>-<repo>``."""
+def _holders(artifacts: Path, home: Path) -> list[tuple[Path, bool]]:
+    """Each folder that may hold old-layout documents, *home* first, with whether it is the artifacts dir itself."""
     if home.resolve() == artifacts.resolve():
-        return []
+        return [(artifacts, True)]
+    return [(home, False), (artifacts, True)]
+
+
+def decision_moves(artifacts: Path, home: Path) -> list[str]:
+    """The shell commands that move each ``docs/decisions/<slug>/decision.md`` naming a ``repo:`` in *home* and the artifacts dir to ``products/<repo>/<slug>.md`` of the artifacts dir; a taken target moves to ``<slug>-2``, then ``<slug>-3``."""
     lines: list[str] = []
-    for kind, file in KEPT_DOCUMENTS:
+    planned: set[Path] = set()
+    for holder, kept in _holders(artifacts, home):
         moved = False
-        for document in sorted((home / "docs" / kind).glob(f"*/{file}")):
-            repo = _kept_repo(document, kind)
+        for document in sorted((holder / "docs" / "decisions").glob("*/decision.md")):
+            repo = _decision_repo(document)
             if repo is None:
                 continue
             slug = document.parent.name
-            target = artifacts / "docs" / kind / slug
-            if target.exists():
-                target = artifacts / "docs" / kind / f"{slug}-{repo or core_config.repository_name(home)}"
-            lines += [f"mkdir -p {target.parent}", f"mv {document.parent} {target}"]
+            folder = artifacts / "products" / repo
+            number, target = 1, folder / f"{slug}.md"
+            while target.exists() or target in planned:
+                number += 1
+                target = folder / f"{slug}-{number}.md"
+            planned.add(target)
+            lines.append(f"mkdir -p {folder}")
+            if kept:
+                lines.append(f"git -C {holder} mv docs/decisions/{slug}/decision.md {target.relative_to(holder)}")
+            else:
+                lines.append(f"mv {document} {target}")
             moved = True
-        if moved and (home / ".git").exists():
-            lines.append(f"git -C {home} rm -r --cached docs/{kind}")
+        if moved and not kept and (holder / ".git").exists():
+            lines.append(f"git -C {holder} rm -r --cached docs/decisions")
     return list(dict.fromkeys(lines))
 
 
@@ -104,10 +99,7 @@ def milestone_moves(artifacts: Path, home: Path, start: Path | None = None) -> l
         return []
     lines: list[str] = []
     taken = [d.name for d in mroot.iterdir()] if mroot.is_dir() else []
-    sources = [(artifacts, True)]
-    if home.resolve() != artifacts.resolve():
-        sources.insert(0, (home, False))
-    for holder, kept in sources:
+    for holder, kept in _holders(artifacts, home):
         moved = False
         for document in sorted((holder / "docs" / "milestones").glob(f"*/{registry.MILESTONE_FILE}")):
             name = document.parent.name
@@ -201,7 +193,7 @@ def _epic_folders(shelf: Path) -> list[Path]:
 
 
 def check(artifacts: Path, home: Path, start: Path | None = None) -> None:
-    """Raise :class:`LayoutMoveRequired` when *artifacts* holds ``backlog/`` or ``adr/``, *home* holds ``docs/epics/``, *home* is not the artifacts dir and holds decisions or ADRs of its own under ``docs/``, *home* or the artifacts dir holds ``docs/milestones/*/milestone.md``, or the shelf still names an epic folder ``NNNN-slug``; a linked worktree is judged by its main checkout; an emptied folder the moves left behind, or one holding no ``epic.md``, is not a reason to refuse."""
+    """Raise :class:`LayoutMoveRequired` when *artifacts* holds ``backlog/``, *home* holds ``docs/epics/``, *home* or the artifacts dir holds ``docs/decisions/*/decision.md`` naming a ``repo:``, *home* or the artifacts dir holds ``docs/milestones/*/milestone.md``, or the shelf still names an epic folder ``NNNN-slug``; a linked worktree is judged by its main checkout; an emptied folder the moves left behind, or one holding no ``epic.md``, is not a reason to refuse."""
     numbered = numbered_epics(artifacts)
     if numbered:
         names = ", ".join(d.name for d in numbered[:5]) + (", ..." if len(numbered) > 5 else "")
@@ -211,10 +203,12 @@ def check(artifacts: Path, home: Path, start: Path | None = None) -> None:
             f"`ostler layout apply` to rename them and record each epic's slug, "
             f"then run ostler again")
     kept = kept_home(home)
-    lines = moves(artifacts, home) + kept_moves(artifacts, kept) + milestone_moves(artifacts, kept, start or home)
+    decisions = decision_moves(artifacts, kept)
+    lines = moves(artifacts, home) + decisions + milestone_moves(artifacts, kept, start or home)
     if not lines:
         return
     commands = "\n".join(f"  {line}" for line in lines)
-    raise LayoutMoveRequired(
-        f"the artifacts dir {artifacts} is in the old layout; run these commands, then run ostler again:\n{commands}"
-    )
+    message = f"the artifacts dir {artifacts} is in the old layout; run these commands, then run ostler again:\n{commands}"
+    if decisions:
+        message += f"\n\n{DECISION_NOTE}"
+    raise LayoutMoveRequired(message)

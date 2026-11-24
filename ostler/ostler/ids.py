@@ -8,7 +8,6 @@ import re
 import threading
 import time
 from collections.abc import Iterable
-from pathlib import Path
 from typing import Any
 
 from ostler import path as path_mod
@@ -22,6 +21,8 @@ _TIME_LEN = 10
 _RAND_LEN = 16
 ULID_LEN = _TIME_LEN + _RAND_LEN
 HANDLE_MIN = 6
+SLUG_MAX = 60
+_SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
 _mono_lock = threading.Lock()
 _last_ms = -1
@@ -162,6 +163,16 @@ def expand(handle: str, existing: Iterable[str]) -> str | None:
     return matches[0] if len(matches) == 1 else None
 
 
+def slug_problem(slug: str) -> str:
+    """Why *slug* cannot name a folder under the artifacts folder, or an empty string when it can."""
+    if _SLUG.fullmatch(slug) and len(slug) <= SLUG_MAX:
+        return ""
+    return (
+        f"slug {slug!r} must be short kebab-case: lowercase letters, digits and single hyphens, "
+        f"at most {SLUG_MAX} characters"
+    )
+
+
 def shelf_ids(graph: Graph) -> list[str]:
     """The id of every record folder on the Register's shelf, read from the folder name so a broken record still holds its id."""
     shelf = path_mod.register_root(graph)
@@ -170,14 +181,8 @@ def shelf_ids(graph: Graph) -> list[str]:
     return sorted(p.parent.name for p in shelf.glob("*/*/*/record.md"))
 
 
-def decision_files(graph: Graph) -> list[Path]:
-    """Every ``adr.md`` in the ADR folder, one level down, in path order."""
-    folder = path_mod.adr_root(graph)
-    return sorted(folder.glob("*/adr.md")) if folder.is_dir() else []
-
-
 def claimed(graph: Graph) -> set[str]:
-    """The ids that things hold as their own: epics, seeds, stories, milestones, the Register's records and decisions."""
+    """The ids that things hold as their own: epics, seeds, stories, milestones, the Register's records."""
     out: set[str] = set()
     for epic in graph.epics:
         out.add(epic.eid)
@@ -185,7 +190,6 @@ def claimed(graph: Graph) -> set[str]:
         out.update(s.eid for s in epic.stories)
     out.update(m.eid for m in graph.milestones)
     out.update(shelf_ids(graph))
-    out.update(p.parent.name for p in decision_files(graph))
     out.discard("")
     return out
 

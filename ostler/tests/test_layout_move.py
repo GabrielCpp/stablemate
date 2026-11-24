@@ -71,18 +71,13 @@ def test_an_old_tracked_shelf_loads_after_the_printed_commands_run(tmp_path: Pat
     assert git("ls-files", "backlogs").strip() == ""
 
 
-def test_an_adr_folder_prints_a_move_to_a_slug_folder(tmp_path: Path) -> None:
+def test_an_adr_folder_is_no_longer_looked_at(tmp_path: Path) -> None:
     core_config.ensure_artifacts_repo()
     write(artifacts() / "adr/acme-1.md", ADR)
 
-    with pytest.raises(layout.LayoutMoveRequired) as raised:
-        load(tmp_path)
+    graph = load(tmp_path)
 
-    message = str(raised.value)
-    assert f"mv {artifacts()}/adr/acme-1.md {artifacts()}/docs/adrs/guard-every-total/adr.md" in message
-    shell(message)
-    load(tmp_path)
-    assert (artifacts() / "docs/adrs/guard-every-total/adr.md").is_file()
+    assert "adrs" not in graph.doc_roots
 
 
 def test_a_docs_epics_folder_prints_a_move_to_the_artifacts_epics(tmp_path: Path) -> None:

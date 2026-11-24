@@ -13,7 +13,7 @@ from pathlib import Path
 
 import yaml
 
-from ostler import crud, crud_generic, decisions as decisions_mod, doctor, edit, ids as ids_mod, layout as layout_mod, path as path_mod, query as query_mod, register as register_mod, register_import, registry, select, templates as templates_mod
+from ostler import crud, crud_generic, doctor, edit, ids as ids_mod, layout as layout_mod, path as path_mod, query as query_mod, register as register_mod, register_import, registry, select, templates as templates_mod
 from ostler import checks as checks_mod
 from ostler import vet as vet_mod
 from ostler import artifact as artifact_mod
@@ -128,10 +128,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     ls.add_argument("--json", action="store_true")
 
-    se = sub.add_parser("search", help="ranked full-text search over the current book and decisions")
+    se = sub.add_parser("search", help="ranked full-text search over the current book")
     se.add_argument("q")
     se.add_argument("--type", dest="etype", help="a frontmatter type, such as concept or flow")
-    se.add_argument("--root", help="a document root: decisions, adrs, epics, milestones, specs, register, or all")
+    se.add_argument("--root", help="a document root: epics, milestones, specs, register, or all")
     se.add_argument("--limit", type=int, default=10, help="most hits to return")
     se.add_argument(
         "--match", action="store_true",
@@ -309,14 +309,6 @@ def _build_parser() -> argparse.ArgumentParser:
     bll.add_argument("--repo", default="")
     bll.add_argument("--status", default="")
     bll.add_argument("--json", action="store_true")
-
-    dc = sub.add_parser("decisions", help="the operator's standing decisions")
-    dcs = dc.add_subparsers(dest="op", required=True)
-    dca = dcs.add_parser("add", help="file an empty decision at docs/decisions/<slug>/decision.md of the artifacts folder")
-    dca.add_argument("slug", help="short kebab-case name of the decision")
-    dca.add_argument("--repo", default="",
-                     help="the repository the decision is about (default: the one holding the cwd)")
-    dca.add_argument("--summary", required=True, help="the decision in one line")
 
     ml = sub.add_parser("milestone", help="manage milestone backlog ownership")
     mls = ml.add_subparsers(dest="op", required=True)
@@ -1220,7 +1212,7 @@ def _cmd_path_kept(cwd: Path, args) -> int:
     if args.what == "notes":
         _out(str(core_config.resolve_artifacts_dir() / "notes" / core_config.repository_name(cwd) / args.slug))
         return 0
-    problem = decisions_mod.slug_problem(args.slug)
+    problem = ids_mod.slug_problem(args.slug)
     if problem:
         _out(f"error: {problem}")
         return 1
@@ -1392,12 +1384,6 @@ def _dispatch(graph, args, store: index_mod.IndexStore) -> int:  # noqa: C901 â€
         if args.json:
             return _emit([r.model_dump() for r in shown], True)
         return _emit(register_mod.listing(shown), False)
-    if c == "decisions":
-        start = Path(args.chdir) if args.chdir else Path.cwd()
-        return _result(decisions_mod.add(
-            graph, args.slug, repo=args.repo or decisions_mod.default_repo(start),
-            summary=args.summary,
-        ))
     if c == "milestone" and args.op == "epics":
         return _result(crud.set_milestone_epics(graph, args.name, args.epics or None))
     if c == "milestone":

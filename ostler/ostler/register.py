@@ -38,7 +38,6 @@ class Record(pydantic.BaseModel):
     source_story: str = ""
     summary: str
     status: Status = "open"
-    decision: str = ""
     reason: str = ""
     body: str = ""
 
@@ -227,17 +226,6 @@ def close(graph: Graph, token: str, status: Status, reason: str) -> Result:
     front = {**front, "status": status, "reason": reason.strip()}
     target.write_text(f"---\n{crud.dump_frontmatter(front)}---\n{text[head.end():]}", encoding="utf-8")
     return Result(True, f"closed record '{current.id}' as {status}", [target], entity_id=current.id)
-
-
-def bind(target: Path, decision_id: str) -> None:
-    """Write *decision_id* into the record file at *target*, rewriting only its ``decision`` field; the record stays open."""
-    text = target.read_text(encoding="utf-8")
-    head = _FRONTMATTER.match(text)
-    front = markdown.split(text).frontmatter
-    if head is None or front is None:
-        raise ValueError(f"{target} has no frontmatter")
-    front = {**front, "decision": decision_id}
-    target.write_text(f"---\n{crud.dump_frontmatter(front)}---\n{text[head.end():]}", encoding="utf-8")
 
 
 def file_person(
