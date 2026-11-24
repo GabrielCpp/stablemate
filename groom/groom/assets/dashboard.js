@@ -4328,8 +4328,9 @@ function wireEvents() {
     }
     const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName) || document.activeElement.isContentEditable;
     const mine = store.get();
-    const onTimeline = mine.tab === "activity" && mine.activity.status === "ready" && !mine.activity.raw.open && !e.metaKey && !e.ctrlKey && !e.altKey;
-    if (!typing && mine.tab === "activity" && mine.activity.raw.open && !e.metaKey && !e.ctrlKey && !e.altKey && (e.key === "j" || e.key === "k" || e.key === "e")) {
+    const timelineShown = mine.tab === "activity" && (mine.mode === "runs" || mine.mode === "history");
+    const onTimeline = timelineShown && mine.activity.status === "ready" && !mine.activity.raw.open && !e.metaKey && !e.ctrlKey && !e.altKey;
+    if (!typing && timelineShown && mine.activity.raw.open && !e.metaKey && !e.ctrlKey && !e.altKey && (e.key === "j" || e.key === "k" || e.key === "e")) {
       e.preventDefault();
       return;
     }

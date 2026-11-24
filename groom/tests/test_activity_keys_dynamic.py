@@ -136,6 +136,24 @@ def test_on_another_tab_j_and_k_keep_moving_the_run_list(tmp_path):
             page.close()
 
 
+def test_on_another_screen_j_and_k_return_to_the_run_list_though_the_activity_tab_was_last_open(tmp_path):
+    from playwright.sync_api import expect
+
+    page, context = _turns_page(tmp_path, "key-screen")
+    try:
+        page.locator('.act-btn[data-mode="attend"]').click()
+        expect(page.locator(".app")).to_have_attribute("data-mode", "attend")
+        page.keyboard.press("j")
+        expect(page.locator(".app")).to_have_attribute("data-mode", "runs")
+        page.locator('.act-btn[data-mode="settings"]').click()
+        expect(page.locator(".app")).to_have_attribute("data-mode", "settings")
+        page.keyboard.press("e")
+        page.keyboard.press("k")
+        expect(page.locator(".app")).to_have_attribute("data-mode", "runs")
+    finally:
+        _leave(page, context)
+
+
 def test_e_selects_the_next_problem_after_the_selection_and_wraps_to_the_first(tmp_path):
     page, context = _stepped_page(tmp_path, "key-next")
     try:
