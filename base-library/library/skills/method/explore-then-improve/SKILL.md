@@ -37,7 +37,7 @@ and no file. Write at least three, each built from its own choice on every open 
 four moves in [references/framings.md](references/framings.md): restate the goal by analogy
 from distant fields, list the axes as fixed or open, draw rows that differ on at least half
 of the open axes, and write each row in isolation. Merge two framings that share input,
-output and role. Record them in `FRAMINGS.md` in the caller's working directory, in plain
+output and role. Record them in `FRAMINGS.md` in the folder `ostler path notes <slug>` prints, in plain
 words, each with its status.
 
 Done when `FRAMINGS.md` holds three or more framings that differ on half the open axes, each

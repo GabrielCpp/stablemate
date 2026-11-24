@@ -280,7 +280,7 @@ directories that each carry their own manifest.
 
 **Fix.** Find the library's home in this order, and stop at the first that answers:
 
-1. a decision under `docs/decisions/*/decision.md` that says where code two services share lives;
+1. a decision under `docs/decisions/*/decision.md` of the artifacts folder that says where code two services share lives;
 2. the workspace the repository already has, such as `go.work`, `pnpm-workspace.yaml`, the
    `workspaces` of the root `package.json`, `[tool.uv.workspace]` or the root pubspec's
    `workspace:`, and the folder its libraries already sit in.
@@ -302,8 +302,7 @@ session, put the proposal to the user in chat and wait for the answer.
 
 Record the answer as a decision, so the next share follows the convention without asking. Run
 `ostler decisions add <short-kebab-slug> --summary "<the question, in one line>"`. It files
-`decision.md` in a folder named by the slug under the `docs/decisions` of the repository's docs
-home, prints its path, and refuses a slug that is already taken. Fill the four headings in the
+`decision.md` in a folder named by the slug under the decisions folder of the artifacts directory, prints its path, and refuses a slug that is already taken. Fill the four headings in the
 printed file:
 
 - `## Question`: where does code two services share live?

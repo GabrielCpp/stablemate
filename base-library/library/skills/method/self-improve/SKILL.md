@@ -92,8 +92,7 @@ Every unit delivered, from either source, is a full **measure** and **rank**: th
 table rebuilt with the new unit, the fresh judge, and the grade of every open cycle.
 Between units, the loop runs the diagnose, design and change steps of the top open tax.
 
-Everything appends to one file, `EXAMINED.md`, in the run's directory beside its event log,
-or in the caller's working directory. The next cycle and the fresh judge read the previous
+Everything appends to one file, `EXAMINED.md`, in the folder `ostler path notes <slug>` prints. The next cycle and the fresh judge read the previous
 ones from there.
 
 ## The records

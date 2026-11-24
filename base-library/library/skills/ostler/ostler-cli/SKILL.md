@@ -40,6 +40,17 @@ seeds and its story dependency-DAG live entirely inside that epic's own `epic.md
 
 Spec folders live in the user's artifacts folder, outside git, and are named by the story id. `ostler path spec <story-id>` prints the folder.
 
+Everything else an agent writes outside the code also goes to the artifacts folder. Ask the command for the path, run from the code repository:
+
+| Document | Lives under the artifacts folder at | Command |
+|---|---|---|
+| milestone | `products/<product>/milestones/NNNN-<slug>/milestone.md` | `ostler path milestone <slug>` |
+| design note | `products/<product>/designs/<slug>.md` | `ostler path design <slug>` |
+| working notes, untracked | `notes/<repo>/<slug>/` | `ostler path notes <slug>` |
+| standing decision | `docs/decisions/<slug>/decision.md` | `ostler decisions add <slug>` |
+
+`<product>` is `book.product` in the repository's `agents.yml`, else the repository's name. Repositories that name the same product share its pages, milestones and designs. `<repo>` files what one codebase owns: its service books, register and notes.
+
 The milestones order the work: a milestone's `dependsOn` milestones first, then its `epics:` list in
 order. `okf.milestone_epics()` returns that list.
 

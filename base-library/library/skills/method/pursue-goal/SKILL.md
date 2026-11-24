@@ -14,8 +14,8 @@ the dimensions the goal has, the reading of what the process already recorded, a
 judgement after each change. Everything in between it hands to the skill that does that work,
 with the dimensions in hand.
 
-The loop works in a directory per goal, `.goal/<slug>/`, under the directory the operator
-keeps for such records and outside any tracked tree: `GOAL.md` holds steps 1 and 2 and
+The loop works in a directory per goal, the folder `ostler path notes <slug>` prints,
+outside any tracked tree: `GOAL.md` holds steps 1 and 2 and
 every reading of step 7, `PROFILE.md` holds step 3, `TRACKS.md` holds steps 5 and 6, and
 `TRIED.md` holds one plain-words line per track or fix that ended, with its result, why, and
 what read the result: the measure and the cases it was read on.

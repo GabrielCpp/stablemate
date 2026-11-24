@@ -56,7 +56,7 @@ it, and section 5 checks it against the existing system.
 
 ## The note
 
-Write the note to `docs/design/<slug>.md` unless the caller or the repo's `AGENTS.md` names
+Write the note to the path `ostler path design <slug>` prints unless the caller or the repo's `AGENTS.md` names
 another home. It has these sections, in this order.
 
 ### 1. Problem

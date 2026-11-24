@@ -1,7 +1,7 @@
 ---
 name: workhorse-workflows-milestone
-description: "Writing the milestone folder consumed by the Workhorse Author workflow: one durable release contract in `docs/milestones/NNNN-<slug>/milestone.md`, its grill records, mockups and design links, and the ready gate Author enforces. Load when creating or reviewing a milestone, grilling one, or deciding whether a proposed milestone is ready for Author."
-applyTo: "**/docs/milestones/*/milestone.md"
+description: "Writing the milestone folder consumed by the Workhorse Author workflow: one durable release contract in `milestone.md` inside the folder `ostler path milestone <slug>` prints, its grill records, mockups and design links, and the ready gate Author enforces. Load when creating or reviewing a milestone, grilling one, or deciding whether a proposed milestone is ready for Author."
+applyTo: "**/products/*/milestones/*/milestone.md"
 tags: [planning, docs]
 ---
 
@@ -34,14 +34,14 @@ a larger milestone.
 
 ## Folder contract
 
-A milestone is a folder, `docs/milestones/NNNN-<slug>/`. The four-digit number carries the
+A milestone is a folder, `<artifacts>/products/<product>/milestones/NNNN-<slug>/`. `ostler create milestone` makes it and `ostler path milestone <slug>` prints it. The four-digit number carries the
 milestone's order. An epic folder carries no order: it is named by the epic's id. `ostler create milestone <slug> "<title>"` picks the
 next number and mints the id. The bare slug still names the milestone in every command. A folder
 with no number is a doctor warning that prints the `git mv` that numbers it. A flat
-`docs/milestones/<slug>.md` file is a doctor error.
+`milestones/<slug>.md` file is a doctor error.
 
 ```text
-docs/milestones/NNNN-<slug>/
+milestones/NNNN-<slug>/
   milestone.md          required
   grills/<topic>.md     optional, one recorded grill tree per topic
   mockups/<journey-slug>.html   optional, one per journey that changes a screen
@@ -214,8 +214,8 @@ The human may edit it, and an edit overrules the PM's answer. Do not file a gril
 
 ## Design links
 
-Decompose notes stay in `docs/design/`. `milestone.md` links them with a relative path such
-as `../../design/sign-in.md`. Doctor checks that every relative link in `milestone.md`
+Decompose notes go where `ostler path design <slug>` prints. `milestone.md` links them as
+`../../designs/<slug>.md`. Doctor checks that every relative link in `milestone.md`
 resolves to a file, and the epic split reads the notes it links.
 
 ## What stays out
@@ -238,7 +238,7 @@ resolves to a file, and the epic split reads the notes it links.
    evidence.
 2. Grill it. Record each settled tree in `grills/<topic>.md` and fold the decisions into the
    sections they belong to.
-3. Run decompose where a design is needed. Keep the notes in `docs/design/` and link them
+3. Run decompose where a design is needed. Keep the notes where `ostler path design <slug>` prints and link them
    from `milestone.md`.
 4. Write a mockup for each journey that changes a screen, at
    `mockups/<journey-slug>.html`.
