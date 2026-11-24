@@ -56,3 +56,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["stablemate_core"]
+
+[tool.pytest.ini_options]
+tmp_path_retention_policy = "failed"

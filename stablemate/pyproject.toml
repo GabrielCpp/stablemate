@@ -65,6 +65,7 @@ ostler = { workspace = true }
 stablemate-saddlebag = { workspace = true }
 
 [tool.pytest.ini_options]
+tmp_path_retention_policy = "failed"
 testpaths = ["tests"]
 filterwarnings = [
   "error",

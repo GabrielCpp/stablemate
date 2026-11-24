@@ -76,6 +76,7 @@ include = ["groom", "README.md", "LICENSE", "docs"]
 workhorse-agent = { workspace = true }
 
 [tool.pytest.ini_options]
+tmp_path_retention_policy = "failed"
 testpaths = ["tests"]
 # A test suite that ships with warnings is a test suite with broken windows: the next
 # person to add a test sees a warning they cannot interpret and assumes it is theirs,
