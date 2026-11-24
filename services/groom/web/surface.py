@@ -14,8 +14,9 @@ from ostler.book.screen import Interaction
 from ..fixtures import Push, Query, Reply, Settings
 from ..model.actions import handle
 from ..model.records import Ack, Line, Panel
+from .activity import Note
 from .interactions import (
-    AnswerTheGate, FilterTheList, OpenAttendant, OpenDispatch, OpenHistory, OpenRun, OpenRuns, OpenSettings, ReportExit,
+    AnswerTheGate, FilterTheList, ReadActivity, OpenAttendant, OpenDispatch, OpenHistory, OpenRun, OpenRuns, OpenSettings, ReportExit,
     ReportGate, ReportProgress, SwitchTheAttendant,
 )
 from .screens import ALL as SCREENS
@@ -168,6 +169,8 @@ class GroomDashboard(PageSurface):
             self.switch(step.of)
         elif isinstance(step, OpenRun):
             self.open_run(step.of)
+        elif isinstance(step, ReadActivity):
+            return self.activity()
         elif isinstance(step, AnswerTheGate):
             return self.answer(step.of)
         elif isinstance(step, OpenHistory):
@@ -191,6 +194,14 @@ class GroomDashboard(PageSurface):
         self.browser.page.click(f'#runs-list button.row[data-worker-id="{app_id}"]')
         self.browser.page.wait_for_selector(f'#detail .run-id:text-is("{app_id}")')
         self.settle()
+
+    def activity(self) -> Done:
+        self.browser.page.click("#tab-activity")
+        note = self.browser.page.locator('#detail-panel[aria-labelledby="tab-activity"] .empty-big[role="status"]')
+        note.wait_for()
+        text = note.inner_text().strip()
+        self.settle()
+        return Done(self.rows(), (Note(text),))
 
     def answer(self, reply: Reply) -> Done | Refusal:
         self.open_run(Push(container_id=reply.container_id))

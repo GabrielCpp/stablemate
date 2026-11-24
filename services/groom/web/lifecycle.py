@@ -12,7 +12,7 @@ from ..fixtures import Push, Query, Settings, blocked, finished, replying, runni
 from ..model.records import Run
 from ..model.state import Dashboard
 from .interactions import (
-    AnswerTheGate, FilterTheList, OpenAttendant, OpenDispatch, OpenHistory, OpenRun, OpenRuns, OpenSettings, ReportExit,
+    AnswerTheGate, FilterTheList, ReadActivity, OpenAttendant, OpenDispatch, OpenHistory, OpenRun, OpenRuns, OpenSettings, ReportExit,
     ReportGate, ReportProgress, SwitchTheAttendant,
 )
 
@@ -50,6 +50,7 @@ RUN_ACTIONS: dict[str, Callable[[Dashboard], object]] = {
     "filter by its name": _on_run(lambda p: FilterTheList(Query(q=p.name)), lambda: FilterTheList(Query())),
     "clear the filter": lambda m: FilterTheList(Query()),
     "open it": _on_run(lambda p: OpenRun(p), lambda: Impossible("no run is on the list to open")),
+    "read its activity": _on_run(lambda p: ReadActivity(p), lambda: Impossible("no run is on the list to read")),
     "answer its gate": lambda m: _answer(m),
 }
 

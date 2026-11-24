@@ -1,6 +1,6 @@
 story: SM-01M6CQJQX2EJRV3A2ZKK6EFH18
 date: 2026-11-23
-elements: RunDetail
+elements: RunDetail, ReadActivity
 sources: groom/groom/records.py, groom/groom/store.py, groom/groom/activity.py, groom/groom/assets/dashboard.js
 
 An operator who wants a record the old feed's newest 60 could not reach had to leave the browser for the terminal. The Activity tab now reaches every record of the run, so the old feed and the Details tab can go in the same change.
@@ -25,4 +25,6 @@ The no-telemetry words are the Details tab's, split into two sentences where it 
 
 `GET /worker/{container_id}` keeps its `history` and `metrics` for the terminal client, whose logs and transcript commands are unchanged.
 
-The elements are declared and not played, because the book's groom holds only pushed runs, which report no spans, so the Activity tab has no bar. The browser tests in `groom/tests/test_activity_raw_dynamic.py` play them against real spans.
+The no-telemetry words are played. A run a push creates holds no span, so opening its Activity tab reads them in place of a timeline, and `ReadActivity` plays that on every state a run takes.
+
+The Steps, Info logs, Raw and Metric samples controls and the Raw elements are declared and not played. The book's groom holds only pushed runs, which report no spans, and its OTLP receivers take protobuf the book cannot write, so the Activity tab has no bar. The browser tests in `groom/tests/test_activity_raw_dynamic.py` play them against real spans.

@@ -2,6 +2,7 @@ from ostler.book import Interaction
 
 from ..fixtures import Push, Query, Reply, Settings
 from ..model.actions import AnswerFromPage, FilterRuns, Navigate, OpenRun as SelectRun, PushBlocked, PushExited, PushProgress, SwitchAttendant
+from .activity import ReadActivityTab
 from .screens import Attendant, Dispatch, History, RunDetail, Runs
 from .screens import Settings as SettingsScreen
 
@@ -62,6 +63,13 @@ class OpenRun(Interaction[Push]):
     carries = SelectRun
 
 
+class ReadActivity(Interaction[Push]):
+    source = ("groom/groom/assets/dashboard.js",)
+    screen = RunDetail
+    does = "presses Activity in the tabs of the open run. A run that reported no telemetry, which is every run a push creates, reads 'No telemetry for this run. It was recorded before telemetry, or it exports to another collector.' where the timeline would be"
+    carries = ReadActivityTab
+
+
 class AnswerTheGate(Interaction[Reply]):
     source = ("groom/groom/assets/dashboard.js", "groom/groom/app.py")
     screen = RunDetail
@@ -95,5 +103,5 @@ class OpenDispatch(Interaction[object]):
 
 ALL = (
     ReportProgress, ReportGate, ReportExit, FilterTheList, OpenSettings, OpenRuns, SwitchTheAttendant,
-    OpenRun, AnswerTheGate, OpenHistory, OpenAttendant, OpenDispatch,
+    OpenRun, ReadActivity, AnswerTheGate, OpenHistory, OpenAttendant, OpenDispatch,
 )
