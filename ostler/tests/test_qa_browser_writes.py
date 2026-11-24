@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import threading
-import time
 from collections.abc import Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -29,7 +28,8 @@ class _SlowDelete(BaseHTTPRequestHandler):
         self.wfile.write(_PAGE)
 
     def do_DELETE(self) -> None:
-        time.sleep(0.8)
+        assert isinstance(self.server, _HeldServer)
+        self.server.release.wait(30)
         self.send_response(204)
         self.end_headers()
 
@@ -37,17 +37,29 @@ class _SlowDelete(BaseHTTPRequestHandler):
         return
 
 
+class _HeldServer(ThreadingHTTPServer):
+    def __init__(self, release: threading.Event) -> None:
+        super().__init__(("127.0.0.1", 0), _SlowDelete)
+        self.release = release
+
+
 @pytest.fixture
-def origin() -> Iterator[str]:
-    server = ThreadingHTTPServer(("127.0.0.1", 0), _SlowDelete)
+def release() -> threading.Event:
+    return threading.Event()
+
+
+@pytest.fixture
+def origin(release: threading.Event) -> Iterator[str]:
+    server = _HeldServer(release)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
         yield f"http://127.0.0.1:{server.server_address[1]}"
     finally:
+        release.set()
         server.shutdown()
 
 
-def test_leaving_the_page_waits_for_a_removal_in_flight(origin: str, tmp_path: Path) -> None:
+def test_leaving_the_page_waits_for_a_removal_in_flight(origin: str, release: threading.Event, tmp_path: Path) -> None:
     listening = browser_module.Browser(
         SimpleNamespace(browser=None, permissions=None, recording={"required": False}, viewport=None),
         qa_dir=tmp_path, scenario_id="remove", clock=lambda: 0, emit=lambda *_: None,
@@ -56,6 +68,13 @@ def test_leaving_the_page_waits_for_a_removal_in_flight(origin: str, tmp_path: P
     try:
         page.goto(f"{origin}/")
         page.get_by_role("button", name="Remove").click()
+        waiting = page.wait_for_timeout
+
+        def answer_once_waited_on(ms: int) -> None:
+            release.set()
+            waiting(ms)
+
+        page.wait_for_timeout = answer_once_waited_on
         listening.writes_done()
         page.goto(f"{origin}/")
         removals = [entry for entry in listening.responses() if entry.get("method") == "DELETE"]

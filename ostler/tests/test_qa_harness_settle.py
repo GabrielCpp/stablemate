@@ -53,6 +53,7 @@ class _Scenario:
         self.diagnostics = browser
         self.ceiling_s = ceiling_s
         self.checks: list[tuple[str, bool, Any]] = []
+        self.polls = 0
 
     def mark(self) -> int:
         return harness.Qa.mark(self)
@@ -112,12 +113,25 @@ def at_once(chromium: Any) -> Iterator[_Scenario]:
 
 
 @pytest.fixture
-def after_a_second(chromium: Any) -> Iterator[_Scenario]:
-    def handler(route: Any) -> None:
-        time.sleep(1.0)
-        route.fulfill(status=200, body="[]")
+def after_some_polls(chromium: Any) -> Iterator[_Scenario]:
+    held: list[Any] = []
 
-    yield from _visit(chromium, handler)
+    def handler(route: Any) -> None:
+        held.append(route)
+
+    for scenario in _visit(chromium, handler):
+        page = scenario.browser_page
+        waiting = page.wait_for_timeout
+        scenario.polls = 0
+
+        def count_then_answer(ms: float, scenario: _Scenario = scenario, waiting: Any = waiting) -> None:
+            scenario.polls += 1
+            if scenario.polls == 3 and held:
+                held.pop().fulfill(status=200, body="[]")
+            waiting(ms)
+
+        page.wait_for_timeout = count_then_answer
+        yield scenario
 
 
 @pytest.fixture
@@ -135,10 +149,9 @@ def test_a_screen_that_answers_at_once_settles_on_the_named_state(at_once: _Scen
     assert at_once.checks[0][2] == ["loaded-contract"]
 
 
-def test_a_screen_that_answers_within_the_ceiling_settles_on_the_named_state(after_a_second: _Scenario) -> None:
-    started = time.monotonic()
-    assert _settle(after_a_second)
-    assert time.monotonic() - started >= 1.0
+def test_a_screen_that_answers_within_the_ceiling_settles_on_the_named_state(after_some_polls: _Scenario) -> None:
+    assert _settle(after_some_polls)
+    assert after_some_polls.polls >= 3
 
 
 def test_a_screen_that_answers_with_an_error_fails_at_once_naming_the_state(failing: _Scenario) -> None:
