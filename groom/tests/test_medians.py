@@ -210,6 +210,32 @@ def test_by_node_reads_each_agent_nodes_mean_against_the_median_of_the_other_suc
     assert refused == {"build": None, "review": None, "qa": None}
 
 
+def test_by_node_pool_holds_the_comparable_runs_only() -> None:
+    nodes = [_node("build", 100.0)]
+    with _DB():
+        for index in range(5):
+            _put(f"other-{index}", 2.0, nodes_json=json.dumps([_node("build", 60.0 + index)]))
+        history._write(_row("estimated", 2, cost_usd=None, est_usd=31.2, priced_turns=0, items_done=2, nodes_json=json.dumps([_node("build", 5000.0)])))
+        _put("no-item", 2.0, items_done=0, nodes_json=json.dumps([_node("build", 5000.0)]))
+        found = medians.node_readings("coder", "judged", nodes, True)
+    assert found["build"] == {"median_s": 62.0, "runs": 5}
+
+
+def test_a_run_whose_cost_is_an_estimate_compares_no_node() -> None:
+    now = time.time()
+    with _DB():
+        for index in range(5):
+            _put(f"other-{index}", 2.0, nodes_json=json.dumps([_node("dev", 60.0)]))
+        seed("judged", now - 3600)
+        seed("estimated", now - 3600)
+        history._write(_row("judged", 1, cost_usd=8.0, nodes_json=json.dumps([_node("dev", 60.0)])))
+        history._write(_row("estimated", 1, cost_usd=None, est_usd=8.0, priced_turns=0, nodes_json=json.dumps([_node("dev", 60.0)])))
+        compared, estimated = overview.run_overview("judged"), overview.run_overview("estimated")
+    assert any(row["norm"] for row in compared["nodes"])
+    assert all(row["norm"] is None for row in estimated["nodes"])
+    assert estimated["norm_runs"] == 0
+
+
 def test_a_failed_runs_overview_compares_no_node_and_names_no_median_size() -> None:
     now = time.time()
     with _DB():

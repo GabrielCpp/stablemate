@@ -53,7 +53,7 @@ def run_overview(run_id: str) -> dict[str, Any]:
     if compare is None:
         readings = norms.for_nodes(workflow, {row["node"]: row["kind"] for row in nodes})
     else:
-        readings = medians.node_readings(compare["workflow"], run_id, nodes, compare["ending"] == medians.SUCCESS)
+        readings = medians.node_readings(compare["workflow"], run_id, nodes, medians.is_compared(compare))
     for row in nodes:
         row["norm"] = readings[row["node"]]
     return {

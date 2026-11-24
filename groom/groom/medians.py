@@ -1,4 +1,4 @@
-"""The median a finished run is judged against: cost per finished item and time per visit of a node, over the successful runs of its workflow in the stored summaries, which cover the store and the archives."""
+"""The median a finished run is judged against: cost per finished item and time per visit of a node, over the comparable runs of its workflow in the stored summaries, which cover the store and the archives."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from groom.store import read_connection, reading
 MIN_RUNS = store.MIN_NORM_RUNS
 SUCCESS = "success"
 
-_ENDED_SUCCESS = "state = 'ready' AND ended_ts IS NOT NULL AND ending = 'success'"
+_COMPARABLE = "state = 'ready' AND ended_ts IS NOT NULL AND ending = 'success' AND cost_usd IS NOT NULL AND priced_turns > 0 AND items_done > 0"
 
 
 def _each(spent: float | None, done: int | None) -> float | None:
@@ -24,8 +24,7 @@ def _each(spent: float | None, done: int | None) -> float | None:
 def per_item_costs(alive: set[str]) -> dict[str, dict[str, float]]:
     """Per workflow, the cost per finished item of every successful run that reported a price and finished an item. A run that reports no cost has only an estimate and stays out."""
     rows = read_connection().execute(
-        f"SELECT run_id, workflow, cost_usd, items_done FROM run_summary WHERE {_ENDED_SUCCESS}"  # noqa: S608 - literals only
-        " AND cost_usd IS NOT NULL AND priced_turns > 0 AND items_done > 0"
+        f"SELECT run_id, workflow, cost_usd, items_done FROM run_summary WHERE {_COMPARABLE}"  # noqa: S608 - literals only
     )
     found: dict[str, dict[str, float]] = defaultdict(dict)
     for row in rows:
@@ -69,10 +68,14 @@ def compare(item: dict[str, Any], costs: dict[str, float]) -> dict[str, Any]:
     return found
 
 
+def is_compared(compare: dict[str, Any]) -> bool:
+    return compare["ending"] == SUCCESS and compare["per_item_usd"] is not None
+
+
 @reading
 def _node_means(workflow: str, run_id: str) -> dict[str, list[float]]:
     rows = read_connection().execute(
-        f"SELECT nodes_json FROM run_summary WHERE {_ENDED_SUCCESS} AND workflow = ? AND run_id != ?",  # noqa: S608 - literals only
+        f"SELECT nodes_json FROM run_summary WHERE {_COMPARABLE} AND workflow = ? AND run_id != ?",  # noqa: S608 - literals only
         (workflow, run_id),
     )
     means: dict[str, list[float]] = defaultdict(list)
@@ -84,7 +87,7 @@ def _node_means(workflow: str, run_id: str) -> dict[str, list[float]]:
 
 
 def node_readings(workflow: str, run_id: str, nodes: list[dict[str, Any]], compared: bool) -> dict[str, dict[str, Any] | None]:
-    """Each agent node's median time per visit across the other successful runs of the workflow, from their stored summaries. A run that did not succeed, and a step, reads none."""
+    """Each agent node's median time per visit across the other comparable runs of the workflow, from their stored summaries. A run that is not itself comparable, and a step, reads none."""
     means = _node_means(workflow, run_id) if compared else {}
     found: dict[str, dict[str, Any] | None] = {}
     for row in nodes:
