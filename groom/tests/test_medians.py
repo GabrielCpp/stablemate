@@ -124,6 +124,23 @@ def test_the_median_covers_every_successful_run_whatever_the_range_and_the_filte
     assert listing["medians"]["coder"]["runs"] == 7
 
 
+def test_an_archived_successful_run_counts_in_the_median_of_a_run_in_the_store() -> None:
+    with _DB():
+        for index in range(5):
+            _put(f"archived-{index}", 2.0, archived=1)
+        _put("judged", 4.0)
+        listing = history.listing(set())
+        found = _compared("judged")
+        comparison = history.comparison("judged")
+    assert not [item for item in listing["runs"] if item["run_id"].startswith("archived-")]
+    assert found["vs_runs"] == 5
+    assert found["vs_median_usd"] == 2.0
+    assert found["vs_pct"] == pytest.approx(100.0)
+    assert listing["medians"]["coder"] == {"usd": 2.0, "runs": 6}
+    assert comparison is not None
+    assert comparison["vs_runs"] == 5
+
+
 def test_the_totals_median_is_per_workflow_over_every_successful_run_and_counts_them() -> None:
     with _DB():
         _pool(1.0, 2.0, 3.0, 4.0, 5.0)
