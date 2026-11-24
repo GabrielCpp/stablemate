@@ -63,6 +63,14 @@ class RunDetail(Screen):
         "groom/groom/assets/dashboard.js::RawView",
         "groom/groom/assets/dashboard.js::NowStrip",
         "groom/groom/assets/dashboard.js::AttendLink",
+        "groom/groom/assets/dashboard.js::ItemsTile",
+        "groom/groom/assets/dashboard.js::eachNote",
+        "groom/groom/assets/dashboard.js::NodeTable",
+        "groom/groom/assets/dashboard.js::medianCell",
+        "groom/groom/assets/dashboard.js::medianHeading",
+        "groom/groom/medians.py::node_readings",
+        "groom/groom/history.py::comparison",
+        "groom/groom/overview.py::run_overview",
     )
     route = "/"
     name = "Run detail"
@@ -148,7 +156,7 @@ class RunDetail(Screen):
     items_tile = Text(
         "#detail-items-tile",
         "Work items",
-        does="the items done out of the total. The cost divided by the finished items reads '$X per finished item', and a run with no finished item reads 'none finished yet' with no per-item figure. A run with no price reads 'no cost per item without a price'",
+        does="the items done out of the total. The cost divided by the finished items reads '$X per finished item', and a run with no finished item reads 'none finished yet' with no per-item figure. A run with no price reads 'no cost per item without a price'. For an ended run that succeeded and reported a cost, the per-item figure carries its signed percent against the median of the other comparable runs of the workflow and the count in words, '$X per item +N% vs median of M runs'. Under five it says 'only N other comparable <workflow> runs, and it takes 5', and with none 'no other comparable <workflow> run yet, and it takes 5'. A run that did not end in success reads 'not compared:' with its ending in words, and an estimate reads 'est $X per item, not compared: an estimate has no median'. A live run's tile is unchanged",
     )
     turns_tile = Text(
         "#detail-turns-tile",
@@ -178,7 +186,7 @@ class RunDetail(Screen):
     node_table = Text(
         "table[aria-label=\"Time and cost per node\"]",
         "Time and cost per node",
-        does="By node: one row per node, merged across the flows and states that reach it, with kind, visits, time, mean, the mean against the node's median, longest visit, cost, cost share and retries. The times equal the leaves of the tree `groom profile` prints. The comparison heading reads 'vs median of N' from the successful runs of the same workflow, and under five such runs it reads 'vs median: N runs, under five' with the cells blank. On a live run a mean 20% or more above the median reads 'longer' in words beside the warning color",
+        does="By node: one row per node, merged across the flows and states that reach it, with kind, visits, time, mean, the mean against the node's median, longest visit, cost, cost share and retries. The times equal the leaves of the tree `groom profile` prints. The comparison heading reads 'vs median of N' and under five comparable runs 'vs median: N runs, under five' with the cells blank. A step node has no comparison. On a run that has not ended, the median is the node's norm and a mean 20% or more above it reads 'longer' in words beside the warning color. On an ended run that succeeded, the median is that of the node's mean visit in each other comparable run of the workflow, read from their stored summaries, and the cell reads a bare signed percent in plain ink. An ended run that did not succeed compares no node and its heading reads 'vs median'",
     )
     item_table = Text(
         "table[aria-label=\"Time and cost per work item\"]",

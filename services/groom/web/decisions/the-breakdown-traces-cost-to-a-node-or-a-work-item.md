@@ -1,7 +1,7 @@
 story: SM-01M6CN5ZS6SQNVMD97SY4HM4ZR
 date: 2026-11-23
 elements: RunDetail
-sources: groom/groom/flows.py, groom/groom/norms.py, groom/groom/store.py, groom/groom/overview.py, groom/groom/assets/dashboard.js
+sources: groom/groom/flows.py, groom/groom/norms.py, groom/groom/medians.py, groom/groom/store.py, groom/groom/overview.py, groom/groom/assets/dashboard.js
 
 The operator wanted to trace a high cost to one node against its median, or to one work item. The Overview holds one
 time and cost table with a switch above it: By flow, By node and By work item.
@@ -14,8 +14,9 @@ and the rows add up to the tree. The times equal the leaves of the tree `groom p
 same stored tree. A node's kind is agent, step or none. Its mean is its time over its samples: the agent turns of an
 agent node, the visits of a step.
 
-The median comes from the norm cache the run strip reads. It covers successful runs of the same workflow only and
-needs five of them, as `the-strip-compares-a-turn-with-its-nodes-norm` settled. Under five runs the cells stay blank
+On a run that has not ended, the median comes from the norm cache the run strip reads. An ended run reads its medians
+from the stored summaries, as `a-finished-run-is-judged-against-the-median-of-its-workflow` settled. It covers
+successful runs of the same workflow only and needs five of them, as `the-strip-compares-a-turn-with-its-nodes-norm` settled. Under five runs the cells stay blank
 and the heading names the count and "under five". On a live run a mean 20% or more above the median reads "longer" in
 words beside the warning color.
 

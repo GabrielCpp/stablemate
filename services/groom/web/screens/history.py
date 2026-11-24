@@ -16,8 +16,15 @@ class History(Screen):
         "groom/groom/assets/dashboard.js::HistoryNoMatch",
         "groom/groom/assets/dashboard.js::HistoryNarrow",
         "groom/groom/assets/dashboard.js::HistoryPane",
+        "groom/groom/assets/dashboard.js::HistoryEach",
+        "groom/groom/assets/dashboard.js::historyMedian",
         "groom/groom/assets/dashboard.js::setMode",
         "groom/groom/history.py::LABELS",
+        "groom/groom/history.py::listing",
+        "groom/groom/medians.py::per_item_costs",
+        "groom/groom/medians.py::median_of_others",
+        "groom/groom/medians.py::per_workflow",
+        "groom/groom/medians.py::compare",
     )
     route = "/"
     name = "History"
@@ -61,7 +68,16 @@ class History(Screen):
     totals = Text(
         "#history .h-sum",
         "Totals",
-        does="the strip above the table: the number of runs, the money spent with its clauses (the part that is an estimate, the runs partly priced, the summaries still being read and the summaries that could not be read), the active time and 'N of M ended in success'. Every figure and clause sums the rows the filters leave, and with nothing left they read 0 runs, $0.00 spent and 0m active",
+        does="the strip above the table: the number of runs, the money spent with its clauses (the part that is an estimate, the runs partly priced, the summaries still being read and the summaries that could not be read), the active time and 'N of M ended in success'. Every figure and clause sums the rows the filters leave, and with nothing left they read 0 runs, $0.00 spent and 0m active. With a workflow chosen and rows showing, the strip gains the median cell",
+    )
+    per_item = Text(
+        '#history table.ht th[title^="Per finished item"]',
+        "$/item vs median",
+        does="the column after Items. Each row's cell reads the run's cost over its finished items, then its signed percent against the median of the other comparable runs of its workflow, with a true minus sign, so the sign carries the meaning without the color. A run that did not end in success, an estimate, and a run with under five other comparable runs read the cost per item with no percent. An estimate reads 'est $X'. A run with no finished item reads '—'. A comparable run is a successful run with a reported cost, a priced turn and a finished item. The median covers every comparable run of the workflow in the store and the archives, whatever the filters and the range, and leaves out the run it judges",
+    )
+    median = Text(
+        '#history .h-sum span[title^="Successful runs of this workflow"]',
+        does="the cell the totals gain while a workflow is chosen and rows show: '$X median per <workflow> item, N comparable runs'. Under five comparable runs it reads '—' with 'only N comparable runs, and it takes 5', and with none 'no comparable run yet, and it takes 5'. It counts every comparable run of the workflow, whatever the other filters and the range, and arrives with the list, so choosing a workflow makes no request. With no workflow chosen there is no median",
     )
     no_match = Text(
         "#history .empty-big:has(button)",
