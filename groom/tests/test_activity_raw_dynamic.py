@@ -391,7 +391,7 @@ def test_pressing_raw_again_returns_to_the_timeline_with_the_selection_as_it_was
     _drive(tmp_path, "raw-return", check)
 
 
-def test_the_tabs_are_overview_activity_files_diff_and_a_stale_saved_trail_view_is_ignored(tmp_path):
+def test_the_tabs_start_with_overview_and_activity_and_a_stale_saved_trail_view_is_ignored(tmp_path):
     from playwright.sync_api import expect
 
     live = _live()
@@ -399,7 +399,7 @@ def test_the_tabs_are_overview_activity_files_diff_and_a_stale_saved_trail_view_
     with _stepped("raw-tabs", tmp_path) as name:
         page = _open(live)
         try:
-            page.evaluate("() => { localStorage.setItem('groom.trailView', 'telemetry'); localStorage.setItem('groom.detailTab', 'details') }")
+            page.evaluate("() => { localStorage.setItem('groom.trailView', 'telemetry') }")
             page.reload(wait_until="load")
             page.wait_for_selector("#runs-list .row", timeout=30000)
             _pick(page, name)
