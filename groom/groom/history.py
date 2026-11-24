@@ -412,17 +412,21 @@ def _covered(name: str, flags: dict[str, int]) -> bool:
     return name in flags or (len(token) == DERIVED_TOKEN and base in flags)
 
 
+def _folders() -> list[Path]:
+    """The archive folders that hold a telemetry file, which are the ones a run's history can come from."""
+    return [folder for folder in archive.archive_dirs() if (folder / archive.TELEMETRY_FILE).exists()]
+
+
 def _unlisted() -> list[str]:
     """The archive folders that no summary row stands for yet."""
     flags = _flags()
-    return [folder.name for folder in archive.archive_dirs() if not _covered(folder.name, flags)]
+    return [folder.name for folder in _folders() if not _covered(folder.name, flags)]
 
 
-def row_from_archive(found: dict[str, Any]) -> dict[str, Any] | None:
-    """The summary row of an archive from its manifest: the stored summary when it carries one, else a pending row naming the run, repo and end time."""
-    run_id = str(found.get("run_id") or "")
-    if not run_id:
-        return None
+def row_from_archive(folder: Path) -> dict[str, Any]:
+    """The summary row of an archive from its manifest: the stored summary when it carries one, else a pending row naming the run, repo and end time. A manifest that cannot be read stands for the run its folder name gives, as old as its file."""
+    found = archive.manifest(folder)
+    run_id = str(found.get("run_id") or folder.name)
     summary = found.get("summary")
     if isinstance(summary, dict) and summary.get("run_id") == run_id:
         return {**summary, "archived": 1}
@@ -432,7 +436,7 @@ def row_from_archive(found: dict[str, Any]) -> dict[str, Any] | None:
         "repo": found.get("repo") or "",
         "branch": found.get("branch") or "",
         "state": PENDING,
-        "ended_ts": found.get("max_ts") or None,
+        "ended_ts": archive.last_record_ts(folder, found),
         "last_ts": 0,
         "archived": 1,
     }
@@ -464,13 +468,13 @@ def discover_archives() -> list[str]:
     flags = _flags()
     fresh: list[dict[str, Any]] = []
     marked: list[str] = []
-    for folder in archive.archive_dirs():
+    for folder in _folders():
         if _covered(folder.name, flags):
             if flags.get(folder.name) == 0:
                 marked.append(folder.name)
             continue
-        row = row_from_archive(archive.manifest(folder))
-        if row is not None and row["run_id"] not in flags:
+        row = row_from_archive(folder)
+        if row["run_id"] not in flags:
             fresh.append(row)
     if fresh:
         _insert_archives(fresh)

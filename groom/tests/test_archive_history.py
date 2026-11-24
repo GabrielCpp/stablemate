@@ -157,6 +157,32 @@ def test_an_archive_that_cannot_be_read_keeps_its_row_marked_unreadable_and_a_re
     assert nothing is False
 
 
+def test_an_archive_whose_manifest_never_read_gets_an_unreadable_row_and_is_not_left_unlisted() -> None:
+    now = time.time()
+    with _DB():
+        folder = _archived("run-older", now)
+        _without_summary(folder)
+        (folder / archive.TELEMETRY_FILE).write_text("not a manifest\n", encoding="utf-8")
+        queued = history.discover_archives()
+        for run_id in queued:
+            history.compute_archive(run_id, now)
+        body = history.listing(set(), now, archives=True)
+    item = body["runs"][0]
+    assert queued == ["run-older"]
+    assert (item["run_id"], item["unreadable"], item["archived"]) == ("run-older", True, True)
+    assert (body["unlisted"], body["totals"]["unreadable"]) == (0, 1)
+
+
+def test_a_folder_with_no_telemetry_file_is_neither_listed_nor_counted_as_unlisted() -> None:
+    now = time.time()
+    with _DB():
+        (archive.archives_root() / "stray-folder").mkdir(parents=True)
+        queued = history.discover_archives()
+        body = history.listing(set(), now, archives=True)
+    assert queued == []
+    assert (body["runs"], body["unlisted"]) == ([], 0)
+
+
 def test_a_retry_changes_nothing_for_a_run_that_is_not_an_unreadable_archive() -> None:
     now = time.time()
     with _DB():

@@ -83,14 +83,18 @@ def _mtime(path: Path) -> float:
         return 0.0
 
 
+def last_record_ts(folder: Path, head: dict[str, Any]) -> float:
+    """When an archive's last record was written: its manifest says, else the age of its file."""
+    return float(head.get("max_ts") or 0.0) or _mtime(folder / TELEMETRY_FILE) or _mtime(folder)
+
+
 def frozen() -> list[tuple[str, float, Path]]:
     """Every archive folder as ``(run id, time of its last record, folder)``, read from its manifest. A folder whose manifest cannot be read stands for the run its name gives, as old as its file."""
     found: list[tuple[str, float, Path]] = []
     for folder in archive_dirs():
         head = manifest(folder)
         run_id = str(head.get("run_id") or folder.name)
-        last = float(head.get("max_ts") or 0.0) or _mtime(folder / TELEMETRY_FILE) or _mtime(folder)
-        found.append((run_id, last, folder))
+        found.append((run_id, last_record_ts(folder, head), folder))
     return found
 
 
