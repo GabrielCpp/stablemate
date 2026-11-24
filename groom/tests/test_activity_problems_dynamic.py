@@ -254,6 +254,20 @@ def test_while_paused_in_the_problems_view_the_pill_counts_new_problems_and_name
         _leave(page, context)
 
 
+def test_pausing_in_the_problems_view_on_a_run_with_a_failed_agent_turn_shows_no_new_problems(tmp_path):
+    from playwright.sync_api import expect
+
+    _live_, page, context, _name = _page(tmp_path, "prb-pill-failed-turn", watched=True, broken=True)
+    try:
+        _on(page)
+        expect(page.locator('#detail-panel .tl button.ev[data-entry="failed:ft"]')).to_have_count(1)
+        page.locator("#detail-panel .feedbar .follow").click()
+        page.wait_for_timeout(500)
+        expect(page.locator("#detail-panel .newpill button")).to_have_count(0)
+    finally:
+        _leave(page, context)
+
+
 def _send_failed(live, run: str) -> None:
     import time
 

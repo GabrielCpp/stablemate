@@ -1797,6 +1797,12 @@ function problemKeys(items) {
   return keys;
 }
 
+function shownKeys(rows, items) {
+  const keys = timelineKeys(rows, items);
+  for (const key of problemKeys(items)) keys.add(key);
+  return keys;
+}
+
 function arrivals(activity) {
   if (!activity.seen) return 0;
   let count = 0;
@@ -2061,7 +2067,7 @@ function nextProblem() {
 function pauseFollow(alive) {
   const held = store.get().activity;
   if (!held.follow) return;
-  store.set({ activity: { ...held, follow: false, seen: timelineKeys(held.rows, held.items), hold: heldOpen(held, alive) } });
+  store.set({ activity: { ...held, follow: false, seen: shownKeys(held.rows, held.items), hold: heldOpen(held, alive) } });
 }
 
 function resumeFollow() {
