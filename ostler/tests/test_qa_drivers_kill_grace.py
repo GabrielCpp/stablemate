@@ -103,15 +103,17 @@ def test_an_interrupted_wait_reaps_the_scenario_group(repo: Path, probe: Path, m
     calls = {"n": 0}
 
     def interrupted(self, input=None, timeout=None):
-        if calls["n"] == 0:
+        if calls["n"] == 0 and "ostler_qa" in self.args:
             calls["n"] += 1
             pending = input
             deadline = time.monotonic() + 60
             while not probe.exists() and time.monotonic() < deadline:
                 try:
-                    real_communicate(self, pending, timeout=0.2)
+                    output, _ = real_communicate(self, pending, timeout=0.2)
                 except subprocess.TimeoutExpired:
                     pending = None
+                    continue
+                pytest.fail(f"the scenario exited with {self.returncode} before its child wrote the probe: {output!r}")
             raise KeyboardInterrupt
         return real_communicate(self, input, timeout=timeout)
 
