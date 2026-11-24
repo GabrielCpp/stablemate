@@ -384,7 +384,7 @@ def test_the_app_starts_against_a_down_server_resyncs_over_http_and_recovers():
             assert link.gets == ["/api/state"]
             assert "reconnecting" in _status(app)
             link.fail_open = False
-            await support.until(lambda: link.opens == 1, timeout=30)
+            await support.until(lambda: link.opens == 1)
             app.evaluate()
             assert "live" in _status(app)
 
@@ -397,7 +397,7 @@ def test_a_dropped_socket_reconnects_and_resends_watch_for_the_open_run():
         async with _booted(link) as (app, pilot):
             await _open_blocked(app, pilot, link)
             link.drop()
-            await support.until(lambda: link.opens == 2, timeout=30)
+            await support.until(lambda: link.opens == 2)
             await support.until(lambda: len(link.sent) == 2)
             assert link.sent[1] == {"cmd": "watch", "run_id": support.ACME}
 

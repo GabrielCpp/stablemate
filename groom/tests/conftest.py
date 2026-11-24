@@ -30,6 +30,12 @@ def _logging_handlers_do_not_outlive_the_test() -> Iterator[None]:
             logger.handlers[:] = saved.get(logger, [])
 
 
+@pytest.fixture(autouse=True)
+def _notifications_outlive_the_test(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep a raised notification on screen past any test's run, so a loaded machine cannot expire it before the test reads it."""
+    monkeypatch.setattr("groom.tui.app.GroomTui.NOTIFICATION_TIMEOUT", 3600.0)
+
+
 @pytest.fixture(autouse=True, scope="session")
 def _playwright_assertions_wait_as_a_safety_net() -> None:
     """Size Playwright's assertion deadline for a hung page, not a quiet machine."""

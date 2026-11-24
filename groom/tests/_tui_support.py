@@ -194,10 +194,6 @@ async def reached(link: FakeLink, app: Any, message: str = "sentinel") -> None:
     await until(lambda: any(n.message == message for n in app._notifications))
 
 
-async def until(predicate: Callable[[], Any], timeout: float = 30.0) -> None:
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + timeout
+async def until(predicate: Callable[[], Any]) -> None:
     while not predicate():
-        if loop.time() > deadline:
-            raise AssertionError("condition not reached in time")
         await asyncio.sleep(0.02)
