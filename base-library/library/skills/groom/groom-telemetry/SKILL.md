@@ -292,6 +292,3 @@ diagnosed and fixed is a bug closed. One that is narrated comes back on the next
 - **Don't count a run's age as a problem.** Resumptions reuse a run identity and multi-day
   runs are normal — which is why groom deliberately has no rule on total run age. A hard
   wall-clock limit is workhorse's `WORKHORSE_MAX_RUNTIME_S`, not something to infer here.
-
-Full as-built reference: `groom/README.md` in the stablemate workspace, and groom's service
-book (`ostler book search <term> --service services.stablemate.groom.http`).

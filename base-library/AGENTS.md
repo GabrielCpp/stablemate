@@ -24,6 +24,10 @@ Content belongs here when **all** of these hold:
 4. **It stands alone.** It renders and reads correctly on a machine that has only the
    cache — no path back into this workspace, and no private project's name in it (see
    the root `AGENTS.md`; `make check-public` is the gate).
+   The reader has no stablemate checkout and none of the author's artifacts folder.
+   A skill therefore names no stablemate file, no stablemate book module such as
+   `services.stablemate.groom.http`, and no page of that folder. An example the reader
+   needs is written into the skill itself.
 
 ## What does not belong
 
