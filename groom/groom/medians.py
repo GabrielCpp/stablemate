@@ -62,9 +62,9 @@ def compare(item: dict[str, Any], costs: dict[str, float]) -> dict[str, Any]:
         return found
     median, runs = median_of_others(costs, item["run_id"])
     found["vs_runs"] = runs
-    if runs >= MIN_RUNS and median:
+    if runs >= MIN_RUNS and median is not None:
         found["vs_median_usd"] = median
-        found["vs_pct"] = (each - median) / median * 100
+        found["vs_pct"] = (each - median) / median * 100 if median else None
     return found
 
 

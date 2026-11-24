@@ -154,6 +154,15 @@ def test_runs_with_no_workflow_are_never_judged_against_each_other() -> None:
     assert (found["per_item_usd"], found["vs_pct"], found["vs_runs"]) == (4.0, None, 0)
 
 
+def test_a_median_of_zero_gives_no_percent_and_still_names_the_median() -> None:
+    with _DB():
+        _pool(0.0, 0.0, 0.0, 0.0, 0.0)
+        _put("judged", 4.0)
+        found = _compared("judged")
+    assert found["vs_pct"] is None
+    assert (found["vs_median_usd"], found["vs_runs"]) == (0.0, 5)
+
+
 def test_the_totals_median_is_per_workflow_over_every_successful_run_and_counts_them() -> None:
     with _DB():
         _pool(1.0, 2.0, 3.0, 4.0, 5.0)

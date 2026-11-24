@@ -927,6 +927,10 @@ function eachNote(compare) {
   }
   const each = fmtEach(compare.per_item_usd) + " per item";
   if (compare.ending !== "success") return each + ", not compared: " + notCompared(compare);
+  if (compare.vs_pct === null && compare.vs_median_usd !== null) {
+    const others = plural(compare.vs_runs, "other comparable " + compare.workflow + " run", "other comparable " + compare.workflow + " runs");
+    return html`${each}, no comparison: <span title=${COMPARABLE}>the median of ${others} is ${fmtEach(compare.vs_median_usd)}</span>`;
+  }
   if (compare.vs_pct === null) {
     const who = compare.vs_runs ? "only " + plural(compare.vs_runs, "other comparable " + compare.workflow + " run", "other comparable " + compare.workflow + " runs") : "no other comparable " + compare.workflow + " run yet";
     return html`${each}, no comparison: <span title=${COMPARABLE}>${who}, and it takes 5</span>`;
