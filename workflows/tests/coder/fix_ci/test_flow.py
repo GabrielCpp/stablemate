@@ -532,14 +532,14 @@ def test_a_ci_owner_turn_cut_at_its_deadline_parks_and_resumes_on_the_same_sessi
 
     assert result.status == "passed", result
     ((_, gate),) = seen
-    assert "was cut after 60 minutes" in gate, gate
+    assert "was cut after 180 minutes" in gate, gate
     assert "Its session is kept" in gate, gate
     assert turn.counts() == {"fix-ci": 2}, turn.counts()
     first, second = turn.every_kwargs
     assert first["session_chain"] == second["session_chain"] != ""
     assert second["resume_session"] is True
     assert OPERATOR_ANSWER in str(turn.calls[0]["operator_context"]), turn.calls
-    assert turn.every_node[0].deadline == turn.every_node[0].timeout == 3600.0
+    assert turn.every_node[0].deadline == turn.every_node[0].timeout == 10800.0
 
 
 def test_a_cut_merge_turn_parks_without_flagging_the_merge(
@@ -576,6 +576,6 @@ def test_a_cut_merge_turn_parks_without_flagging_the_merge(
 
     assert result.summary.startswith("merge merged"), result
     ((_, gate),) = seen
-    assert "The merge turn was cut after 60 minutes" in gate, gate
+    assert "The merge turn was cut after 180 minutes" in gate, gate
     assert flagged == [], flagged
     assert turn.counts()["fix-merge"] == 1, turn.stems

@@ -189,7 +189,7 @@ class _StubFlow(Workflow):
     target_env: str = ""
     book_play_minutes: int = 15
     review_minutes: int = 20
-    turn_minutes: int = 60
+    turn_minutes: int = 180
     sandbox: bool = False
     repo: str = ""
     branch: str = ""

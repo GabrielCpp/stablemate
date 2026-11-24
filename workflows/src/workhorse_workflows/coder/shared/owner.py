@@ -4,7 +4,7 @@ from __future__ import annotations
 from workhorse.pyflow import AgentTimeout
 from workhorse.runner.backends import AgentProfile
 
-TURN_MINUTES = 60
+TURN_MINUTES = 180
 
 REVIEW_MINUTES = 20
 

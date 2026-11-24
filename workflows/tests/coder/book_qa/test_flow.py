@@ -813,13 +813,13 @@ def test_a_book_turn_cut_at_its_deadline_parks_and_resumes_on_the_same_session(
     assert result.status == "passed", result
     assert agent.counts() == {"qa-book": 2}, agent.counts()
     (gate,) = seen
-    assert "The book turn was cut after 60 minutes" in gate, gate
+    assert "The book turn was cut after 180 minutes" in gate, gate
     assert "Its session is kept" in gate, gate
     first, second = agent.kwargs
     assert first["session_chain"] == second["session_chain"] != ""
     assert second["resume_session"] is True
     assert "Keep the covered services" in str(agent.args[1]["operator_context"]), agent.args[1]
-    assert agent.nodes[0].deadline == agent.nodes[0].timeout == 3600.0
+    assert agent.nodes[0].deadline == agent.nodes[0].timeout == 10800.0
 
 
 def test_turn_minutes_sets_the_owner_deadline(

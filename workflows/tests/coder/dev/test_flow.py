@@ -1522,7 +1522,7 @@ def test_a_build_turn_cut_at_its_deadline_parks_and_resumes_on_the_same_session(
 
     assert result.status == "ready", result
     (gate,) = seen
-    assert "was cut after 60 minutes" in gate, gate
+    assert "was cut after 180 minutes" in gate, gate
     assert "Its session is kept" in gate, gate
     assert "resolve-operator" not in agent.calls, agent.calls
     builds = [i for i, c in enumerate(agent.calls) if c in ("dev-build", "dev-follow-up")]
@@ -1530,7 +1530,7 @@ def test_a_build_turn_cut_at_its_deadline_parks_and_resumes_on_the_same_session(
     assert agent.kwargs[first]["session_chain"] == agent.kwargs[second]["session_chain"]
     assert agent.kwargs[second]["resume_session"] is True
     assert OPERATOR_ANSWER in str(agent.args[second]["operator_context"]), agent.args[second]
-    assert agent.nodes[first].deadline == agent.nodes[first].timeout == 3600.0
+    assert agent.nodes[first].deadline == agent.nodes[first].timeout == 10800.0
 
 
 def test_a_cut_resolver_turn_lands_on_the_gate(
@@ -1548,7 +1548,7 @@ def test_a_cut_resolver_turn_lands_on_the_gate(
     assert result.status == "ready", result
     (gate,) = seen
     assert BLOCK_NOTE in gate, gate
-    assert "The resolver turn was cut after 60 minutes" in gate, gate
+    assert "The resolver turn was cut after 180 minutes" in gate, gate
     assert agent.counts()["resolve-operator"] == 1, agent.counts()
 
 

@@ -194,7 +194,7 @@ def test_every_qa_turn_continues_the_story_s_own_owner_conversation(spy: _Spy) -
     turn = spy.turns[0]
     assert turn["session"] == f"qa:{STORY}"
     assert turn["power"] == "high"
-    assert turn["timeout"] == 3600.0 and turn["deadline"] == 3600.0
+    assert turn["timeout"] == 10800.0 and turn["deadline"] == 10800.0
     assert turn["profile"] == owner_profile("qa")
     assert spy.resets == []
 

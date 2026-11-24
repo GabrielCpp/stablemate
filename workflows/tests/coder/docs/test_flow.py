@@ -570,14 +570,14 @@ def test_a_docs_turn_cut_at_its_deadline_parks_and_resumes_on_the_same_session(
 
     assert result.status == "passed", result
     (gate,) = seen
-    assert "was cut after 60 minutes" in gate, gate
+    assert "was cut after 180 minutes" in gate, gate
     assert "Its session is kept" in gate, gate
     assert "resolve-operator" not in agent.calls, agent.calls
     first, second = agent.kwargs[0], agent.kwargs[1]
     assert first["session_chain"] == second["session_chain"] != ""
     assert second["resume_session"] is True
     assert OPERATOR_ANSWER in agent.author_args()[1]["operator_context"]
-    assert agent.nodes[0].deadline == agent.nodes[0].timeout == 3600.0
+    assert agent.nodes[0].deadline == agent.nodes[0].timeout == 10800.0
 
 
 def test_a_cut_resolver_turn_lands_on_the_gate(
@@ -594,7 +594,7 @@ def test_a_cut_resolver_turn_lands_on_the_gate(
     assert result.status == "passed", result
     (gate,) = seen
     assert BLOCK_NOTE in gate, gate
-    assert "The resolver turn was cut after 60 minutes" in gate, gate
+    assert "The resolver turn was cut after 180 minutes" in gate, gate
 
 
 def test_turn_minutes_sets_the_owner_deadline(
