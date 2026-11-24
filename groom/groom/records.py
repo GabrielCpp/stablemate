@@ -6,6 +6,7 @@ from groom import churn, projection, store
 from groom.activity import _name
 
 PAGE = 200
+ROW_LIMIT = 2**63
 ALERT, SPAN, EVENT, LOG, METRIC = 5, 4, 3, 2, 1
 KINDS = {ALERT: "ALERT", SPAN: "SPAN", EVENT: "EVENT", METRIC: "METRIC"}
 LOG_LEVELS = {"WARNING": "WARN"}
@@ -20,7 +21,10 @@ def parse(cursor: str) -> tuple[float, int, int] | None:
         return None
     try:
         when, rank, ident = cursor.split("|")
-        return float(when), int(rank), int(ident)
+        found = float(when), int(rank), int(ident)
+        if not all(0 <= number < ROW_LIMIT for number in found[1:]):
+            raise ValueError(cursor)
+        return found
     except ValueError as exc:
         raise BadCursor(cursor) from exc
 

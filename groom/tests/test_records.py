@@ -170,6 +170,14 @@ def test_the_records_endpoint_serves_a_page_and_refuses_a_bad_cursor() -> None:
     assert bad.status_code == 400
 
 
+def test_a_cursor_with_an_id_no_row_can_have_is_refused_as_a_cursor_and_not_a_server_error() -> None:
+    with _DB():
+        _seed()
+        for cursor in (f"1.0|2|{2**70}", "1.0|2|-1", f"1.0|{2**70}|1"):
+            with pytest.raises(records.BadCursor):
+                records.page(RUN, cursor)
+
+
 def test_the_activity_timeline_adds_info_logs_inside_the_pass_they_belong_to_without_splitting_a_fold() -> None:
     with _DB():
         _seed()
