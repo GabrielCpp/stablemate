@@ -4,9 +4,16 @@ from __future__ import annotations
 
 import pytest
 
-from stablemate_core import base_cache, config
+from stablemate_core import base_cache, config, manifest
 
 pytest_plugins = ["private_tmp"]
+
+
+@pytest.fixture(autouse=True)
+def _nothing_remembered_between_tests():
+    """A warning is given once per process, so a test starts with none given."""
+    config.forget()
+    manifest.forget()
 
 
 @pytest.fixture(autouse=True)

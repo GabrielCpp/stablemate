@@ -700,6 +700,14 @@ class _Placed:
 _placed: dict[tuple[Path, tuple[str | None, ...]], _Placed] = {}
 
 
+def forget() -> None:
+    """Drop every warning already given and every read held or placed, so the next read starts cold."""
+    _warned_too_new.clear()
+    _warned_strays.clear()
+    _held.clear()
+    _placed.clear()
+
+
 def _mark(path: Path) -> tuple[int, int, int] | None:
     """A directory by its inode alone, since git writes inside it at every commit; a file also by its mtime and size."""
     try:

@@ -156,7 +156,7 @@ a module-level object it leaks into every test that runs after the one that set 
 
 ## Flaky shapes: what to search for
 
-testing-design §15 names eight shapes that tie a verdict to something outside the test. These are
+testing-design §15 names nine shapes that tie a verdict to something outside the test. These are
 their pytest spellings. A hit is a place to read, and the counter-case column says when to leave it.
 
 | Row | Search the tests for | Harmless when | Write instead |
@@ -169,6 +169,7 @@ their pytest spellings. A hit is a place to read, and the counter-case column sa
 | 15.6 | `Path.home()`, `expanduser`, a cache-dir call, or `os.environ[...] =`, `.update(`, `.pop(` | The dict is a copy handed to a child process | An autouse fixture that sets `HOME` and `XDG_*` to `tmp_path`, and `monkeypatch.setenv` |
 | 15.7 | `Popen(`, `Thread(` or `create_task(` with no `kill` or `join` in a fixture teardown or a `finally` | A `with` block owns it | A fixture that yields the process and ends its group after the `yield` |
 | 15.8 | `scope="session"` or `scope="module"` on a fixture that returns a list, dict or object, or `lru_cache` in the product | The value is frozen | Function scope, or `cache_clear()` in an autouse fixture |
+| 15.9 | A top-level `sys.path.insert(`, `sys.path.append(`, `os.environ[...] =`, `os.chdir(`, `atexit.register(`, `signal.signal(` or `logging.basicConfig(`, in a product module, a test module or a `conftest.py` | It sits under `if __name__ == "__main__":` | `pythonpath` in the pytest configuration for a search path, a fixture with `monkeypatch.syspath_prepend` or `monkeypatch.setenv` for one test, and a function the entry point calls for the product |
 
 `inspect.getsource` reads the file from disk by the line numbers of the loaded module. After an edit
 to that file it returns another function's text, with no error.

@@ -188,6 +188,13 @@ class _Held:
 _held: dict[Path, _Held] = {}
 
 
+def forget() -> None:
+    """Drop every warning already given and every manifest read held, so the next read starts cold."""
+    _warned_legacy.clear()
+    _warned_prompts.clear()
+    _held.clear()
+
+
 def _stamp(path: Path) -> _Stamp | None:
     try:
         info = path.stat()
