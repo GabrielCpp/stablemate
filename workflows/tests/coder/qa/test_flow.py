@@ -469,7 +469,7 @@ class _Agent:
         return {
             "decision": "answered",
             "summary": "use the staging bucket",
-            "grounded": ["docs/decisions/which-bucket.md:3: 'QA writes go to the staging bucket'"],
+            "grounded": ["product/which-bucket.md:5: 'QA writes go to the staging bucket'"],
             "record": "which-bucket",
         }
 
