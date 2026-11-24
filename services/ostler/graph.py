@@ -22,7 +22,7 @@ class Doctor(Command):
     )
     carries = act.Examining
     source = ("ostler/ostler/doctor.py", "ostler/ostler/finding.py", "ostler/ostler/schemas.py", "ostler/ostler/schema/epic.schema.json",
-              "ostler/ostler/schema/story.schema.json", "ostler/ostler/schema/milestone.schema.json", "ostler/ostler/adr.py",
+              "ostler/ostler/schema/story.schema.json", "ostler/ostler/schema/milestone.schema.json",
               "ostler/ostler/pages.py", "ostler/ostler/dynamic_registry.py", "ostler/ostler/manifest.py", *OSTLER)
 
 
@@ -290,19 +290,6 @@ class BacklogDropWithoutReason(Command):
     answers = (Exit(1, Lines(), "dropped and promoted need a reason"),)
     carries = act.DropRecordWithoutReason
     source = ("ostler/ostler/cli.py::_prune_record",)
-
-
-class FileDecision(Command):
-    does = "File an empty decision use-x for the repository acme in the artifacts folder, with a one-line summary."
-    program = "ostler"
-    argv = ("--full-ids", "decisions", "add", "use-x", "--repo", "acme", "--summary", "Use x")
-    args = ARGS
-    answers = (
-        Exit(0, Lines(), "the decision file's path"),
-        Exit(1, Lines(), "a decision with the slug exists"),
-    )
-    carries = act.FileDecision
-    source = ("ostler/ostler/decisions.py", "ostler/ostler/model.py::doc_roots")
 
 
 class TemplateNew(Command):
@@ -825,7 +812,7 @@ ALL = (
     Doctor, ListEpicRows, ListStoryRows, ListRepoStoryRows, ListUnknownRepoRows, SearchPlan, BuildIndex, QueryCovering, NextEpic, NextStory, ShowChecks, EvictCache,
     EditRename, EditRenameUnknown, CreateMilestone, MilestoneEpicsFirst, MilestoneEpicsBoth, MilestoneEpicsUnknown,
     MilestoneSourceItem, CreateSpec, CreateSpecOfUnknownStory, BacklogAdd, BacklogList, BacklogPrune, BacklogDropWithoutReason,
-    FileDecision, TemplateNew, TemplateFind, TemplateApply, TemplateDelete, ListArtifactKinds, ScaffoldArtifact, VetArtifact,
+    TemplateNew, TemplateFind, TemplateApply, TemplateDelete, ListArtifactKinds, ScaffoldArtifact, VetArtifact,
     CleanQaScratch, EnvSchema, EnvCheck, EnvList, EnvListAll, EnvPrune, BacklogAdopt, LintPlan, LintBadPlan, ValidatePlan,
     ValidateBadPlan, RunPlan, RunBadPlan, ReportRun, ReplayRun, ReadLedger, CutFrames, StartSession, RecordStep, RecordAssertion,
     StopSession, EnvRender, EnvRenderUnknown, EnvDown, EnvAddress, EnvExec,

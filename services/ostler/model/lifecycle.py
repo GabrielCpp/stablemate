@@ -16,7 +16,7 @@ from ..graph import (EnvResetUnknown, EnvUpUnknown, RunGrpcPlan, RunPhonePlan, R
                      VetWithoutArguments, VetWithoutRegions, EnvAddress, EnvDown, EnvExec, EnvRender, EnvRenderUnknown, BacklogAdopt, BacklogAdd, CutFrames, LintBadPlan, LintPlan, ReadLedger, RecordAssertion, RecordStep, ReplayRun,
                      ReportRun, RunBadPlan, RunPlan, StartSession, StopSession, ValidateBadPlan, ValidatePlan, BacklogDropWithoutReason, BacklogList, BacklogPrune, BuildIndex, CleanQaScratch, CreateMilestone,
                      CreateSpec, CreateSpecOfUnknownStory, Doctor, EditRename, EditRenameUnknown, EnvCheck, EnvList, EnvListAll, EnvPrune, EnvSchema,
-                     EvictCache, FileDecision, ListArtifactKinds, ListEpicRows, ListRepoStoryRows, ListStoryRows, ListUnknownRepoRows, MilestoneEpicsBoth,
+                     EvictCache, ListArtifactKinds, ListEpicRows, ListRepoStoryRows, ListStoryRows, ListUnknownRepoRows, MilestoneEpicsBoth,
                      MilestoneEpicsFirst, MilestoneEpicsUnknown, MilestoneSourceItem, NextEpic, NextStory, QueryCovering,
                      ScaffoldArtifact, SearchPlan, ShowChecks, TemplateApply, TemplateDelete, TemplateFind, TemplateNew,
                      VetArtifact)
@@ -25,7 +25,7 @@ from ..books import (CheckBook, DrawBook, ExplainBook, ExplainNothing, SearchUnm
 from ..events import CopyInAnOldEpic
 from ..fixtures import nothing
 from .documents import holds
-from .files import (RENDERED, LEDGER, QA_EVIDENCE, SESSION, ARTIFACT, CLOSED, DECISION, FIRST_EPIC_LISTED, GUIDANCE, MILESTONE, OPEN, RECORD, SECOND_EPIC_LISTED,
+from .files import (RENDERED, LEDGER, QA_EVIDENCE, SESSION, ARTIFACT, CLOSED, FIRST_EPIC_LISTED, GUIDANCE, MILESTONE, OPEN, RECORD, SECOND_EPIC_LISTED,
                     SOURCE_ITEM, SPEC, TEMPLATE_DECLARED, TEMPLATES)
 from .state import Plan, plan_stage, seed_stage, story_stage
 
@@ -165,11 +165,6 @@ def record_stage(model: Plan) -> str:
     if RECORD not in model.files.items:
         return "none"
     return "done" if CLOSED in holds(model, RECORD) else "open" if OPEN in holds(model, RECORD) else "filed"
-
-
-def decision_stage(model: Plan) -> str:
-    """Whether the decision use-x is filed."""
-    return "filed" if DECISION in model.files.items else "none"
 
 
 def spec_stage(model: Plan) -> str:
@@ -345,16 +340,6 @@ RECORD_ACTIONS: dict[str, Callable[[Plan], object]] = {
     "look": lambda m: Look(),
 }
 
-DECISION_SCENES = (
-    Scene("none", "no decision is filed", lambda today: ()),
-    Scene("filed", "the decision use-x is filed", lambda today: (FileDecision(nothing()),)),
-)
-
-DECISION_ACTIONS: dict[str, Callable[[Plan], object]] = {
-    "file": lambda m: FileDecision(nothing()),
-    "look": lambda m: Look(),
-}
-
 SPEC_SCENES = (
     Scene("none", "the story has no spec document", lambda today: ()),
     Scene("spec", "the story has its plan spec", lambda today: (CreateSpec(nothing()),)),
@@ -415,7 +400,6 @@ MATRICES = (
     Axes[Plan]("qa", TODAY, QA_SCENES, QA_ACTIONS, qa_stage, state_of=lambda m, _: qa_stage(m)),
     Axes[Plan]("milestone", TODAY, MILESTONE_SCENES, MILESTONE_ACTIONS, milestone_stage, state_of=lambda m, _: milestone_stage(m)),
     Axes[Plan]("record", TODAY, RECORD_SCENES, RECORD_ACTIONS, record_stage, state_of=lambda m, _: record_stage(m)),
-    Axes[Plan]("decision", TODAY, DECISION_SCENES, DECISION_ACTIONS, decision_stage, state_of=lambda m, _: decision_stage(m)),
     Axes[Plan]("spec", TODAY, SPEC_SCENES, SPEC_ACTIONS, spec_stage, state_of=lambda m, _: spec_stage(m)),
     Axes[Plan]("template", TODAY, TEMPLATE_SCENES, TEMPLATE_ACTIONS, template_stage, state_of=lambda m, _: template_stage(m)),
     Axes[Plan]("plan", TODAY, PLAN_SCENES, PLAN_ACTIONS, plan_stage, state_of=lambda m, _: plan_stage(m)),

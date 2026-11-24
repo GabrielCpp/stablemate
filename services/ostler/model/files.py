@@ -43,8 +43,6 @@ RECORD_ID = "TST-01M7N888KSZ21DR28M6BSGQTY2"
 RECORD = f"art/backlogs/acme/web/{RECORD_ID}/record.md"
 OPEN = "status: open"
 CLOSED = "status: done"
-DECISION = "art/docs/decisions/use-x/decision.md"
-ACCEPTED = "status: accepted"
 SPEC = "art/specs/TST-01M585P7WKBH9YJ8E6NA73W4S9/plan.md"
 SPEC_TYPE = "type: spec.plan"
 ARTIFACT = "art/specs/TST-01M585P7WKBH9YJ8E6NA73W4S9/plan-context.json"
@@ -100,7 +98,6 @@ MARKS = (
     Mark("plans/qa/asserts/*.json"),
     Mark(MILESTONE, PROPOSED, FIRST_EPIC_LISTED, SECOND_EPIC_LISTED, SOURCE_ITEM),
     Mark("art/backlogs/*/record.md", OPEN, CLOSED),
-    Mark(DECISION, ACCEPTED),
     Mark(SPEC, SPEC_TYPE),
     Mark(ARTIFACT, ORDER_KEY),
     Mark(TEMPLATES, TEMPLATE_DECLARED),

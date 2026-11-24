@@ -1,6 +1,6 @@
 story: none
 date: 2026-11-17
-elements: Doctor, ListEpicRows, ListStoryRows, SearchPlan, BuildIndex, QueryCovering, NextEpic, NextStory, ShowChecks, EvictCache, EditRename, EditRenameUnknown, CreateMilestone, MilestoneEpicsFirst, MilestoneEpicsBoth, MilestoneEpicsUnknown, MilestoneSourceItem, CreateSpec, CreateSpecOfUnknownStory, BacklogAdd, BacklogList, BacklogPrune, BacklogDropWithoutReason, BacklogAdopt, FileDecision, TemplateNew, TemplateFind, TemplateApply, TemplateDelete, ListArtifactKinds, ScaffoldArtifact, VetArtifact, EnvSchema, EnvCheck, EnvList
+elements: Doctor, ListEpicRows, ListStoryRows, SearchPlan, BuildIndex, QueryCovering, NextEpic, NextStory, ShowChecks, EvictCache, EditRename, EditRenameUnknown, CreateMilestone, MilestoneEpicsFirst, MilestoneEpicsBoth, MilestoneEpicsUnknown, MilestoneSourceItem, CreateSpec, CreateSpecOfUnknownStory, BacklogAdd, BacklogList, BacklogPrune, BacklogDropWithoutReason, BacklogAdopt, TemplateNew, TemplateFind, TemplateApply, TemplateDelete, ListArtifactKinds, ScaffoldArtifact, VetArtifact, EnvSchema, EnvCheck, EnvList
 
 The commands in `graph.py` take free text in the real tool: an epic name, a story id, a title, a query. The book declares
 each of them once per call it plays and writes the words into the argv, so the command has no argument to vary. A free

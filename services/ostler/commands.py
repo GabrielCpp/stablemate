@@ -279,7 +279,7 @@ class PathDesign(Command):
         Exit(1, Lines(), "the slug is not short kebab-case"),
     )
     carries = DesignPath
-    source = ("ostler/ostler/cli.py::_cmd_path_kept", "ostler/ostler/decisions.py::slug_problem", "core/stablemate_core/books.py::designs_home")
+    source = ("ostler/ostler/cli.py::_cmd_path_kept", "ostler/ostler/ids.py::slug_problem", "core/stablemate_core/books.py::designs_home")
 
 
 class PathMilestone(Command):

@@ -8,7 +8,7 @@ from ostler.book import Journey
 from ..commands import Look
 from ..fixtures import nothing
 from ..graph import (BacklogAdopt, BacklogAdd, BacklogDropWithoutReason, BacklogList, BacklogPrune, CreateMilestone, CreateSpec,
-                     CreateSpecOfUnknownStory, FileDecision, MilestoneEpicsBoth, MilestoneEpicsFirst, MilestoneEpicsUnknown,
+                     CreateSpecOfUnknownStory, MilestoneEpicsBoth, MilestoneEpicsFirst, MilestoneEpicsUnknown,
                      MilestoneSourceItem, ScaffoldArtifact, TemplateApply, TemplateDelete, TemplateFind, TemplateNew, VetArtifact)
 
 
@@ -42,8 +42,6 @@ class WriteTheDocuments(Journey):
             Look(),
             BacklogAdopt(nothing()),
             BacklogAdopt(nothing()),
-            FileDecision(nothing()),
-            FileDecision(nothing()),
             CreateSpecOfUnknownStory(nothing()),
             CreateSpec(nothing()),
             CreateSpec(nothing()),

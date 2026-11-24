@@ -6,7 +6,7 @@ from __future__ import annotations
 from ostler.book import Action, Actor, Create, Delete, Exited, Rule, Transaction, Update
 
 from ..fixtures import Nothing
-from .files import (ACCEPTED, ARTIFACT, ASSERTED, CLOSED, DECISION, FIRST_EPIC_LISTED, GUIDANCE, GUIDED, LEDGER, MILESTONE, OLD_LIST,
+from .files import (ARTIFACT, ASSERTED, CLOSED, FIRST_EPIC_LISTED, GUIDANCE, GUIDED, LEDGER, MILESTONE, OLD_LIST,
                     OLD_RECORDS, OPEN, ORDER_KEY, PASSED, PROPOSED, QA_EVIDENCE, RENDERED, QA_REPORT, RAN_ASSERT, RECORD, RECORD_ID,
                     SECOND_EPIC_LISTED, SESSION, SOURCE_ITEM, SPEC, SPEC_TYPE, STEP_ASSERT, TEMPLATE_DECLARED, TEMPLATES,
                     FileRecord)
@@ -14,7 +14,6 @@ from .state import Plan
 
 FAILED = Exited(1)
 SANDBOX_ARTIFACT = f"<sandbox>/{ARTIFACT}"
-SANDBOX_DECISION = f"<sandbox>/{DECISION}"
 
 
 def _present(path: str):
@@ -47,8 +46,6 @@ no_old_list = Rule[Nothing, Plan](f"no list at <sandbox>/{OLD_LIST}", _absent(OL
 record_taken = Rule[Nothing, Plan](f"record id '{RECORD_ID}' is already taken", _present(RECORD), FAILED)
 no_record = Rule[Nothing, Plan](f"no record '{RECORD_ID}'", _absent(RECORD), FAILED)
 reason_needed = Rule[Nothing, Plan]("--as dropped requires --reason", _always, FAILED)
-decision_exists = Rule[Nothing, Plan](
-    f"decision 'use-x' already exists at {SANDBOX_DECISION}: read it, or pick a different slug", _present(DECISION), FAILED)
 template_exists = Rule[Nothing, Plan]("template 'tpl' already exists", lambda a, s, by: TEMPLATE_DECLARED in holds(s, TEMPLATES), FAILED)
 no_template = Rule[Nothing, Plan]("no template 'tpl'", lambda a, s, by: TEMPLATE_DECLARED not in holds(s, TEMPLATES), FAILED)
 artifact_exists = Rule[Nothing, Plan](
@@ -198,15 +195,6 @@ class DropRecordWithoutReason(Action[Nothing, Plan]):
     @staticmethod
     def reduce(a: Nothing, s: Plan, by: Actor | None) -> Transaction:
         return Transaction()
-
-
-class FileDecision(Action[Nothing, Plan]):
-    accept = Nothing
-    rules = (decision_exists,)
-
-    @staticmethod
-    def reduce(a: Nothing, s: Plan, by: Actor | None) -> Transaction:
-        return Transaction(keep(s, DECISION, ACCEPTED), says=(SANDBOX_DECISION,))
 
 
 class DeclareTemplate(Action[Nothing, Plan]):
