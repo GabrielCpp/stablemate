@@ -11,6 +11,7 @@ from workhorse.pyflow import AgentTimeout, Await, Continue, Done
 from workhorse_workflows.coder.book_qa.apps import service_app
 from workhorse_workflows.coder.book_qa.nodes import (
     BOOK_OUT,
+    OUTSIDE_SYSTEM,
     PLAN_FILE,
     book_check,
     book_plan,
@@ -259,8 +260,8 @@ class BookQa(QaOwner):
             if play.exit_code:
                 return self._lap(play, [_gate(f"ostler book run {package}.{name}", play.output)], laps, blocks)
         self.call(write_qa_plan, self.ctx.spec_dir, plans, exits)
-        total = sum(plan.changed for plan in plans)
-        owed_reasons = [f"- `{plan.service}`: {plan.owed}" for plan in plans if plan.owed]
+        total = sum(plan.changed for plan in plans if OUTSIDE_SYSTEM not in plan.reason)
+        owed_reasons = [f"- `{plan.service}`: {plan.owed}" for plan in plans if plan.owed and OUTSIDE_SYSTEM not in plan.reason]
         if not played and owed_reasons:
             text = (
                 "The story's change could not be narrowed to any play, so nothing was played and these are owed "

@@ -148,12 +148,14 @@ class _Book:
         hang: bool = False,
         hangs: tuple[int, ...] = (),
         on_run: Callable[[], None] | None = None,
+        outside: tuple[str, ...] = (),
     ) -> None:
         self.script = {"check": check, "run": run, "verified": verified, "affected": affected}
         self.plans = plans or {}
         self.hang = hang
         self.hangs = hangs
         self.on_run = on_run
+        self.outside = outside
         self.timeouts: list[float | None] = []
         self.argv: dict[str, list[list[str]]] = {"check": [], "run": [], "verified": [], "stale": [], "affected": [], "index": []}
         self.cwds: list[Any] = []
@@ -191,6 +193,8 @@ class _Book:
                 raise subprocess.TimeoutExpired(argv, timeout or 0, output="half a report\n", stderr="")
         codes = self.script[verb]
         code = codes[min(len(self.argv[verb]), len(codes)) - 1]
+        if verb == "affected" and argv[argv.index("affected") + 1] in self.outside:
+            return subprocess.CompletedProcess(argv, 0, "the book describes an outside system, nothing to select\n", "")
         if verb == "affected":
             self._affected(argv, code)
         if verb == "verified" and code == 0:
@@ -1697,6 +1701,25 @@ def test_a_story_that_plays_nothing_and_owes_something_goes_back_to_the_seat_wit
     assert "could not be narrowed to any play" in report, report
     assert "- `api`: a fallback made the plan whole" in report, report
     assert "select no play" not in report, report
+
+
+def test_an_outside_system_book_whose_shared_paths_changed_owes_them_without_holding_the_story(
+    lane: Path,
+    book: Callable[..., _Book],
+    stack: _Stack,
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    scripted = book(outside=("services.api",))
+
+    agent = _Agent(lane, touch="model/records.py")
+
+    with patch.object(pyflow_park, "wait_for_answer", _parked_at([])):
+        result = drive_flow(_flow(), env(), agent)
+
+    assert result.status == "passed", result
+    assert scripted.argv["run"] == []
+    assert "- owed to the scheduled whole play: services/api/model/records.py" in _plan_md()
 
 
 def test_what_a_play_will_cover_is_logged_as_activity_before_the_play(
