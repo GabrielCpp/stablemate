@@ -10,6 +10,7 @@ class RunDetail(Screen):
         "groom/groom/assets/dashboard.js::retryOverview",
         "groom/groom/assets/dashboard.js::Overview",
         "groom/groom/assets/dashboard.js::ArchiveGone",
+        "groom/groom/assets/dashboard.js::runApi",
         "groom/groom/assets/dashboard.js::markIndexed",
         "groom/groom/assets/dashboard.js::TurnReading",
         "groom/groom/assets/dashboard.js::StepReading",
@@ -76,13 +77,14 @@ class RunDetail(Screen):
         "groom/groom/overview.py::run_overview",
         "groom/groom/overview.py::stored_overview",
         "groom/groom/app.py::_archive_overview",
+        "groom/groom/app.py::_archive_read",
         "groom/groom/archive.py::exact_dir",
         "groom/groom/archive.py::is_indexed",
     )
     route = "/"
     name = "Run detail"
     api = "/api"
-    sends = (request("GET", "/api/run/{id}/overview"), request("GET", "/api/archive/{id}/overview"), request("GET", "/api/run/{id}/activity"), request("GET", "/api/state"), request("GET", "/api/settings/attend"))
+    sends = (request("GET", "/api/run/{id}/overview"), request("GET", "/api/archive/{id}/overview"), request("GET", "/api/run/{id}/activity"), request("GET", "/api/archive/{id}/activity"), request("GET", "/api/state"), request("GET", "/api/settings/attend"))
     root = Text("#detail .detail-head", does="the selected run's header: its state dot, repo and branch, id and state, the note of what the run is doing and, when an attendant has worked on it, the attendant link")
     repo = Text("#detail .repo-branch", "repo", does="the repo and branch of the run")
     run_id = Text("#detail .run-id", "run id", does="the whole id of the run")
@@ -364,7 +366,7 @@ class RunDetail(Screen):
     activity_raw = Button(
         '#detail-panel[aria-labelledby="tab-activity"] .feedbar button.fchip.raw-toggle',
         "Raw",
-        does="at the right of the bar, after the follow control. It exposes its state as aria-pressed and works from Enter and Space. Pressing it replaces the timeline and the pane with the run's stored records, and the bar then holds only the follow control, Metric samples and Raw, with no search, selector, Problems, Steps, Info logs or key labels. While Raw shows, j, k and e move nothing. Pressing it again returns to the timeline with the selected row and its pane as they were",
+        does="at the right of the bar, after the follow control. It exposes its state as aria-pressed and works from Enter and Space. Pressing it replaces the timeline and the pane with the run's stored records, read from the archive's frozen file for an archived run, and the bar then holds only the follow control, Metric samples and Raw, with no search, selector, Problems, Steps, Info logs or key labels. While Raw shows, j, k and e move nothing. Pressing it again returns to the timeline with the selected row and its pane as they were",
     )
     activity_metrics = Button(
         '#detail-panel[aria-labelledby="tab-activity"] .feedbar button.fchip.metrics-toggle',
@@ -544,12 +546,17 @@ class RunDetail(Screen):
     turn_unreadable = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .rd .act-state:has(button.retry-turn)',
         "This turn could not be read",
-        does="shown in the pane when the turn's read fails, announced as an alert, with 'The rest of the run is still here.' The list stays as it was. Only a container run whose records are still to be pulled fails this way, because a finished turn of a native run with no record is unmatched and has nothing to retry",
+        does="shown in the pane when the turn's read fails, announced as an alert, with 'The rest of the run is still here.' The list stays as it was. A container run whose records are still to be pulled fails this way, and so does an archived run's turn whose record the archive cannot read. A finished turn of a native run with no record is unmatched and has nothing to retry",
     )
     turn_retry = Button(
         '#detail-panel[aria-labelledby="tab-activity"] button.retry-turn',
         "Retry now",
-        does="reads the turn again, which can succeed once a container run's records are pulled. A read that succeeds replaces the failure with the turn",
+        does="reads the turn again, which can succeed once a container run's records are pulled or an archive's record can be read. A read that succeeds replaces the failure with the turn",
+    )
+    archive_activity_gone = Text(
+        "#activity-gone",
+        "Activity cannot be read",
+        does="shown in place of the timeline in the Activity tab of an archived run whose frozen files are gone, announced as a status: 'This archive's files are gone. The Overview still shows the run's stored summary.' The tab stays, the timeline, the reading pane and Raw are absent, and the Overview keeps the stored summary",
     )
     activity_reading = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .detail-empty.loading:text("Reading this run")',
