@@ -52,12 +52,23 @@ class RunDetail(Screen):
         "groom/groom/assets/dashboard.js::ProblemReading",
         "groom/groom/assets/dashboard.js::DetailTabs",
         "groom/groom/assets/dashboard.js::AttentionTile",
+        "groom/groom/assets/dashboard.js::toggleSteps",
+        "groom/groom/assets/dashboard.js::toggleLogs",
+        "groom/groom/assets/dashboard.js::stepCount",
+        "groom/groom/assets/dashboard.js::toggleRaw",
+        "groom/groom/assets/dashboard.js::loadRaw",
+        "groom/groom/assets/dashboard.js::loadOlder",
+        "groom/groom/assets/dashboard.js::refreshRaw",
+        "groom/groom/assets/dashboard.js::fetchRecords",
+        "groom/groom/assets/dashboard.js::RawView",
+        "groom/groom/assets/dashboard.js::NowStrip",
+        "groom/groom/assets/dashboard.js::AttendLink",
     )
     route = "/"
     name = "Run detail"
     api = "/api"
     sends = (request("GET", "/api/run/{id}/overview"), request("GET", "/api/state"), request("GET", "/api/settings/attend"))
-    root = Text("#detail .detail-head", does="the selected run's header: its state dot, repo and branch, id and state")
+    root = Text("#detail .detail-head", does="the selected run's header: its state dot, repo and branch, id and state, the note of what the run is doing and, when an attendant has worked on it, the attendant link")
     repo = Text("#detail .repo-branch", "repo", does="the repo and branch of the run")
     run_id = Text("#detail .run-id", "run id", does="the whole id of the run")
     gate_strip = Text(
@@ -111,7 +122,7 @@ class RunDetail(Screen):
     now = Text(
         "#detail .now",
         "Where the run is now",
-        does="the strip above the Overview of a live run: the current node, how long the node has been open, the current turn, step or wait with the node's norm, agent idle and the last beat. Each length counts up every second in the browser with no reload. The norm reads 'a turn here usually takes' or 'this step usually takes'. Under five comparable runs it reads 'no norm yet: N comparable runs'. A wait on the operator reads 'Waiting on you' with 'no norm while waiting'",
+        does="the strip above the Overview of a live run: the current node, how long the node has been open, the current turn, step or wait with the node's norm, agent idle and the last beat. Each length counts up every second in the browser with no reload. The norm reads 'a turn here usually takes' or 'this step usually takes'. Under five comparable runs it reads 'no norm yet: N comparable runs'. It shows 'In node' with the time since the node began, except while only the node is known. A wait on the operator reads 'Waiting on you' and any other wait 'Waiting on <kind>', each with the time it has lasted and 'no norm while waiting'",
     )
     past_norm = Text(
         "#detail .now .warn",
@@ -202,7 +213,7 @@ class RunDetail(Screen):
     activity = Text(
         "#tab-activity",
         "Activity",
-        does="the tab of the run's agent turns, directly after Overview, so the tabs read Overview, Activity, Files and Diff, and Overview and Activity alone on a run without a sidecar. A native run's tab works as a container run's does",
+        does="the tab of the run's agent turns, directly after Overview, so the tabs read Overview, Activity, Files and Diff, and Overview and Activity alone on a run without a sidecar. A native run's tab works as a container run's does. The run detail has no Details tab and no telemetry feed. A saved view of the old feed in the browser is ignored, and the detail opens on Overview",
     )
     activity_list = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .tl[role="log"]',
@@ -222,7 +233,7 @@ class RunDetail(Screen):
     activity_fold = Button(
         '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev.steps',
         "steps fold",
-        does="a run of passed steps folded into one row that reads 'N steps · time · all passed'. Pressing it shows each step and pressing it again hides them, and aria-expanded follows. A failed step never sits inside a fold",
+        does="a run of passed steps folded into one row that reads 'N steps · time · all passed'. Pressing it shows each step and pressing it again hides them, and aria-expanded follows. A failed step never sits inside a fold. Steps opens and closes every fold at once",
     )
     activity_step = Button(
         '#detail-panel[aria-labelledby="tab-activity"] .tl button.ev.step',
@@ -304,6 +315,26 @@ class RunDetail(Screen):
         '#detail-panel[aria-labelledby="tab-activity"] button.show-all',
         "Show the whole timeline",
         does="turns the Problems view off and restores the whole timeline",
+    )
+    activity_steps = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] .feedbar button.fchip.steps-toggle',
+        "Steps",
+        does="after 'Also show' in the timeline's bar, reading 'Steps' with the number of passed steps the folds hold across the run. It exposes its state as aria-pressed and works from Enter and Space. Pressing it opens every fold into its steps, and pressing it again closes them all. Off at first",
+    )
+    activity_logs = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] .feedbar button.fchip.logs-toggle',
+        "Info logs",
+        does="after Steps, reading 'Info logs' with the number of info and warning logs of the run. It exposes its state as aria-pressed and works from Enter and Space. Pressing it reads the timeline again with each log as a row at its time inside the pass it belongs to, never splitting a fold, and pressing it again removes them. Turning it on while paused counts no log as an arrival. A debug log is no row and Raw lists it. Off at first",
+    )
+    activity_raw = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] .feedbar button.fchip.raw-toggle',
+        "Raw",
+        does="at the right of the bar, after the follow control. It exposes its state as aria-pressed and works from Enter and Space. Pressing it replaces the timeline and the pane with the run's stored records, and the bar then holds only the follow control, Metric samples and Raw, with no search, selector, Problems, Steps, Info logs or key labels. While Raw shows, j, k and e move nothing. Pressing it again returns to the timeline with the selected row and its pane as they were",
+    )
+    activity_metrics = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] .feedbar button.fchip.metrics-toggle',
+        "Metric samples",
+        does="in Raw's bar only, reading 'Metric samples' with how many the run holds once the records are read. It exposes its state as aria-pressed and works from Enter and Space. Off at first. Pressing it reads Raw again with the samples among the records, and pressing it again hides them",
     )
     activity_mark = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .tl mark',
@@ -503,7 +534,42 @@ class RunDetail(Screen):
     activity_empty = Text(
         '#detail-panel[aria-labelledby="tab-activity"] .empty-big[role="status"]',
         "No activity yet",
-        does="shown when the timeline holds no turn and no group: 'No activity yet. The first agent turn appears here when it starts.', then 'The run is alive: last beat <time> ago.' for a live run or 'The run has finished.' for an ended one. A run that reported no telemetry says so in its place",
+        does="shown when the timeline holds no turn and no group: 'No activity yet. The first agent turn appears here when it starts.', then 'The run is alive: last beat <time> ago.' for a live run or 'The run has finished.' for an ended one. A run that reported no telemetry reads 'No telemetry for this run. It was recorded before telemetry, or it exports to another collector.', the words the Details tab used, with no bar and no list",
+    )
+    raw_note = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .rawnote',
+        "Every stored record, newest first",
+        does="above the list, announced as a status: 'This run has N records', then ', with M metric samples hidden' or ', M of them metric samples', then 'Showing the newest K.' or 'Showing all of them.'",
+    )
+    raw_list = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .raw[role="log"]',
+        "Raw records",
+        does="the run's records newest first, a page of 200 at a time, read from the store and not from the 60 the old feed held. A record is a span, a log, a turn event or a churn alert, and transcripts stay in the reading pane. A span is one record, written when it ends, with its duration and its cost where it has one, and a failed span says failed. Each record shows its time, kind, node and text, and a warning or an error is marked by its kind in words as well as color. While following, new records appear at the top. A pause, by scrolling down the list or by the follow control, holds them until the follow resumes",
+    )
+    raw_older = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] .raw button.load-older',
+        "Load older records",
+        does="at the end of the list while older records remain. Pressing it reads the next 200 below the ones shown and keeps the reader's place. It reads 'Reading older records…' and is disabled while it reads, and 'Older records could not be read.' is announced as an alert when the read fails. The page that holds the oldest record removes it",
+    )
+    raw_reading = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .detail-empty.loading:text("Reading this run\'s records")',
+        "Reading this run's records…",
+        does="shown while Raw reads its first page, announced as a status and busy, and gone when the records appear",
+    )
+    raw_unreadable = Text(
+        '#detail-panel[aria-labelledby="tab-activity"] .act-state:has(button.retry-raw)',
+        "The records of this run could not be read",
+        does="shown when Raw's read fails, announced as an alert, with 'The timeline still works.' Pressing Raw again returns to a working timeline",
+    )
+    raw_retry = Button(
+        '#detail-panel[aria-labelledby="tab-activity"] button.retry-raw',
+        "Retry now",
+        does="reads Raw again. A read that succeeds replaces the failure with the records",
+    )
+    attend_link = Button(
+        "#detail .detail-head button.attend-link",
+        "attendant",
+        does="in the run head of a run an attendant has worked, reading 'an attendant is on this run' while one runs and 'last attendant' after, with the reason after a dot when the attendance recorded one. Pressing it opens the Attendant pane on that session",
     )
     files_tab = Text(
         "#tab-files",
