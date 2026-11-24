@@ -93,7 +93,7 @@ class RunDetail(Screen):
     name = "Run detail"
     api = "/api"
     sends = (request("GET", "/api/run/{id}/overview"), request("GET", "/api/archive/{id}/overview"), request("GET", "/api/run/{id}/activity"), request("GET", "/api/archive/{id}/activity"), request("GET", "/api/archive/{id}/activity/{turn}"), request("GET", "/api/archive/{id}/entry/{key}"), request("GET", "/api/archive/{id}/records"), request("GET", "/api/archive/{id}/search"), request("GET", "/api/state"), request("GET", "/api/settings/attend"))
-    root = Text("#detail .detail-head", does="the selected run's header: its state dot, repo and branch, id and state, the note of what the run is doing and, when an attendant has worked on it, the attendant link. Once the run has ended the header reads done, and its note reads 'ended <time> ago · <ending>'")
+    root = Text("#detail .detail-head", does="the selected run's header: its state dot, repo and branch, id and state, the note of what the run is doing and, when an attendant has worked on it, the attendant link. Once the run has ended the header reads done, and its note reads 'ended <date and time> · <ending>', and only the strip and the row say how long ago")
     ended_strip = Text(
         "#ended-strip",
         "Run ended",
