@@ -112,6 +112,7 @@ class Row:
     pid: int | None = None
     native: bool = False
     sidecar: bool = False
+    checkout: bool = False
     figures: None = None
     ended: None = None
 

@@ -1,16 +1,14 @@
 """The /push endpoints a workflow reports to. Each call upserts the run it names,
 and the answer only says whether groom took it."""
 
-from ostler.book import Answer, Endpoint, Refusal, Refusals
+from ostler.book import Answer, Endpoint
 
 from ...model import actions
-from .shapes import ACK, BLOCKED, ERROR, EXITED, PROGRESS, SERVER_ERROR
+from .shapes import ACK, BLOCKED, ERROR, EXITED, PROGRESS
 
 APP = "groom/groom/app.py::"
 STATE = "groom/groom/state.py::upsert_workflow"
 BAD_BODY = Answer(400, ERROR, "the body is not JSON, or is not an object")
-UNSORTABLE_NAME = Refusals(wrong_type=Refusal("Internal Server Error", 500))
-UNSORTABLE = Answer(500, SERVER_ERROR, "a name that is not text cannot be ordered against the name of another run in the same state", why="groom sorts the fleet by rank and name")
 TOOK_IT = "{ok: true}: groom took the push and the run is on the fleet"
 IGNORED = "{ok: false}: the push named no run, so groom changed nothing"
 
@@ -32,13 +30,12 @@ class PushBlocked(Endpoint):
     method = "POST"
     path = "/push/blocked"
     body = BLOCKED
-    answers = (Answer(201, ACK, TOOK_IT + " blocked on the gate file"), BAD_BODY, UNSORTABLE)
+    answers = (Answer(201, ACK, TOOK_IT + " blocked on the gate file"), BAD_BODY)
     source = (APP + "push_blocked", STATE)
     does = (
         "A workflow says it waits on the operator at a gate file. The run is blocked and holds one gate per file path; "
         "a second push for the same path replaces its question. It needs both a container id and a file path."
     )
-    refusals = UNSORTABLE_NAME
     carries = actions.PushBlocked
 
 
@@ -46,13 +43,12 @@ class PushExited(Endpoint):
     method = "POST"
     path = "/push/exited"
     body = EXITED
-    answers = (Answer(201, ACK, TOOK_IT + " finished; its gates are gone"), BAD_BODY, UNSORTABLE)
+    answers = (Answer(201, ACK, TOOK_IT + " finished; its gates are gone"), BAD_BODY)
     source = (APP + "push_exited", STATE)
     does = (
         "A workflow's process ended. The run is finished and holds no gates. An exit code that is absent or not a number "
         "leaves the run's earlier code as it was."
     )
-    refusals = UNSORTABLE_NAME
     carries = actions.PushExited
 
 

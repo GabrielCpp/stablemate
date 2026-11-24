@@ -33,7 +33,6 @@ DIVERGES = (
         for endpoint, fields in PUSH_FIELDS.items()
         for field in fields
         for kind in ("wrong type", "null")
-        if not (field == "name" and kind == "wrong type" and endpoint is not PushProgress)
     ),
     *(
         Diverges(ep, f"{field} {kind}", why=f"groom turns {field} into text with str(), so a {kind} value is not refused")

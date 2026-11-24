@@ -21,7 +21,6 @@ ERROR = Object(
     ),
 )
 
-SERVER_ERROR = Object("ServerError", status_code=Field(Int()), detail=Field(Str(), does="the framework's words for an unhandled error"))
 
 ACK = Object("Ack", ok=Field(Bool(), does="true when groom took the push, false when it lacked what it needs to know the run"))
 
@@ -119,6 +118,7 @@ ROW = Object(
         nullable=True,
         does="cost with priced and total turns, active time and items done, cached from the run's telemetry; null until groom hears from the run",
     ),
+    checkout=Field(Bool(), does="true when the run is native and its checkout is a folder on this machine, so the Files and Diff tabs have something to read"),
     ended=Field(ENDED, nullable=True, does=ENDED_NOTE),
     rank=Field(Int(), does="blocked 0, running 2, finished 3; the fleet is ordered by rank, then name"),
 )
