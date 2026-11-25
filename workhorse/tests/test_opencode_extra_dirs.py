@@ -10,7 +10,8 @@ import pytest
 
 from workhorse.config_run import AgentResilience
 from workhorse.runner.backends import turn
-from workhorse.runner.backends.opencode import OpenCodeBackend, _config_content
+from workhorse.runner.backends.opencode import OpenCodeBackend
+from workhorse.runner.backends.opencode_config import config_content
 
 
 def _extra(tmp_path: Path, *, skills: tuple[str, ...] = (), agents_md: bool = False) -> Path:
@@ -24,7 +25,7 @@ def _extra(tmp_path: Path, *, skills: tuple[str, ...] = (), agents_md: bool = Fa
 
 
 def _config(operator: str | None, add_dirs: list[Path], model: str | None = None) -> dict[str, Any]:
-    content = _config_content(operator, model, None, None, [str(path) for path in add_dirs])
+    content = config_content(operator, model, None, None, [str(path) for path in add_dirs])
     assert content is not None
     return json.loads(content)
 
@@ -44,7 +45,7 @@ def test_a_missing_skill_folder_and_a_missing_agents_file_are_skipped(tmp_path: 
 
 
 def test_an_extra_dir_with_nothing_to_load_adds_no_config(tmp_path: Path) -> None:
-    assert _config_content(None, None, None, None, [str(_extra(tmp_path))]) is None
+    assert config_content(None, None, None, None, [str(_extra(tmp_path))]) is None
 
 
 def test_the_operators_small_model_survives_and_their_lists_keep_our_entries(tmp_path: Path) -> None:
