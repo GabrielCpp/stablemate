@@ -25,8 +25,12 @@ __all__ = [
     "scan_catalog",
 ]
 
-SLASH_HARNESSES = frozenset(spec.name for spec in HARNESSES if spec.skill_ref == "slash")
-DOLLAR_HARNESSES = frozenset(spec.name for spec in HARNESSES if spec.skill_ref == "dollar")
+SLASH_HARNESSES = frozenset(
+    spec.name for spec in HARNESSES if spec.skill_ref == "slash"
+)
+DOLLAR_HARNESSES = frozenset(
+    spec.name for spec in HARNESSES if spec.skill_ref == "dollar"
+)
 
 RETIRED_HELPERS = {
     "instruction_file": "skill_link or skill_path",
@@ -139,6 +143,7 @@ class SkillRefs:
     root: Path
     home: Path
     on_missing: Callable[[str], str] | None = None
+    form: str | None = None
 
     def _resolve(self, name: str) -> SkillEntry | str:
         entry = self.catalog.get(name)
@@ -169,9 +174,13 @@ class SkillRefs:
         found = self._resolve(name)
         if isinstance(found, str):
             return found
-        if self.harness in SLASH_HARNESSES:
+        if self.form == "slash" or (
+            self.form is None and self.harness in SLASH_HARNESSES
+        ):
             return f"/{found.installed}"
-        if self.harness in DOLLAR_HARNESSES:
+        if self.form == "dollar" or (
+            self.form is None and self.harness in DOLLAR_HARNESSES
+        ):
             return f"${found.installed}"
         return f"Read `{self._show(found.path)}` and follow its instructions"
 

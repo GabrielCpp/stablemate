@@ -1,4 +1,5 @@
 """The ``Renderer`` — stateful rendering of library sources into agent adapters."""
+
 from __future__ import annotations
 
 import json
@@ -266,11 +267,15 @@ class Renderer:
         scope: str = "repo",
         home_skills: dict[str, list[Source]] | None = None,
         hand_written_dirs: Sequence[str] = (),
+        skill_forms: Mapping[str, str] | None = None,
     ):
         self.repo = repo
+        self.skill_forms = dict(skill_forms or {})
         self.hand_written_dirs = tuple(hand_written_dirs)
         self.scope = scope
-        self.regenerate = "make agent-install" if scope == "repo" else "farrier install --user"
+        self.regenerate = (
+            "make agent-install" if scope == "repo" else "farrier install --user"
+        )
         self.overwritten_by = (
             "`make agent-install` (or: farrier --repo .)"
             if scope == "repo"
@@ -394,6 +399,7 @@ class Renderer:
             root=self.repo,
             home=Path.home(),
             on_missing=missing,
+            form=self.skill_forms.get(target),
         )
 
     def check_resolved(self) -> None:
@@ -406,6 +412,7 @@ class Renderer:
                 "the reference from the library source:\n"
                 + "\n".join(dict.fromkeys(self.unresolved))
             )
+
     def policy_source(self, name: str) -> Source:
         """The library file a ``policies:`` entry names, or exit."""
         key = name.replace(".", "-")
@@ -472,7 +479,7 @@ class Renderer:
             if self.scope == "repo"
             else StrictUndefined(
                 hint="`repo.…` has no value at user scope — a user-scope skill is "
-                     "installed once for every project, so there is no repo to name."
+                "installed once for every project, so there is no repo to name."
             )
         )
         try:
@@ -495,6 +502,7 @@ class Renderer:
 
     def context_manifest(self, target: str) -> dict[str, Any]:
         """Per-repo manifest consumed by workhorse at run time (see workhorse/templates.py)."""
+
         def rel(path: Path) -> str:
             return path.relative_to(self.repo).as_posix()
 
@@ -602,10 +610,15 @@ class Renderer:
             )
             native_header = frontmatter_mapping(rendered)
             native_header.pop("metadata", None)
-            native_header["description"] = self.command_description(source, header, body)
-            lines = ["---", yaml.safe_dump(
-                native_header, sort_keys=False, allow_unicode=True
-            ).rstrip("\n")]
+            native_header["description"] = self.command_description(
+                source, header, body
+            )
+            lines = [
+                "---",
+                yaml.safe_dump(
+                    native_header, sort_keys=False, allow_unicode=True
+                ).rstrip("\n"),
+            ]
         else:
             lines = [
                 "---",
@@ -664,7 +677,8 @@ class Renderer:
     def check_roots(self, roots: set[str]) -> None:
         """Fail on any selected root that names no file in the library."""
         unknown_roots = sorted(
-            root for root in roots
+            root
+            for root in roots
             if find_in_layers("library", "roots", f"{root}.md") is None
         )
         if unknown_roots:

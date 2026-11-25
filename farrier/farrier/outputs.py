@@ -1,4 +1,5 @@
 """Full-render orchestration and the writes that install it."""
+
 from __future__ import annotations
 
 import os
@@ -51,6 +52,7 @@ from farrier.ownership import (
     owned_links,
     sweep,
 )
+from farrier.render_groups import render_groups, skill_forms
 from farrier.renderer import (
     USER_ROOT_FILES,
     Output,
@@ -142,7 +144,9 @@ REPO_MANAGED = Managed(tuple(MANAGED_DIRS), tuple(MANAGED_FILES), tuple(ASSUMED_
 
 HOME_ONLY = {"mcp", "hooks", "agents", "settings"}
 
-READS_OTHER_SKILLS = {spec.name for spec in home_harnesses() if spec.skills_reads_others}
+READS_OTHER_SKILLS = {
+    spec.name for spec in home_harnesses() if spec.skills_reads_others
+}
 
 USER_MANAGED = Managed(
     tuple(
@@ -231,9 +235,7 @@ def normalize_agents(config: ConfigLike) -> Agents:
     return parse_agents(config)
 
 
-def is_assumed_owned(
-    repo: Path, path: Path, managed: Managed = REPO_MANAGED
-) -> bool:
+def is_assumed_owned(repo: Path, path: Path, managed: Managed = REPO_MANAGED) -> bool:
     """True when *path* is one farrier owns by convention rather than by a mark."""
     rel = path.relative_to(repo).as_posix()
     return any(fnmatch(rel, pattern) for pattern in managed.assumed)
@@ -394,14 +396,15 @@ def build_renderer(
     all_skills = load_layered_sources("skill", "library", "skills")
     all_prompts = load_layered_sources("prompt", "library", "prompts")
     all_policies = load_layered_sources("policy", "library", "policies")
-    skills = selected_sources(
-        all_skills, include_skills, excluded(config, "skills")
-    )
+    skills = selected_sources(all_skills, include_skills, excluded(config, "skills"))
     prompts = selected_sources(
         all_prompts, include_prompts, excluded(config, "prompts")
     )
     check_selection(
-        [("skills", all_skills, include_skills), ("prompts", all_prompts, include_prompts)]
+        [
+            ("skills", all_skills, include_skills),
+            ("prompts", all_prompts, include_prompts),
+        ]
     )
     if not skills and not prompts and (include_skills or include_prompts):
         packs = available_names("packs", suffix=".yml")
@@ -410,7 +413,9 @@ def build_renderer(
             if packs
             else "No packs found in the configured layers."
         )
-        raise SystemExit(f"Selected packs did not match any skills or prompts. {catalog}")
+        raise SystemExit(
+            f"Selected packs did not match any skills or prompts. {catalog}"
+        )
 
     home_skills = {
         harness: selected
@@ -430,6 +435,16 @@ def build_renderer(
         all_policies,
         home_skills=home_skills,
         hand_written_dirs=agents.real_skill_dirs(),
+        skill_forms=skill_forms(
+            render_groups(
+                "repo",
+                {
+                    harness: (skills, prompts)
+                    for harness in agents.enabled
+                    if agents.get(harness)
+                },
+            )
+        ),
     )
     return renderer, roots, skills
 
@@ -492,7 +507,9 @@ def render_expected(
                     policy_names,
                 )
 
-    policy_names = [name for instruction in instructions for name in instruction.policies]
+    policy_names = [
+        name for instruction in instructions for name in instruction.policies
+    ]
     outputs.update(renderer.policy_bundles(policy_names))
     renderer.check_resolved()
 
@@ -501,7 +518,9 @@ def render_expected(
         policies = dict.fromkeys(renderer.policy_source(name) for name in policy_names)
         hooks = [*selected_hooks(prefix, skills), *policy_hooks(policies)]
         for stage in STAGES:
-            outputs[repo / RUNNERS[stage]] = Rendered(runner_text(hooks, stage), executable=True)
+            outputs[repo / RUNNERS[stage]] = Rendered(
+                runner_text(hooks, stage), executable=True
+            )
     if manager == "lefthook":
         outputs[repo / LEFTHOOK_INCLUDE] = Rendered(lefthook_include_text())
 
@@ -554,7 +573,11 @@ def user_selections(
         if harness in READS_OTHER_SKILLS:
             skills, prompts = [], []
         selections[harness] = (skills, prompts)
-    return share_home_folders(selections)
+    return {
+        harness: (group.skills, group.prompts)
+        for group in render_groups("home", selections)
+        for harness in group.harnesses
+    }
 
 
 def user_roots(home: HomeConfig) -> dict[str, str]:
@@ -576,22 +599,6 @@ def user_roots(home: HomeConfig) -> dict[str, str]:
     return selected
 
 
-def share_home_folders(
-    selections: dict[str, tuple[list[Source], list[Source]]],
-) -> dict[str, tuple[list[Source], list[Source]]]:
-    """Each harness's selection widened to the union of every harness that installs into the same home folder."""
-    by_folder: dict[str, list[str]] = {}
-    for harness in selections:
-        by_folder.setdefault(user_harness_dir(harness), []).append(harness)
-    shared: dict[str, tuple[list[Source], list[Source]]] = {}
-    for harnesses in by_folder.values():
-        skills = list(dict.fromkeys(s for h in harnesses for s in selections[h][0]))
-        prompts = list(dict.fromkeys(p for h in harnesses for p in selections[h][1]))
-        for harness in harnesses:
-            shared[harness] = (skills, prompts)
-    return shared
-
-
 def render_user_expected(config: HomeConfig, home: Path) -> dict[Path, str]:
     """The complete user-scope output set, from the stablemate config's user_library."""
     if not user_library_tables(config):
@@ -604,21 +611,25 @@ def render_user_expected(config: HomeConfig, home: Path) -> dict[Path, str]:
     all_skills = load_layered_sources("skill", "library", "skills")
     all_prompts = load_layered_sources("prompt", "library", "prompts")
 
-    selections = user_selections(config, all_skills, all_prompts)
+    groups = render_groups("home", user_selections(config, all_skills, all_prompts))
+    forms = skill_forms(groups)
     roots = user_roots(config)
     outputs: dict[Path, str] = {}
-    rendered: set[str] = set()
-    for spec in home_harnesses():
-        harness = spec.name
-        if harness not in selections:
-            continue
-        skills, prompts = selections[harness]
-        renderer = Renderer(home, "", {}, values, skills, prompts, scope="user")
-        if user_harness_dir(harness) not in rendered:
-            rendered.add(user_harness_dir(harness))
-            outputs.update(renderer.render({harness: True}, set()))
-        if harness in roots:
-            outputs.update(renderer.home_root(roots[harness], harness))
+    for group in groups:
+        renderer = Renderer(
+            home,
+            "",
+            {},
+            values,
+            group.skills,
+            group.prompts,
+            scope="user",
+            skill_forms=forms,
+        )
+        outputs.update(renderer.render({group.harnesses[0]: True}, set()))
+        for harness in group.harnesses:
+            if harness in roots:
+                outputs.update(renderer.home_root(roots[harness], harness))
     outputs.update(guard_files(config, home))
     outputs.update(agent_files(config, home))
     return outputs
@@ -642,7 +653,9 @@ def policy_hooks(policies) -> list[SkillHook]:
     return hooks
 
 
-def _split_selection(config: ConfigLike, home_config: HomeConfig) -> tuple[list[Source], dict[str, list[Source]]]:
+def _split_selection(
+    config: ConfigLike, home_config: HomeConfig
+) -> tuple[list[Source], dict[str, list[Source]]]:
     """The skills the repo selects, and per harness the user-library skills the repo neither selects nor excludes."""
     all_skills = load_layered_sources("skill", "library", "skills")
     all_prompts = load_layered_sources("prompt", "library", "prompts")
@@ -650,8 +663,14 @@ def _split_selection(config: ConfigLike, home_config: HomeConfig) -> tuple[list[
     exclude = excluded(config, "skills")
     repo_skills = selected_sources(all_skills, include, exclude)
     user_only = {
-        harness: [source for source in skills if source not in repo_skills and not matches(source, exclude)]
-        for harness, (skills, _) in user_selections(home_config, all_skills, all_prompts).items()
+        harness: [
+            source
+            for source in skills
+            if source not in repo_skills and not matches(source, exclude)
+        ]
+        for harness, (skills, _) in user_selections(
+            home_config, all_skills, all_prompts
+        ).items()
     }
     return repo_skills, user_only
 
@@ -678,8 +697,11 @@ def _source_checks(prefix: str, source: Source) -> list[CommitCheck]:
 
 def _listed(check: CommitCheck, folders: Sequence[Path], source: Source) -> ListedCheck:
     script = next(
-        (folder / check.owner / check.run for folder in folders
-         if (folder / check.owner / check.run).is_file()),
+        (
+            folder / check.owner / check.run
+            for folder in folders
+            if (folder / check.owner / check.run).is_file()
+        ),
         source.path.parent / check.run,
     )
     return ListedCheck(check.owner, check_command(script), check.budget)
@@ -712,16 +734,22 @@ def commit_checks(
     repo_folders = [repo / root for root in SKILL_ROOTS]
     for source in repo_skills:
         for check in _source_checks(prefix, source):
-            listed.setdefault((check.owner, check.run), _listed(check, repo_folders, source))
+            listed.setdefault(
+                (check.owner, check.run), _listed(check, repo_folders, source)
+            )
     policy_folders = [repo / POLICY_ROOT]
     for source in selected_policies(config):
         for check in _source_checks("", source):
-            listed.setdefault((check.owner, check.run), _listed(check, policy_folders, source))
+            listed.setdefault(
+                (check.owner, check.run), _listed(check, policy_folders, source)
+            )
     for harness, skills in user_only.items():
         folders = [home / user_harness_dir(harness) / "skills"]
         for source in skills:
             for check in _source_checks("", source):
-                listed.setdefault((check.owner, check.run), _listed(check, folders, source))
+                listed.setdefault(
+                    (check.owner, check.run), _listed(check, folders, source)
+                )
     return list(listed.values())
 
 
