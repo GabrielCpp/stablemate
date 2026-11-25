@@ -1,8 +1,7 @@
 # Releasing
 
-A push to main releases. The workflow opens or refreshes the release PR, runs the release
-gate on that PR's tree, and merges it itself. `make release` dispatches the same run
-without a push. The short version is in [README.md](../README.md#releasing). This document
+A release is proposed in a pull request and shipped by merging it. Every push to main
+opens or refreshes that PR, and `make release` does the same without a push. The short version is in [README.md](../README.md#releasing). This document
 is the mechanism: what the merge does, the upload order and the isolated smoke test in front of it, which commit types bump
 what, and the one-time PyPI and GitHub setup that lives outside the repo.
 
@@ -14,9 +13,9 @@ repo or in a dotfile.
 
 ## What the merge does
 
-The `verify` job runs `make test-release` on the release PR's tree first. A red gate
-leaves the PR open and creates no tag, so the next push retries the same release. On a
-green gate the `merge` job squashes the PR into main, and release-please creates the tags
+The push that merges the release PR runs `make test-release` on main first. A red gate
+creates no tag, so the next push to main retries the same release. On a green gate
+release-please creates the tags
 (`<dist-name>-v<version>`, e.g. `farrier-v1.5.1`) and GitHub releases. The `publish` job
 then builds every candidate, and installs the Workflows wheel against
 the sibling candidate wheels before uploading anything. That isolated install is
@@ -95,7 +94,7 @@ releasing.
 That last row is the change of consequence. Under the old shell scripts a
 non-conventional subject still produced a patch bump, so *any* commit released. Now the
 commit message is what decides whether a package is released at all, and a
-`Restructure the workflows` subject bumps nothing. If a push releases nothing,
+`Restructure the workflows` subject bumps nothing. If no release PR is open,
 that is why.
 
 Baselines live in [`.release-please-manifest.json`](../.release-please-manifest.json) and the
@@ -109,6 +108,6 @@ distribution is one entry in each, plus its build/publish steps in the workflow.
    not exist on the index yet gets a **pending** publisher, which its first upload
    converts into the project.
 2. Create the `pypi` [environment](https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment)
-   in the repository settings, with no required reviewer, so a push uploads unattended.
+   in the repository settings, with no required reviewer, so the merge is the only approval.
 3. Settings → Actions → General → **Allow GitHub Actions to create and approve pull
    requests**, or release-please cannot open the PR with the default token.

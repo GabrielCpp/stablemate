@@ -376,20 +376,20 @@ published from a laptop. See each package's README for details, and
 
 ## Releasing
 
-A push to main **releases what it carries**.
+A release is **proposed in a pull request and shipped by merging it**.
 [release-please](https://github.com/googleapis/release-please) reads the
-[Conventional Commit](https://www.conventionalcommits.org) history and opens one PR with the
-computed bumps and changelogs. The workflow runs the release gate on that PR, merges it
-and uploads. The upload runs under
+[Conventional Commit](https://www.conventionalcommits.org) history on every push to main
+and keeps one PR open with the computed bumps and changelogs. The upload runs under
 [Trusted Publishing](https://docs.pypi.org/trusted-publishers/), so no PyPI token exists.
 
 ```bash
-git push origin main   # releases every package a feat, fix, perf or refactor commit touched
-make release           # the same run on demand, without a push
+gh pr list --label 'autorelease: pending'
+# …review it, then merge it. Merging is what publishes.
+make release           # refresh the PR on demand, without a push
 ```
 
 Only `feat:`, `feature:`, `fix:`, `perf:`, `refactor:` and `revert:` commits bump a version.
-If a push releases nothing, no commit since the last tag had one of those types.
+If no release PR is open, no commit since the last tag had one of those types.
 [docs/RELEASING.md](docs/RELEASING.md) holds the upload order, the smoke test, the full
 type to bump table and the one-time PyPI setup.
 

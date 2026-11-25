@@ -1,12 +1,12 @@
-# The only release path. Landing work on main releases it, with no approval step.
+# The only release path. Merging the release PR is what releases.
 #
-#   push: main                 release-please reads the commits since each package's last
-#                              tag and opens/refreshes ONE release PR. `verify` runs the
-#                              gate on that PR's tree, `merge` squashes it into main and
-#                              has release-please tag it, and `publish` uploads to PyPI.
+#   push: main                 an ordinary push: release-please reads the commits since
+#                              each package's last tag and opens/refreshes ONE release PR.
+#                              The push that merges that PR instead runs `verify` on main,
+#                              then has release-please tag it, and `publish` uploads.
 #   workflow_dispatch          `make release`: the same run on demand, or `force_publish`.
 #
-# The gate runs before the merge, so a red suite leaves no tag behind and the next push
+# The gate runs before the tags, so a red suite leaves no tag behind and the next push
 # retries the same release. The bot's own pushes to main carry GITHUB_TOKEN, which
 # triggers no workflow, so the run never starts itself again.
 #
@@ -48,12 +48,24 @@ permissions:
   pull-requests: write
 
 jobs:
-  release-please:
+  plan:
     runs-on: ubuntu-latest
     outputs:
-      releases_created: ${{ steps.rp.outputs.releases_created }}
-      paths_released: ${{ steps.rp.outputs.paths_released }}
-      pr: ${{ steps.open.outputs.pr }}
+      merged: ${{ steps.merged.outputs.merged }}
+    steps:
+      - name: Look for a merged release PR that is not tagged yet
+        id: merged
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          merged=$(gh pr list --repo "$GITHUB_REPOSITORY" --state merged --label 'autorelease: pending' \
+            --json number --jq 'length > 0')
+          echo "merged=$merged" >> "$GITHUB_OUTPUT"
+
+  release-please:
+    needs: plan
+    if: needs.plan.outputs.merged != 'true'
+    runs-on: ubuntu-latest
     steps:
       - uses: googleapis/release-please-action@v4
         id: rp
@@ -136,24 +148,13 @@ jobs:
             git commit -m "chore: refresh uv.lock for the release"
             git push
           fi
-      - name: Find the open release PR
-        id: open
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          pr=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --label 'autorelease: pending' \
-            --json number,headRefName --jq '.[0] // empty | {number, headBranchName: .headRefName} | tojson')
-          echo "pr=$pr" >> "$GITHUB_OUTPUT"
 
   # The gate. An upload to PyPI cannot be taken back, so lint and the suites of the packages
-  # a release ships run against the release tree before it merges. paddock
+  # a release ships run against the merged tree before it is tagged. paddock
   # is left to ci.yml, because nothing it contains is uploaded.
   verify:
-    needs: release-please
-    if: >-
-      !cancelled() &&
-      (needs.release-please.outputs.releases_created == 'true' ||
-       needs.release-please.outputs.pr || inputs.force_publish)
+    needs: plan
+    if: needs.plan.outputs.merged == 'true' || inputs.force_publish
     runs-on: ubuntu-latest
     # Same bound as ci.yml's, and for the same reason: a wedged suite must not hold a
     # runner for six hours. Here it also keeps a release from hanging rather than failing.
@@ -161,7 +162,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ fromJSON(needs.release-please.outputs.pr || '{}').headBranchName || 'main' }}
+          ref: main
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.12"
@@ -177,23 +178,14 @@ jobs:
       - run: uv run playwright install --with-deps chromium
       - run: make test-release
 
-  merge:
-    needs: [release-please, verify]
-    if: >-
-      !cancelled() && needs.verify.result == 'success' && needs.release-please.outputs.pr
+  tag:
+    needs: [plan, verify]
+    if: needs.plan.outputs.merged == 'true'
     runs-on: ubuntu-latest
     outputs:
       releases_created: ${{ steps.rp.outputs.releases_created }}
       paths_released: ${{ steps.rp.outputs.paths_released }}
     steps:
-      - name: Squash the verified release PR into main
-        env:
-          GH_TOKEN: ${{ github.token }}
-          NUMBER: ${{ fromJSON(needs.release-please.outputs.pr).number }}
-          HEAD: ${{ fromJSON(needs.release-please.outputs.pr).headBranchName }}
-        run: |
-          sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/$HEAD" --jq .object.sha)
-          gh pr merge "$NUMBER" --repo "$GITHUB_REPOSITORY" --squash --match-head-commit "$sha"
       - uses: googleapis/release-please-action@v4
         id: rp
         with:
@@ -202,11 +194,10 @@ jobs:
           manifest-file: .release-please-manifest.json
 
   publish:
-    needs: [release-please, verify, merge]
+    needs: [verify, tag]
     if: >-
       !cancelled() && needs.verify.result == 'success' &&
-      (needs.release-please.outputs.releases_created == 'true' ||
-       needs.merge.outputs.releases_created == 'true' || inputs.force_publish)
+      (needs.tag.outputs.releases_created == 'true' || inputs.force_publish)
     runs-on: ubuntu-latest
     # Named so PyPI's trusted publisher can require it.
     environment: pypi
@@ -219,15 +210,13 @@ jobs:
       # list. Whatever is already on PyPI at its current version is skipped, so a
       # forced run is safe to repeat after a partial upload.
       RELEASED: >-
-        ${{ needs.merge.outputs.releases_created == 'true'
-            && needs.merge.outputs.paths_released
-            || needs.release-please.outputs.releases_created == 'true'
-            && needs.release-please.outputs.paths_released
+        ${{ needs.tag.outputs.releases_created == 'true'
+            && needs.tag.outputs.paths_released
             || '["ostler","workhorse","farrier","workflows","groom","saddlebag","stablemate"]' }}
     steps:
       - uses: actions/checkout@v4
         with:
-          # main after the merge job: this is the commit release-please tagged.
+          # main after the tag job: this is the commit release-please tagged.
           ref: main
       - uses: astral-sh/setup-uv@v5
         with:
