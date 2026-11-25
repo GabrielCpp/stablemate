@@ -1223,7 +1223,9 @@ PHASE_TURNS = ("dev-plan", "dev-build", "dev-review")
 
 
 class _SubagentBackend(NullBackend):
-    supports_subagents = True
+    @property
+    def supports_subagents(self) -> bool:
+        return True
 
 
 @pytest.fixture

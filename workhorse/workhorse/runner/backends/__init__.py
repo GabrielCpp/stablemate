@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from workhorse._vendor.stablemate_core.harness import Level, names, spec
 from workhorse._vendor.stablemate_core.profiles import resolve_harness_env
 from workhorse.runner.acp import NullTranscript, TranscriptMapper
 from workhorse.runner.failure import BackendInvocationError
@@ -20,17 +21,23 @@ if TYPE_CHECKING:
 ARGV_PROMPT_LIMIT_BYTES = 96 * 1024
 
 
+def _config_dir(directory: str) -> Path:
+    """``directory`` under the home folder, or where the CLI's own environment variable moves it."""
+    home = Path.home()
+    if directory == ".claude" and os.environ.get("CLAUDE_CONFIG_DIR"):
+        return Path(os.environ["CLAUDE_CONFIG_DIR"])
+    if directory == ".codex" and os.environ.get("CODEX_HOME"):
+        return Path(os.environ["CODEX_HOME"])
+    if directory.startswith(".config/") and os.environ.get("XDG_CONFIG_HOME"):
+        return Path(os.environ["XDG_CONFIG_HOME"]) / directory.removeprefix(".config/")
+    return home / directory
+
+
 def operator_config_dirs(harness: str) -> tuple[Path, ...]:
     """The existing directories ``harness`` loads the operator's own config, skills, instructions and plugins from."""
-    home = Path.home()
-    candidates: list[Path] = []
-    if harness == "claude":
-        candidates = [Path(os.environ.get("CLAUDE_CONFIG_DIR") or home / ".claude")]
-    elif harness == "codex":
-        candidates = [Path(os.environ.get("CODEX_HOME") or home / ".codex"), home / ".agents"]
-    elif harness == "opencode":
-        config_home = Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config")
-        candidates = [config_home / "opencode", home / ".claude" / "skills", home / ".agents" / "skills"]
+    if harness not in names():
+        return ()
+    candidates = [_config_dir(directory) for directory in spec(harness).config_dirs]
     return tuple(directory for directory in candidates if directory.is_dir())
 
 
@@ -149,8 +156,21 @@ class AgentBackend(ABC):
 
     name: str = "agent"
     default_model: str | None = None
-    supports_compaction: bool = False
-    supports_subagents: bool = False
+
+    @property
+    def supports_compaction(self) -> bool:
+        """Whether the CLI compacts a session on request, as its spec says."""
+        return self._level("compaction") is Level.NATIVE
+
+    @property
+    def supports_subagents(self) -> bool:
+        """Whether the CLI runs subagents natively, as its spec says."""
+        return self._level("subagents") is Level.NATIVE
+
+    def _level(self, capability: str) -> Level:
+        if self.name not in names():
+            return Level.NONE
+        return getattr(spec(self.name), capability).level
 
     def harness_env(self) -> dict[str, str]:
         """Operator-configured extra environment for this CLI (``[cli.<name>].env``)."""

@@ -17,6 +17,7 @@ from workhorse._vendor.stablemate_core.config import (
     resolve_workspace,
 )
 from workhorse._vendor.stablemate_core.discovery import base_library_dir
+from workhorse._vendor.stablemate_core.harness import workhorse_harnesses
 from workhorse._vendor.stablemate_core.schema import HomeConfig
 from workhorse.cli.params import load_params
 from workhorse.config_run import RunConfig
@@ -84,8 +85,9 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "--cli",
         default=None,
         metavar="NAME",
-        help="Agent CLI backend to drive this run: claude, codex, copilot, cline, or "
-        "opencode. Overrides the AGENT_CLI env var, which in turn overrides the "
+        help="Agent CLI backend to drive this run: "
+        f"{', '.join(harness.name for harness in workhorse_harnesses())}. "
+        "Overrides the AGENT_CLI env var, which in turn overrides the "
         "shared config's `default_cli` (claude when that is unset too). Selection is "
         "per-run, not per-node. To run on an OpenRouter model, use an OpenRouter-"
         "native backend (cline/opencode) and give nodes an 'openrouter/<slug>' model. "

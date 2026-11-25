@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 
+from workhorse._vendor.stablemate_core.harness import workhorse_harnesses
 from workhorse._vendor.stablemate_core.profiles import resolve_default_cli
 from workhorse._vendor.stablemate_core.schema import HomeConfig
 from workhorse.runner.backends import AgentBackend
@@ -38,7 +39,7 @@ def get_backend(name: str | None = None) -> AgentBackend:
     """The backend ``active_cli`` picks for ``name``."""
     resolved = active_cli(name)
     if resolved not in _REGISTRY:
-        available = ", ".join(sorted(_REGISTRY))
+        available = ", ".join(sorted(harness.name for harness in workhorse_harnesses()))
         raise ValueError(
             f"unknown CLI backend {resolved!r} (set AGENT_CLI, --cli or the config's "
             f"default_cli to one of: {available})"

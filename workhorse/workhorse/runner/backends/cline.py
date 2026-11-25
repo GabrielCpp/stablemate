@@ -162,8 +162,6 @@ class ClineBackend(JsonlBackend):
 
     name = "cline"
     default_model = None
-    supports_compaction = False
-    supports_subagents = False
 
     def transcript_mapper(self) -> acp.TranscriptMapper:
         return ClineTranscript()

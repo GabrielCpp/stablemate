@@ -56,7 +56,9 @@ class _Agent:
 
 
 class _Delegating(NullBackend):
-    supports_subagents = True
+    @property
+    def supports_subagents(self) -> bool:
+        return True
 
 
 def _env(tmp_path: Path, agent: _Agent, *, subagents: bool = False) -> RunEnv:

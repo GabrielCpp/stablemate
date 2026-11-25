@@ -184,6 +184,37 @@ def _merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
 _SKILL_DIRS = (".opencode/skills", ".claude/skills", ".agents/skills")
 
 
+def _graft(base: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
+    """``extra`` into ``base``: nested dicts recurse, lists join without repeats, and a scalar ``base`` set stays."""
+    grafted = dict(base)
+    for key, value in extra.items():
+        current = grafted.get(key)
+        if key not in grafted:
+            grafted[key] = value
+        elif isinstance(current, dict) and isinstance(value, dict):
+            grafted[key] = _graft(current, value)
+        elif isinstance(current, list) and isinstance(value, list):
+            grafted[key] = [*current, *(item for item in value if item not in current)]
+    return grafted
+
+
+def _extra_dirs_config(add_dirs: list[str] | None) -> dict[str, Any]:
+    """The skill folders and instruction files each extra directory holds, as the config keys that load them."""
+    skills: list[str] = []
+    instructions: list[str] = []
+    for directory in add_dirs or []:
+        root = Path(directory).resolve()
+        skills += [str(root / folder) for folder in _SKILL_DIRS if (root / folder).is_dir()]
+        if (root / "AGENTS.md").is_file():
+            instructions.append(str(root / "AGENTS.md"))
+    config: dict[str, Any] = {}
+    if skills:
+        config["skills"] = {"paths": skills}
+    if instructions:
+        config["instructions"] = instructions
+    return config
+
+
 def _worktree(cwd: Path) -> Path:
     """The git worktree opencode resolves its path rules against."""
     worktree = git_worktree(cwd)
@@ -346,9 +377,10 @@ def _config_content(
         overlay = _merge(overlay, _agent_config(agent, cwd, add_dirs))
     if delegates:
         overlay = _merge(overlay, {"agent": {d.name: _delegate_config(d) for d in delegates}})
-    if not overlay:
+    extra = _extra_dirs_config(add_dirs)
+    if not overlay and not extra:
         return operator
-    return json.dumps(_merge(base, overlay))
+    return json.dumps(_merge(_graft(base, extra), overlay))
 
 
 _CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses"
@@ -421,8 +453,6 @@ class OpenCodeBackend(JsonlBackend):
     default_model = (
         None
     )
-    supports_compaction = False
-    supports_subagents = True
 
     def transcript_mapper(self) -> acp.TranscriptMapper:
         return OpenCodeTranscript()

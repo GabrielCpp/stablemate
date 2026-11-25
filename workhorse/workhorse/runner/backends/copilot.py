@@ -175,8 +175,6 @@ class CopilotBackend(JsonlBackend):
 
     name = "copilot"
     default_model = None
-    supports_compaction = False
-    supports_subagents = False
 
     def transcript_mapper(self) -> acp.TranscriptMapper:
         return CopilotTranscript()

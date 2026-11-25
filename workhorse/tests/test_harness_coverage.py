@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -23,12 +24,12 @@ def test_the_backend_registry_holds_exactly_the_workhorse_harnesses() -> None:
 
 @pytest.mark.parametrize("harness", workhorse_harnesses(), ids=lambda harness: harness.name)
 def test_a_backend_supports_compaction_when_its_spec_does_natively(harness: HarnessSpec) -> None:
-    assert _REGISTRY[harness.name].supports_compaction == (harness.compaction.level is Level.NATIVE)
+    assert get_backend(harness.name).supports_compaction == (harness.compaction.level is Level.NATIVE)
 
 
 @pytest.mark.parametrize("harness", workhorse_harnesses(), ids=lambda harness: harness.name)
 def test_a_backend_supports_subagents_when_its_spec_does_natively(harness: HarnessSpec) -> None:
-    assert _REGISTRY[harness.name].supports_subagents == (harness.subagents.level is Level.NATIVE)
+    assert get_backend(harness.name).supports_subagents == (harness.subagents.level is Level.NATIVE)
 
 
 @pytest.mark.parametrize("harness", workhorse_harnesses(), ids=lambda harness: harness.name)
@@ -56,3 +57,12 @@ def test_the_native_transcripts_are_the_session_stores() -> None:
 def test_the_emulated_transcripts_are_the_exporters() -> None:
     emulated = {h.name for h in workhorse_harnesses() if h.transcript.level is Level.EMULATED}
     assert set(transcript._EXPORTERS) == emulated
+
+
+def test_the_backends_guide_names_exactly_the_workhorse_harnesses() -> None:
+    guide = (Path(__file__).resolve().parents[1] / "docs" / "BACKENDS.md").read_text()
+    listed = re.search(r"AGENT_CLI=\{([^}]*)\}", guide)
+    assert listed is not None
+    assert set(listed.group(1).split(",")) == {harness.name for harness in workhorse_harnesses()}
+    intro = guide.split("choosing the backend (", 1)[1].split(")", 1)[0]
+    assert set(re.findall(r"`(\w+)`", intro)) == {harness.name for harness in workhorse_harnesses()}

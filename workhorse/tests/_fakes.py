@@ -44,7 +44,9 @@ class FakeBackend(AgentBackend):
     """An ``AgentBackend`` whose two operations are plain functions the test supplies."""
 
     name = "fake"
-    supports_compaction = True
+    @property
+    def supports_compaction(self) -> bool:
+        return True
 
     def __init__(self, turn: Any = None, compact: Any = None) -> None:
         self._turn = turn

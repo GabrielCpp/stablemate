@@ -276,8 +276,6 @@ class CodexBackend(JsonlBackend):
 
     name = "codex"
     default_model = None
-    supports_compaction = False
-    supports_subagents = True
 
     def transcript_mapper(self) -> acp.TranscriptMapper:
         return CodexTranscript()
