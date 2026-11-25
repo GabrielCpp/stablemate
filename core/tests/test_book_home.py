@@ -67,6 +67,14 @@ def test_the_artifacts_worktree_on_the_starts_branch_is_the_book_root(world):
     assert books.book_home(code) == book
 
 
+def test_an_artifacts_dir_set_to_the_branchs_worktree_is_the_book_root(world, monkeypatch):
+    book = _tree(world["artifacts"], world["trees"])
+    code = _tree(world["code"], world["trees"])
+    monkeypatch.setenv(cfgmod.ARTIFACTS_DIR_ENV, str(book))
+
+    assert books.book_home(code) == book
+
+
 def test_a_branch_with_no_artifacts_worktree_reads_the_artifacts_dir(world):
     code = _tree(world["code"], world["trees"])
 

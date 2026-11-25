@@ -106,13 +106,13 @@ def book_home(start: Path) -> Path:
     top = config.artifacts_toplevel()
     identity = config.repository_identity(start)
     if top is not None and identity.main_folder == top:
-        return identity.folder / artifacts.relative_to(top)
+        return identity.folder / config.artifacts_subpath()
     if _holds_ostler_book(settings.folder):
         raise UnmovedBook(unmoved_message(settings.folder, artifacts))
     branch = _symbolic_head(start)
     if top is None or branch is None:
         return artifacts
-    return config.checkout_on(top, branch) / artifacts.relative_to(top)
+    return config.checkout_on(top, branch) / config.artifacts_subpath()
 
 
 def namespaced(root: Path) -> bool:

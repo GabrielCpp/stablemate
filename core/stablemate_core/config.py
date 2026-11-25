@@ -802,6 +802,12 @@ def artifacts_toplevel() -> Path | None:
     return _artifacts_toplevel()
 
 
+def artifacts_subpath() -> Path:
+    """The artifacts dir relative to the checkout that holds it, so the same folder can be found in any other checkout of its repository."""
+    root = resolve_artifacts_dir()
+    return root.relative_to(repository_identity(root).folder)
+
+
 def _in_artifacts_worktree(identity: RepositoryIdentity) -> bool:
     """Whether the checkout is a linked worktree of the repository holding the artifacts dir."""
     return identity.folder != identity.main_folder and identity.main_folder == _artifacts_toplevel()

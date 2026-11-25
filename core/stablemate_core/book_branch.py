@@ -71,7 +71,7 @@ def open_book_branch(start: Path, branch: str | None = None) -> Path:
     name = branch or _head(start)
     if not name:
         raise config.ConfigError(f"cannot open a book branch for {start}: it is on a detached HEAD")
-    relative = artifacts.relative_to(top)
+    relative = config.artifacts_subpath()
     base = _head(top)
     if name == base:
         return artifacts
