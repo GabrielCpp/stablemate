@@ -88,8 +88,7 @@ from farrier.sources import (
 )
 from farrier.template_values import collect_template_values
 from farrier.user_library import (
-    user_library_tables,
-    user_template_values,
+    user_library_origin, user_library_tables, user_template_values,
 )
 
 
@@ -227,7 +226,7 @@ def remove_targets(repo: Path, managed: Managed = REPO_MANAGED) -> None:
 
 
 def check_selection(
-    groups: list[tuple[str, list, set[str]]],
+    groups: list[tuple[str, list, set[str]]], origin: str = "agents.yml"
 ) -> None:
     """Fail on any selection entry that names a library file which does not exist."""
     reports: list[str] = []
@@ -238,7 +237,7 @@ def check_selection(
             close = suggestions(pattern.replace("*", "").replace("?", ""), available)
             hint = f" Closest names: {', '.join(close)}." if close else ""
             print(
-                f"warning: glob {pattern!r} in agents.yml `{kind}:` selected nothing.{hint}"
+                f"warning: glob {pattern!r} in {origin} `{kind}:` selected nothing.{hint}"
             )
         if literals:
             reports.append(
@@ -251,6 +250,7 @@ def check_selection(
                         "exist would otherwise contribute nothing and install silently — "
                         "leaving the repo without something it declared."
                     ),
+                    origin=origin,
                 )
             )
     if reports:
@@ -435,8 +435,9 @@ def user_selections(
     """Each harness's user-library skills and prompts, from the stablemate config."""
     selections: dict[str, tuple[list[Source], list[Source]]] = {}
     for harness, table in user_library_tables(home).items():
+        origin = user_library_origin(harness)
         include_skills, include_prompts, roots, _scaffolds = collect_selection(
-            table.model_dump(exclude_unset=True, exclude=HOME_ONLY)
+            table.model_dump(exclude_unset=True, exclude=HOME_ONLY), origin
         )
         if harness != "claude":
             if table.prompts:
@@ -453,12 +454,8 @@ def user_selections(
         prompts = selected_sources(
             all_prompts, include_prompts, set(exclude.prompts if exclude else [])
         )
-        check_selection(
-            [
-                ("skills", all_skills, include_skills),
-                ("prompts", all_prompts, include_prompts),
-            ]
-        )
+        groups = [("skills", all_skills, include_skills), ("prompts", all_prompts, include_prompts)]
+        check_selection(groups, origin)
         if not (
             skills
             or prompts
@@ -487,7 +484,7 @@ def user_roots(home: HomeConfig) -> dict[str, str]:
     selected: dict[str, str] = {}
     for harness, table in user_library_tables(home).items():
         _skills, _prompts, roots, _scaffolds = collect_selection(
-            table.model_dump(exclude_unset=True, exclude=HOME_ONLY)
+            table.model_dump(exclude_unset=True, exclude=HOME_ONLY), user_library_origin(harness)
         )
         if not roots:
             continue

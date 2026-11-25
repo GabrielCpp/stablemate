@@ -68,13 +68,14 @@ def unknown_selection_error(
     *,
     config_key: str = "",
     extra: str = "",
+    origin: str = "agents.yml",
 ) -> str:
     """The full message for one or more unresolvable selection entries."""
     key = config_key or kind
     singular = kind[:-1] if kind.endswith("s") else kind
     label = f"unknown {singular if len(missing) == 1 else kind}"
 
-    lines = [f"error: {label} in agents.yml `{key}:`"]
+    lines = [f"error: {label} in {origin} `{key}:`"]
     for name in sorted(missing):
         lines.append(f"  - {name}")
         close = suggestions(name, available)
@@ -87,7 +88,7 @@ def unknown_selection_error(
         lines += ["", extra]
     lines += [
         "",
-        f"Fix the name in agents.yml, or remove it from `{key}:`.",
+        f"Fix the name in {origin}, or remove it from `{key}:`.",
         "If it lives in a private overlay library farrier cannot see, point farrier at it:",
         "    farrier config set-library <path-to-your-library>",
     ]

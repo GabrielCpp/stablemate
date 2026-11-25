@@ -176,7 +176,9 @@ def parse_scaffold_ids(entries: Any, origin: str) -> set[str]:
     return ids
 
 
-def load_pack(pack_id: str, seen: set[str] | None = None) -> dict[str, Any]:
+def load_pack(
+    pack_id: str, seen: set[str] | None = None, origin: str = "agents.yml"
+) -> dict[str, Any]:
     seen = seen or set()
     if pack_id in seen:
         raise SystemExit(f"Pack include cycle detected at {pack_id}")
@@ -193,6 +195,7 @@ def load_pack(pack_id: str, seen: set[str] | None = None) -> dict[str, Any]:
                     "A pack may also be reached indirectly through another pack's "
                     "`includes:` — check those too if you did not name this one yourself."
                 ),
+                origin=origin,
             )
         )
     _layer, path = hit
@@ -208,14 +211,14 @@ def load_pack(pack_id: str, seen: set[str] | None = None) -> dict[str, Any]:
         "scaffolds": parse_scaffold_ids(data.get("scaffolds"), f"pack {pack_id}"),
     }
     for include in data.get("includes", []) or []:
-        child = load_pack(str(include), seen)
+        child = load_pack(str(include), seen, origin)
         for key, values in child.items():
             merged[key].update(values)
     return merged
 
 
 def collect_selection(
-    config: ConfigLike,
+    config: ConfigLike, origin: str = "agents.yml"
 ) -> tuple[set[str], set[str], set[str], set[str]]:
     selection: dict[str, Any] = {
         "skills": set(),
@@ -228,7 +231,7 @@ def collect_selection(
     }
     manifest = as_manifest(config)
     for pack in manifest.packs:
-        loaded = load_pack(str(pack))
+        loaded = load_pack(str(pack), origin=origin)
         for key, values in loaded.items():
             selection[key].update(values)
 

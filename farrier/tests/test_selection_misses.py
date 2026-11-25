@@ -200,3 +200,23 @@ def test_suggestions_drop_non_competitive_runners_up(tmp_path: Path) -> None:
         "stablemate/workhorse-coder-workflow",
     ]
     assert suggestions("stablemate/ostlr", catalog) == ["stablemate/ostler"]
+
+
+def test_user_install_names_the_config_table_not_agents_yml(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    library = make_library(tmp_path)
+    config = tmp_path / "stablemate.toml"
+    config.write_text(
+        'config_version = 1\n\n[user_library.claude]\npacks = ["ghost"]\n', encoding="utf-8"
+    )
+    monkeypatch.setenv("STABLEMATE_CONFIG", str(config))
+    home = tmp_path / "home"
+    home.mkdir()
+
+    with pytest.raises(SystemExit) as excinfo:
+        main(["install", "--user", "--home", str(home), "--library", str(library)])
+
+    message = str(excinfo.value)
+    assert f"unknown pack in {config} [user_library.claude] `packs:`" in message
+    assert "agents.yml" not in message

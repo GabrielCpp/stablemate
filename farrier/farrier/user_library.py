@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from farrier._vendor.stablemate_core.config import config_path
 from farrier._vendor.stablemate_core.harness import home_harnesses
 from farrier._vendor.stablemate_core.schema import HomeConfig, Selection
 
@@ -36,3 +37,8 @@ def user_library_tables(home: HomeConfig) -> dict[str, Selection]:
 def user_template_values(home: HomeConfig) -> dict[str, Any]:
     """``[user_library.template]`` — one table, shared by every harness."""
     return {} if home.user_library is None else dict(home.user_library.template)
+
+
+def user_library_origin(harness: str) -> str:
+    """Where a user-library selection is written, for the errors that name it."""
+    return f"{config_path()} [{USER_LIBRARY_KEY}.{harness}]"
