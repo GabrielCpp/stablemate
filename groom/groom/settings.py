@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from typing import Any
 
 from workhorse._vendor.stablemate_core.config import load_home_config, write_config_section
+from workhorse._vendor.stablemate_core.harness import spec, workhorse_harnesses
 from workhorse._vendor.stablemate_core.schema import DispatchParam, HomeConfig
+
+logger = logging.getLogger(__name__)
 
 ATTEND_SECTION = "groom.attend"
 
@@ -166,6 +170,22 @@ class DispatchQueueSettings:
         }
 
 
+def _cli_options(declared: tuple[str, ...]) -> tuple[str, ...]:
+    """The harnesses a ``cli`` select offers: the registry's when ``declared`` is empty, else ``declared`` with a warning for each name workhorse cannot drive."""
+    driven = tuple(harness.name for harness in workhorse_harnesses())
+    if not declared:
+        return driven
+    for option in declared:
+        try:
+            spec(option)
+        except ValueError as error:
+            logger.warning("dispatch cli option %r is not a known harness: %s", option, error)
+            continue
+        if option not in driven:
+            logger.warning("dispatch cli option %r is a harness workhorse does not drive", option)
+    return declared
+
+
 def _dispatch_params(raw: list[DispatchParam]) -> tuple[DispatchParamSettings, ...]:
     """A queue's ``params`` array; an entry without a name is skipped, the rest are kept."""
     params: list[DispatchParamSettings] = []
@@ -173,14 +193,18 @@ def _dispatch_params(raw: list[DispatchParam]) -> tuple[DispatchParamSettings, .
         name = entry.name.strip()
         if not name:
             continue
+        kind = entry.type.strip().lower() or "string"
+        options = tuple(entry.options)
+        if name == "cli" and kind == "select":
+            options = _cli_options(options)
         params.append(
             DispatchParamSettings(
                 name=name,
                 label=entry.label or name,
-                type=entry.type.strip().lower() or "string",
+                type=kind,
                 required=entry.required,
                 default=entry.default,
-                options=tuple(entry.options),
+                options=options,
                 template=entry.template,
             )
         )
