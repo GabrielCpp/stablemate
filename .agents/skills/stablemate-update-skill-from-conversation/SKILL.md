@@ -1,10 +1,12 @@
 ---
+name: stablemate-update-skill-from-conversation
 description: "Fold this conversation's durable learnings back into the agent library — skills, prompts/commands, and root instruction files"
+disable-model-invocation: true
 metadata:
   name: update-skill-from-conversation
   generated_by: farrier
   source: library/prompts/misc/update-skill-from-conversation.md
-  resolve: "farrier source .agents/prompts/stablemate-update-skill-from-conversation.prompt.md"
+  resolve: "farrier source .agents/skills/stablemate-update-skill-from-conversation/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
 ---
 
