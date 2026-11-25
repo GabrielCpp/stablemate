@@ -83,7 +83,7 @@ Then find its home, preferring an **edit** over a new file:
   `research`); repo-specific deltas live in `projects/<repo>/` and must **not**
   restate a generic skill — cross-link it instead with
   `{{ skill_link("<name>") }}`. Follow the
-  reuse-before-create decision tree in `library/skills/CLAUDE.md`.
+  reuse-before-create decision tree in `library/skills/AGENTS.md`.
 - **Commands** — search `library/prompts/<group>/` for a prompt that already does
   the task. Extend it rather than adding a near-duplicate (two commands doing
   almost the same thing is the indirection the pack policy warns against).
@@ -123,7 +123,7 @@ means route through the library.
 - **Wire new artifacts into a pack.** A new skill/command/prompt is only
   installed if a pack a repo selects lists it (`skills:` as `<group>/<name>`,
   `prompts:` as `<group>/<name>`), or the repo selects it directly in its
-  top-level `skills:` / `prompts:`. Follow `packs/CLAUDE.md`: no single-entry
+  top-level `skills:` / `prompts:`. Follow `packs/AGENTS.md`: no single-entry
   packs, no project packs.
 
 ## 5. Re-install and verify — in every consuming repo
