@@ -106,6 +106,9 @@ jobs:
           make check-no-giveup
           make check-library
           make check-skills
+          make check-no-env
+          make check-agent-outputs
+          make check-public
           make test-scripts
 
   # Separate job because it answers a different question and its failure means something
