@@ -1,10 +1,10 @@
 ---
 name: stablemate-commit
-description: "Load before you stage, commit or push anything. The procedure every finished change lands under: look at the tree first, one concern per commit, the gate before the commit, staging by explicit path and never `-A`, a Conventional Commits subject release-please can read with the scope vocabulary and the story-id footer, and the commit kept local on the current branch."
+description: "Load before you stage, commit or push anything in this repo. The procedure every finished change lands under: look at the tree first, one concern per commit, the gate before the commit, staging by explicit path and never `-A`, a Conventional Commits subject release-please can read with the scope vocabulary and the story-id footer, and the commit kept local on the current branch."
 metadata:
   name: commit
   generated_by: farrier
-  source: library/skills/method/commit/SKILL.md
+  source: library/skills/repo/commit/SKILL.md
   resolve: "farrier source .agents/skills/stablemate-commit/SKILL.md"
   do_not_edit: "generated — run the `resolve` command below for this machine's editable source path, edit that, then `make agent-install` to regenerate"
   tags: [git, process]
