@@ -14,15 +14,14 @@ from git import Repo
 from git.exc import GitError
 from ostler import path as okf_path
 from ostler.model import find_root
-from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
-from ruamel.yaml.scalarstring import ScalarString
 from workhorse._vendor.stablemate_core.harness import repo_harnesses
 from workhorse_workflows.kit import commit_all, head_sha, load_json, run_tool
 from workhorse_workflows.kit.manifest import read_manifest
 from workhorse_workflows.coder.shared.contract import declared_service_paths, service_problems
 from workhorse_workflows.coder.shared import stubs
 from workhorse_workflows.coder.shared.blueprint import blueprint
+from workhorse_workflows.coder.genesis.yaml_merge import assign_seq, round_trip_yaml
 from workhorse_workflows.coder.shared.schemas.genesis import (
     AgentsYml,
     EpicsRoot,
@@ -199,7 +198,7 @@ def write_agents_yml(
     except OSError as exc:
         return AgentsYml(note=f"existing agents.yml is unreadable ({exc}); refusing to clobber it")
 
-    yml = _yaml(source)
+    yml = round_trip_yaml(source)
     data: dict = {}
     if path.is_file():
         try:
@@ -222,7 +221,7 @@ def write_agents_yml(
 
     for key, values in (("packs", list(packs)), ("scaffolds", scaffold_ids)):
         if values:
-            _assign_seq(data, key, list(dict.fromkeys([*(data.get(key) or []), *values])))
+            assign_seq(data, key, list(dict.fromkeys([*(data.get(key) or []), *values])))
 
     path_value = service_root.strip().strip("/") or "."
     entry_name = service or (Path(service_root).name if service_root else "")
@@ -268,39 +267,6 @@ def write_agents_yml(
 def _with_drops(note: str, drops: Sequence[str]) -> str:
     """`note` with whatever this merge threw away appended, one line each."""
     return "\n".join([note, *drops]) if drops else note
-
-
-def _yaml(source: str = "") -> YAML:
-    """Round-trip loader/dumper: comments, key order and flow style survive the merge."""
-    y = YAML()
-    y.preserve_quotes = True
-    y.default_flow_style = False
-    y.width = 4096
-    seq = _sequence_indent(source)
-    y.indent(mapping=2, sequence=seq + 2, offset=seq)
-    return y
-
-
-def _sequence_indent(source: str, default: int = 2) -> int:
-    """How far `source` indents a top-level block-sequence item, or `default`."""
-    indents = [len(line) - len(line.lstrip(" ")) for line in source.splitlines()
-               if line.lstrip(" ").startswith("- ") or line.strip() == "-"]
-    return min(indents) if indents else default
-
-
-def _assign_seq(mapping: dict, key: str, merged: list) -> None:
-    """Set `mapping[key]` to `merged`, keeping the existing sequence node when possible."""
-    current = mapping.get(key)
-    if isinstance(current, list) and list(current) == merged[:len(current)]:
-        current.extend(_like(current[0] if current else None, item)
-                       for item in merged[len(current):])
-        return
-    mapping[key] = merged
-
-
-def _like(sibling, value: str):
-    """Return `value` quoted the way `sibling` is quoted."""
-    return type(sibling)(value) if isinstance(sibling, ScalarString) else value
 
 
 
