@@ -34,7 +34,7 @@ def test_the_reference_lists_every_manifest_key_in_yaml():
 
     for row in reference_rows(Manifest):
         assert f"### `{row.path}`" in text
-    assert "`agents.codex.skills_from`" in text
+    assert "`agents.claude.skills_from`" in text
 
 
 def test_agents_yml_wins_over_a_legacy_name(tmp_path):
@@ -77,16 +77,16 @@ def test_the_agents_list_form_enables_exactly_those_harnesses():
 
 def test_a_skills_from_table_enables_and_links():
     manifest = parse_manifest_text(
-        "agents:\n  claude: true\n  codex: {skills_from: claude}\n", _SRC
+        "agents:\n  codex: true\n  claude: {skills_from: codex}\n", _SRC
     )
 
-    assert manifest.agents.links() == {"codex": "claude"}
+    assert manifest.agents.links() == {"claude": "codex"}
     assert manifest.agents.enabled()["codex"] is True
 
 
 def test_a_link_to_a_disabled_harness_names_its_key_path():
     with pytest.raises(ConfigError, match=r"agents.*skills_from"):
-        parse_manifest_text("agents:\n  codex: {skills_from: claude}\n", _SRC)
+        parse_manifest_text("agents:\n  claude: {skills_from: codex}\n", _SRC)
 
 
 def test_vars_merges_into_template_and_template_wins():

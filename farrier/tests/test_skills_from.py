@@ -1,4 +1,4 @@
-"""`agents.<harness>.skills_from`: one rendered copy of the skills, symlinked for the others."""
+"""`agents.claude.skills_from`: Claude links each skill folder to the one in `.agents/skills`."""
 
 from __future__ import annotations
 
@@ -7,10 +7,15 @@ from pathlib import Path
 
 import pytest
 
+from farrier._vendor.stablemate_core.schema.manifest import (
+    HARNESSES,
+    LINK_SOURCES,
+    LINKING_HARNESS,
+)
 from farrier.agents import parse_agents
 from farrier.install import main
 
-LINKED = "agents:\n  claude: true\n  codex:\n    skills_from: claude\n"
+LINKED = "agents:\n  codex: true\n  claude:\n    skills_from: codex\n"
 
 
 def make_library(tmp_path: Path) -> Path:
@@ -38,34 +43,25 @@ def check(repo: Path, library: Path) -> int:
 
 
 def test_a_link_to_an_unknown_harness_is_rejected() -> None:
-    with pytest.raises(SystemExit) as excinfo:
-        parse_agents({"agents": {"claude": True, "codex": {"skills_from": "cursor"}}})
-    assert "not a harness" in str(excinfo.value)
+    with pytest.raises(SystemExit, match="cursor"):
+        parse_agents({"agents": {"codex": True, "claude": {"skills_from": "cursor"}}})
 
 
-def test_a_harness_cannot_link_from_itself() -> None:
-    with pytest.raises(SystemExit) as excinfo:
-        parse_agents({"agents": {"claude": {"skills_from": "claude"}}})
-    assert "cannot link its own skills" in str(excinfo.value)
+@pytest.mark.parametrize("source", [h for h in HARNESSES if h not in LINK_SOURCES])
+def test_claude_links_only_from_a_harness_that_reads_agents_skills(source: str) -> None:
+    with pytest.raises(SystemExit, match=r"\.agents/skills"):
+        parse_agents({"agents": {"claude": {"skills_from": source}}})
+
+
+@pytest.mark.parametrize("harness", [h for h in HARNESSES if h != LINKING_HARNESS])
+def test_only_claude_may_link_its_skills(harness: str) -> None:
+    with pytest.raises(SystemExit, match=f"agents.{harness}"):
+        parse_agents({"agents": {"claude": True, harness: {"skills_from": "claude"}}})
 
 
 def test_a_link_from_a_disabled_harness_is_rejected() -> None:
-    with pytest.raises(SystemExit) as excinfo:
-        parse_agents({"agents": {"claude": False, "codex": {"skills_from": "claude"}}})
-    assert "not enabled" in str(excinfo.value)
-
-
-def test_a_link_from_a_linked_harness_is_rejected() -> None:
-    config = {
-        "agents": {
-            "claude": True,
-            "codex": {"skills_from": "claude"},
-            "copilot": {"skills_from": "codex"},
-        }
-    }
-    with pytest.raises(SystemExit) as excinfo:
-        parse_agents(config)
-    assert "itself links its skills" in str(excinfo.value)
+    with pytest.raises(SystemExit, match="not enabled"):
+        parse_agents({"agents": {"codex": False, "claude": {"skills_from": "codex"}}})
 
 
 def test_a_mapping_without_skills_from_is_rejected() -> None:
@@ -76,11 +72,11 @@ def test_a_mapping_without_skills_from_is_rejected() -> None:
 
 def test_a_linked_harness_counts_as_enabled() -> None:
     agents = parse_agents(
-        {"agents": {"claude": True, "codex": {"skills_from": "claude"}}}
+        {"agents": {"codex": True, "claude": {"skills_from": "codex"}}}
     )
-    assert agents.get("codex")
-    assert agents.links == {"codex": "claude"}
-    assert agents.real_skill_harnesses() == ["claude"]
+    assert agents.get("claude")
+    assert agents.links == {"claude": "codex"}
+    assert agents.real_skill_harnesses() == ["codex"]
 
 
 def test_install_links_each_skill_folder_relatively(tmp_path: Path) -> None:
@@ -88,38 +84,18 @@ def test_install_links_each_skill_folder_relatively(tmp_path: Path) -> None:
     repo = tmp_path / "acme"
     assert install(repo, library, LINKED + "skills:\n  - db\n  - cache\n") == 0
 
-    link = repo / ".agents/skills/acme-db"
+    link = repo / ".claude/skills/acme-db"
     assert link.is_symlink()
-    assert os.readlink(link) == "../../.claude/skills/acme-db"
+    assert os.readlink(link) == "../../.agents/skills/acme-db"
     assert (link / "SKILL.md").read_text(encoding="utf-8").startswith("---\n")
-    assert not (repo / ".agents/skills/acme-db/SKILL.md").is_symlink()
-    assert (repo / ".claude/skills/acme-db/SKILL.md").is_file()
-
-
-def test_a_linked_harness_still_gets_its_own_prompts_and_manifest(
-    tmp_path: Path,
-) -> None:
-    library = make_library(tmp_path)
-    (library / "library" / "prompts" / "ship.md").write_text(
-        "---\ndescription: Ship it\n---\n\nShip.\n", encoding="utf-8"
-    )
-    repo = tmp_path / "acme"
-    assert install(repo, library, LINKED + "skills:\n  - db\nprompts:\n  - ship\n") == 0
-
-    prompt_skill = repo / ".agents/skills/acme-ship"
-    assert not prompt_skill.is_symlink()
-    assert "disable-model-invocation: true" in (prompt_skill / "SKILL.md").read_text(
-        encoding="utf-8"
-    )
-    assert (prompt_skill / "agents/openai.yaml").is_file()
-    assert (repo / ".claude/commands/acme-ship.md").is_file()
-    assert (repo / ".agents/agents-context.codex.json").is_file()
+    assert not (repo / ".claude/skills/acme-db/SKILL.md").is_symlink()
+    assert (repo / ".agents/skills/acme-db/SKILL.md").is_file()
 
 
 def test_a_hand_written_skill_in_the_source_dir_gets_a_symlink(tmp_path: Path) -> None:
     library = make_library(tmp_path)
     repo = tmp_path / "acme"
-    mine = repo / ".claude/skills/mine/SKILL.md"
+    mine = repo / ".agents/skills/mine/SKILL.md"
     mine.parent.mkdir(parents=True)
     mine.write_text(
         "---\nname: mine\ndescription: Mine.\n---\n\nMine.\n", encoding="utf-8"
@@ -127,7 +103,7 @@ def test_a_hand_written_skill_in_the_source_dir_gets_a_symlink(tmp_path: Path) -
 
     assert install(repo, library, LINKED + "skills:\n  - db\n") == 0
 
-    assert os.readlink(repo / ".agents/skills/mine") == "../../.claude/skills/mine"
+    assert os.readlink(repo / ".claude/skills/mine") == "../../.agents/skills/mine"
     assert mine.read_text(encoding="utf-8").endswith("Mine.\n")
     assert check(repo, library) == 0
 
@@ -137,26 +113,26 @@ def test_a_wrong_symlink_is_rewritten(tmp_path: Path) -> None:
     repo = tmp_path / "acme"
     config = LINKED + "skills:\n  - db\n"
     assert install(repo, library, config) == 0
-    link = repo / ".agents/skills/acme-db"
+    link = repo / ".claude/skills/acme-db"
     link.unlink()
-    os.symlink("../../.claude/skills/elsewhere", link)
+    os.symlink("../../.agents/skills/elsewhere", link)
 
     assert install(repo, library, config) == 0
 
-    assert os.readlink(link) == "../../.claude/skills/acme-db"
+    assert os.readlink(link) == "../../.agents/skills/acme-db"
 
 
 def test_a_stale_symlink_is_swept(tmp_path: Path) -> None:
     library = make_library(tmp_path)
     repo = tmp_path / "acme"
     assert install(repo, library, LINKED + "skills:\n  - db\n  - cache\n") == 0
-    assert (repo / ".agents/skills/acme-cache").is_symlink()
+    assert (repo / ".claude/skills/acme-cache").is_symlink()
 
     assert install(repo, library, LINKED + "skills:\n  - db\n") == 0
 
-    assert not (repo / ".agents/skills/acme-cache").is_symlink()
-    assert not (repo / ".agents/skills/acme-cache").exists()
-    assert (repo / ".agents/skills/acme-db").is_symlink()
+    assert not (repo / ".claude/skills/acme-cache").is_symlink()
+    assert not (repo / ".claude/skills/acme-cache").exists()
+    assert (repo / ".claude/skills/acme-db").is_symlink()
 
 
 def test_a_foreign_symlink_is_not_swept(tmp_path: Path) -> None:
@@ -165,7 +141,7 @@ def test_a_foreign_symlink_is_not_swept(tmp_path: Path) -> None:
     assert install(repo, library, LINKED + "skills:\n  - db\n") == 0
     outside = tmp_path / "elsewhere"
     outside.mkdir()
-    foreign = repo / ".agents/skills/theirs"
+    foreign = repo / ".claude/skills/theirs"
     os.symlink(outside, foreign)
 
     assert install(repo, library, LINKED + "skills:\n  - db\n") == 0
@@ -179,29 +155,29 @@ def test_a_foreign_symlink_at_a_link_path_aborts_the_install(tmp_path: Path) -> 
     repo = tmp_path / "acme"
     outside = tmp_path / "elsewhere"
     outside.mkdir()
-    foreign = repo / ".agents/skills/acme-db"
+    foreign = repo / ".claude/skills/acme-db"
     foreign.parent.mkdir(parents=True)
     os.symlink(outside, foreign)
 
     with pytest.raises(SystemExit) as excinfo:
         install(repo, library, LINKED + "skills:\n  - db\n")
 
-    assert ".agents/skills/acme-db" in str(excinfo.value)
+    assert ".claude/skills/acme-db" in str(excinfo.value)
     assert os.readlink(foreign) == str(outside)
-    assert not (repo / ".claude/skills/acme-db").exists()
+    assert not (repo / ".agents/skills/acme-db").exists()
 
 
 def test_a_real_folder_at_a_link_path_aborts_the_install(tmp_path: Path) -> None:
     library = make_library(tmp_path)
     repo = tmp_path / "acme"
-    held = repo / ".agents/skills/acme-db/SKILL.md"
+    held = repo / ".claude/skills/acme-db/SKILL.md"
     held.parent.mkdir(parents=True)
     held.write_text("---\nname: acme-db\n---\n\nMine.\n", encoding="utf-8")
 
     with pytest.raises(SystemExit) as excinfo:
         install(repo, library, LINKED + "skills:\n  - db\n")
 
-    assert ".agents/skills/acme-db" in str(excinfo.value)
+    assert ".claude/skills/acme-db" in str(excinfo.value)
     assert held.read_text(encoding="utf-8").endswith("Mine.\n")
 
 
@@ -210,12 +186,12 @@ def test_switching_to_linked_sweeps_the_generated_copy(tmp_path: Path) -> None:
     repo = tmp_path / "acme"
     both = "agents:\n  claude: true\n  codex: true\nskills:\n  - db\n"
     assert install(repo, library, both) == 0
-    assert (repo / ".agents/skills/acme-db/SKILL.md").is_file()
+    assert (repo / ".claude/skills/acme-db/SKILL.md").is_file()
 
     assert install(repo, library, LINKED + "skills:\n  - db\n") == 0
 
-    assert (repo / ".agents/skills/acme-db").is_symlink()
-    assert (repo / ".claude/skills/acme-db/SKILL.md").is_file()
+    assert (repo / ".claude/skills/acme-db").is_symlink()
+    assert (repo / ".agents/skills/acme-db/SKILL.md").is_file()
     assert check(repo, library) == 0
 
 
@@ -225,13 +201,13 @@ def test_switching_back_to_real_folders_refuses_to_write_through_the_links(
     library = make_library(tmp_path)
     repo = tmp_path / "acme"
     assert install(repo, library, LINKED + "skills:\n  - db\n") == 0
-    before = (repo / ".claude/skills/acme-db/SKILL.md").read_text(encoding="utf-8")
+    before = (repo / ".agents/skills/acme-db/SKILL.md").read_text(encoding="utf-8")
 
     both = "agents:\n  claude: true\n  codex: true\nskills:\n  - db\n"
     with pytest.raises(SystemExit):
         install(repo, library, both)
 
-    assert (repo / ".claude/skills/acme-db/SKILL.md").read_text(
+    assert (repo / ".agents/skills/acme-db/SKILL.md").read_text(
         encoding="utf-8"
     ) == before
 
@@ -250,10 +226,10 @@ def test_check_reports_a_missing_symlink(
     library = make_library(tmp_path)
     repo = tmp_path / "acme"
     assert install(repo, library, LINKED + "skills:\n  - db\n") == 0
-    (repo / ".agents/skills/acme-db").unlink()
+    (repo / ".claude/skills/acme-db").unlink()
 
     assert check(repo, library) == 1
-    assert "missing: .agents/skills/acme-db" in capsys.readouterr().out
+    assert "missing: .claude/skills/acme-db" in capsys.readouterr().out
 
 
 def test_check_reports_a_wrong_symlink(
@@ -262,14 +238,14 @@ def test_check_reports_a_wrong_symlink(
     library = make_library(tmp_path)
     repo = tmp_path / "acme"
     assert install(repo, library, LINKED + "skills:\n  - db\n") == 0
-    link = repo / ".agents/skills/acme-db"
+    link = repo / ".claude/skills/acme-db"
     link.unlink()
-    os.symlink("../../.claude/skills/acme-cache", link)
+    os.symlink("../../.agents/skills/acme-cache", link)
 
     assert check(repo, library) == 1
     out = capsys.readouterr().out
-    assert "changed: .agents/skills/acme-db" in out
-    assert "symlink to ../../.claude/skills/acme-cache" in out
+    assert "changed: .claude/skills/acme-db" in out
+    assert "symlink to ../../.agents/skills/acme-cache" in out
 
 
 def test_check_reports_an_extra_symlink(
@@ -278,10 +254,10 @@ def test_check_reports_an_extra_symlink(
     library = make_library(tmp_path)
     repo = tmp_path / "acme"
     assert install(repo, library, LINKED + "skills:\n  - db\n") == 0
-    os.symlink("../../.claude/skills/gone", repo / ".agents/skills/gone")
+    os.symlink("../../.agents/skills/gone", repo / ".claude/skills/gone")
 
     assert check(repo, library) == 1
-    assert "extra: .agents/skills/gone" in capsys.readouterr().out
+    assert "extra: .claude/skills/gone" in capsys.readouterr().out
 
 
 def test_check_reports_a_real_folder_where_a_link_belongs(
@@ -290,7 +266,7 @@ def test_check_reports_a_real_folder_where_a_link_belongs(
     library = make_library(tmp_path)
     repo = tmp_path / "acme"
     assert install(repo, library, LINKED + "skills:\n  - db\n") == 0
-    link = repo / ".agents/skills/acme-db"
+    link = repo / ".claude/skills/acme-db"
     link.unlink()
     link.mkdir()
 
@@ -305,7 +281,7 @@ def test_a_sweep_of_the_linked_dir_never_deletes_the_source_files(
     repo = tmp_path / "acme"
     config = LINKED + "skills:\n  - db\n"
     assert install(repo, library, config) == 0
-    source_file = repo / ".claude/skills/acme-db/SKILL.md"
+    source_file = repo / ".agents/skills/acme-db/SKILL.md"
 
     assert install(repo, library, config) == 0
     assert install(repo, library, config) == 0
@@ -324,7 +300,7 @@ def test_cross_skill_links_in_the_shared_copy_point_at_the_source_homes(
     repo = tmp_path / "acme"
     assert install(repo, library, LINKED + "skills:\n  - db\n  - cache\n") == 0
 
-    body = (repo / ".agents/skills/acme-db/SKILL.md").read_text(encoding="utf-8")
+    body = (repo / ".claude/skills/acme-db/SKILL.md").read_text(encoding="utf-8")
     assert "../acme-cache/SKILL.md" in body
 
 
@@ -360,5 +336,47 @@ def test_a_home_skill_link_in_the_shared_copy_points_at_the_source_home(
         == 0
     )
 
-    body = (repo / ".agents/skills/acme-db/SKILL.md").read_text(encoding="utf-8")
-    assert "See ~/.claude/skills/review/SKILL.md." in body
+    body = (repo / ".claude/skills/acme-db/SKILL.md").read_text(encoding="utf-8")
+    assert "See ~/.agents/skills/review/SKILL.md." in body
+
+
+def test_a_harness_that_takes_prompts_gets_no_link_to_their_skill_form(
+    tmp_path: Path,
+) -> None:
+    library = make_library(tmp_path)
+    (library / "library" / "prompts" / "ship.md").write_text(
+        "---\ndescription: Ship it\n---\n\nShip.\n", encoding="utf-8"
+    )
+    repo = tmp_path / "acme"
+    selection = "agents:\n  codex: true\n  claude:\n    skills_from: codex\n"
+    assert install(repo, library, selection + "skills:\n  - db\nprompts:\n  - ship\n") == 0
+
+    assert (repo / ".agents/skills/acme-ship/SKILL.md").is_file()
+    assert (repo / ".claude/commands/acme-ship.md").is_file()
+    assert (repo / ".claude/skills/acme-db").is_symlink()
+    assert not (repo / ".claude/skills/acme-ship").exists()
+    assert (repo / ".agents/agents-context.claude.json").is_file()
+
+
+def test_a_codex_prompt_from_an_earlier_install_is_swept(tmp_path: Path) -> None:
+    library = make_library(tmp_path)
+    (library / "library" / "prompts" / "ship.md").write_text(
+        "---\ndescription: Ship it\n---\n\nShip.\n", encoding="utf-8"
+    )
+    repo = tmp_path / "acme"
+    selection = "skills:\n  - db\nprompts:\n  - ship\n"
+    assert install(repo, library, "agents:\n  claude: true\n" + selection) == 0
+    earlier = repo / ".agents/prompts/acme-ship.prompt.md"
+    earlier.parent.mkdir(parents=True)
+    earlier.write_text(
+        (repo / ".claude/commands/acme-ship.md").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    hand_written = repo / ".agents/prompts/mine.md"
+    hand_written.write_text("Mine.\n", encoding="utf-8")
+
+    assert install(repo, library, "agents:\n  codex: true\n" + selection) == 0
+
+    assert not earlier.exists()
+    assert hand_written.is_file()
+    assert (repo / ".agents/skills/acme-ship/SKILL.md").is_file()

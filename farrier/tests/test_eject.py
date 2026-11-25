@@ -274,20 +274,20 @@ def test_the_linked_harness_keeps_a_valid_symlink_after_the_eject(
     library = make_library(tmp_path)
     repo = tmp_path / "acme"
     config = (
-        "agents:\n  claude: true\n  codex:\n    skills_from: claude\n"
+        "agents:\n  codex: true\n  claude:\n    skills_from: codex\n"
         "skills:\n  - stablemate/db\n"
     )
     install(repo, library, config)
 
     assert run(repo, library, "eject", "acme-db") == 0
 
-    link = repo / ".agents/skills/acme-db"
-    assert os.readlink(link) == "../../.claude/skills/acme-db"
+    link = repo / ".claude/skills/acme-db"
+    assert os.readlink(link) == "../../.agents/skills/acme-db"
     assert (link / "SKILL.md").is_file()
     assert check(repo, library) == 0
     assert run(repo, library, "install") == 0
-    assert (repo / ".claude/skills/acme-db/SKILL.md").is_file()
-    assert not is_generated(repo / ".claude/skills/acme-db/SKILL.md")
+    assert (repo / ".agents/skills/acme-db/SKILL.md").is_file()
+    assert not is_generated(repo / ".agents/skills/acme-db/SKILL.md")
 
 
 def test_an_install_after_the_eject_leaves_the_folder_alone(tmp_path: Path) -> None:

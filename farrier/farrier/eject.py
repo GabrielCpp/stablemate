@@ -233,8 +233,8 @@ def eject_skill(
         listing = ", ".join(path.relative_to(repo).as_posix() for path in copies)
         raise SystemExit(
             f"error: skill {name!r} has real copies in {listing}. Set "
-            "`skills_from` on one harness in agents.yml (for example "
-            "`codex: {skills_from: claude}`), install again so one copy is left, "
+            "`claude: {skills_from: codex}` in agents.yml, install again so one "
+            "copy is left, "
             "then eject."
         )
     folder = copies[0]

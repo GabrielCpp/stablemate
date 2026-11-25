@@ -2,9 +2,7 @@
 
 from pathlib import Path
 
-import pytest
 
-from farrier.agents import parse_agents
 from repo_install import install, make_library, shipped
 
 
@@ -75,16 +73,3 @@ def test_a_skill_can_reference_a_prompt_that_landed_as_a_skill(
     code, repo = install(tmp_path, config)
     assert code == 0
     assert "Then /acme-go." in shipped(repo)
-
-
-def test_sharers_of_a_folder_cannot_link_from_different_sources() -> None:
-    config = {
-        "agents": {
-            "claude": True,
-            "copilot": True,
-            "codex": {"skills_from": "claude"},
-            "antigravity": {"skills_from": "copilot"},
-        }
-    }
-    with pytest.raises(SystemExit):
-        parse_agents(config)

@@ -38,6 +38,7 @@ MANAGED_DIRS = list(
         [
             *(layout.skills for layout in _REPO_LAYOUTS),
             *(layout.prompts for layout in _REPO_LAYOUTS if layout.prompts),
+            ".agents/prompts",
             POLICY_ROOT,
             ".agents/hooks",
             ".github/instructions",

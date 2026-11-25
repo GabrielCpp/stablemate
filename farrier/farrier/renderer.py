@@ -563,7 +563,14 @@ class Renderer:
         for linked, source in links.items():
             source_dir = self.skill_dir_path(source)
             linked_dir = self.skill_dir_path(linked)
+            commands = (
+                {public_name(self.prefix, source) for source in self.prompts}
+                if self.takes_prompts(linked)
+                else set()
+            )
             for name in self.skill_folder_names(source_dir, outputs):
+                if name in commands:
+                    continue
                 target = os.path.relpath(source_dir / name, linked_dir)
                 symlinks[linked_dir / name] = Symlink(target.replace(os.sep, "/"))
         return symlinks

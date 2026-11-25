@@ -68,10 +68,11 @@ packs:
   - <stack-pack>             # what this repo is built with — see Available Packs
 ```
 
-A harness can share another's skills instead of holding a copy. Write
-`codex: {skills_from: claude}` and farrier symlinks each of codex's skill folders
-to the matching claude one (`../../.claude/skills/<name>`), hand-written folders
-included. The source must be an enabled harness that does not itself link. Prompts,
+Claude can share the skills in `.agents/skills` instead of holding a copy. Write
+`claude: {skills_from: codex}` and farrier symlinks each of Claude's skill folders
+to the matching one in `.agents/skills` (`../../.agents/skills/<name>`), hand-written
+folders included. Only Claude links, from codex, antigravity or pi, and the source
+must be enabled. Prompts,
 commands, roots and hooks still render per harness. A cross-skill link inside a
 shared copy points at the source harness's home skills dir, because the one file
 serves every harness.
@@ -231,8 +232,8 @@ instead — regenerate to remove it rather than editing it.
   as a hand-written folder. `agents.yml` stops selecting the library skill: a
   literal `skills:` line is removed, a glob becomes the literal ids it still matches,
   and a pack-only selection goes under `exclude.skills`. Comments stay.
-  It refuses while several harnesses hold a real copy, so link the extras with
-  `skills_from` first.
+  It refuses while several harnesses hold a real copy, so link Claude with
+  `claude: {skills_from: codex}` first.
 - A policy listed in `localInstructions` is written into that mapping's `text:`
   ahead of any text there, and its name leaves `policy`/`policies`.
 

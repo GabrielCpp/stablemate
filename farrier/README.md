@@ -153,7 +153,7 @@ then edits `agents.yml` so nothing selects the skill again. A literal `skills:` 
 loses its line, a glob entry becomes the literal ids it still matches, and a skill
 that only a pack selects goes under `exclude.skills`. Comments and every other byte of
 `agents.yml` stay. It refuses when more than one harness holds a real copy: set
-`skills_from` on the others first. Given a policy listed in `localInstructions`, it
+`claude: {skills_from: codex}` first. Given a policy listed in `localInstructions`, it
 writes the policy body into each mapping's `text:` (ahead of any text there) and
 removes the name from `policy`/`policies`. After either, it reinstalls, so
 `farrier --repo . --check` passes. A skill name wins over a policy of the same name.
@@ -191,20 +191,23 @@ and logs a warning that names the closest declared key.
 **[`agents.example.yml`](https://github.com/GabrielCpp/stablemate/blob/main/farrier/agents.example.yml)**
 is a worked sample you can copy to your repo as `agents.yml` and prune to taste.
 
-Each `agents.<harness>` is `true`, `false` or `{skills_from: <other harness>}`. The
-mapping enables the harness and renders no skill folders for it. Instead farrier
-writes a relative symlink `<its skills dir>/<name>` to `../../<source skills
-dir>/<name>` for every skill folder of the source harness, hand-written ones
-included, so one set of skills serves several harnesses:
+Each `agents.<harness>` is `true` or `false`. Claude also takes
+`{skills_from: <harness>}`, naming codex, antigravity or pi, which read `.agents/skills`.
+The mapping enables Claude and renders no skill folders for it. Instead farrier
+writes a relative symlink `.claude/skills/<name>` to `../../.agents/skills/<name>`
+for every skill folder there, hand-written ones included, so one set of skills
+serves every harness:
 
 ```yaml
 agents:
-  claude: true
-  codex:
-    skills_from: claude
+  codex: true
+  claude:
+    skills_from: codex
 ```
 
-The source must be an enabled harness that does not itself link. Prompts, commands,
+Most harnesses read `.agents/skills`, so Claude is the one that links. A prompt that
+lands in `.agents/skills` as a skill gets no link, because Claude takes it as a command.
+The source must be enabled. Prompts, commands,
 root instructions and hooks still render per harness. A cross-skill link inside a
 shared copy points at the source harness's home skills dir. A symlink in a linked
 dir that targets the source dir is farrier-owned: install rewrites a wrong one and

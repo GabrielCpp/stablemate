@@ -6,7 +6,7 @@ from typing import Annotated, Any
 
 from pydantic import BeforeValidator, StrictBool, ValidationInfo, field_validator, model_validator
 
-from ..harness import repo_harnesses, spec
+from ..harness import repo_harnesses
 from .base import FreeSection, Section, setting
 from .manifest_books import BookTable, QaTable
 from .selection import Exclusion
@@ -16,16 +16,23 @@ HARNESSES = tuple(spec.name for spec in repo_harnesses())
 HOOK_MANAGERS = ("pre-commit", "lefthook", "husky", "githooks", "none")
 
 LINK_KEY = "skills_from"
+LINKING_HARNESS = "claude"
+SHARED_SKILLS = ".agents/skills"
+LINK_SOURCES = tuple(
+    harness.name
+    for harness in repo_harnesses()
+    if harness.repo is not None and harness.repo.skills == SHARED_SKILLS
+)
 
 README_ALIASES = {"inline": True, "import": True, "none": False}
 
 
 class AgentLink(Section):
-    """A harness that shares another harness's skill folders instead of holding its own copy."""
+    """Claude sharing the skill folders in `.agents/skills` instead of holding its own copy."""
 
     skills_from: str = setting(
-        description="The harness whose skill folders this one links to. The source must be enabled and must not itself link.",
-        examples=["claude"],
+        description="The harness whose skill folders in `.agents/skills` Claude links to: codex, antigravity or pi. The source must be enabled.",
+        examples=["codex"],
     )
 
 
@@ -57,34 +64,34 @@ class Agents(Section):
 
     claude: HarnessSwitch = setting(
         False,
-        description="Render for Claude Code: skills under `.claude/skills`, commands under `.claude/commands`. A table `{ skills_from: <harness> }` enables it and links its skills.",
+        description="Render for Claude Code: skills under `.claude/skills`, commands under `.claude/commands`. A table `{ skills_from: <harness> }` enables it and links each skill folder to the one in `.agents/skills`, which codex, antigravity and pi read.",
         examples=[True, {"skills_from": "codex"}],
         type_text="boolean or table with `skills_from`",
     )
     codex: HarnessSwitch = setting(
         False,
-        description="Render for Codex: skills under `.agents/skills`, prompts there as skills run by name. A table `{ skills_from: <harness> }` enables it and links its skills.",
-        examples=[True, {"skills_from": "claude"}],
-        type_text="boolean or table with `skills_from`",
+        description="Render for Codex: skills under `.agents/skills`, prompts there as skills run by name.",
+        examples=[True],
+        type_text="boolean",
     )
     copilot: HarnessSwitch = setting(
         False,
-        description="Render for GitHub Copilot: skills into `.github/skills` and prompts into `.github/prompts`, roots into `.github/copilot-instructions.md`. A table `{ skills_from: <harness> }` enables it and links its skills.",
-        examples=[False, {"skills_from": "claude"}],
-        type_text="boolean or table with `skills_from`",
+        description="Render for GitHub Copilot: skills into `.github/skills` and prompts into `.github/prompts`, roots into `.github/copilot-instructions.md`.",
+        examples=[False],
+        type_text="boolean",
     )
     antigravity: HarnessSwitch = setting(
         False,
-        description="Render for Antigravity: skills into `.agents/skills`, which it shares with Codex, and roots into `AGENTS.md`. Antigravity has no prompts folder. A table `{ skills_from: <harness> }` enables it and links its skills.",
-        examples=[False, {"skills_from": "claude"}],
-        type_text="boolean or table with `skills_from`",
+        description="Render for Antigravity: skills into `.agents/skills`, which it shares with Codex, and roots into `AGENTS.md`. Antigravity has no prompts folder, so its prompts land there as skills run by name.",
+        examples=[False],
+        type_text="boolean",
     )
 
     pi: HarnessSwitch = setting(
         False,
-        description="Render for Pi: skills into `.agents/skills`, which it shares with Codex, prompts into `.pi/prompts`, and roots into `AGENTS.md`. A table `{ skills_from: <harness> }` enables it and links its skills.",
-        examples=[False, {"skills_from": "claude"}],
-        type_text="boolean or table with `skills_from`",
+        description="Render for Pi: skills into `.agents/skills`, which it shares with Codex, prompts into `.pi/prompts`, and roots into `AGENTS.md`.",
+        examples=[False],
+        type_text="boolean",
     )
 
     @model_validator(mode="after")
@@ -93,35 +100,25 @@ class Agents(Section):
         links = {name: value.skills_from for name, value in values.items() if isinstance(value, AgentLink)}
         for harness, source in links.items():
             where = f"agents.{harness}.{LINK_KEY}"
+            if harness != LINKING_HARNESS:
+                raise ValueError(
+                    f"{where}: only agents.{LINKING_HARNESS} links its skills, so set "
+                    f"agents.{harness} to true"
+                )
             if source not in HARNESSES:
                 raise ValueError(
                     f"{where} names {source!r}, which is not a harness "
                     f"(one of {', '.join(HARNESSES)})"
                 )
-            if source == harness:
+            if source not in LINK_SOURCES:
                 raise ValueError(
-                    f"{where} names {harness!r} itself; a harness cannot link its own skills"
+                    f"{where} names {source!r}, which does not read {SHARED_SKILLS}; "
+                    f"name one of {', '.join(LINK_SOURCES)}"
                 )
             if not values[source]:
                 raise ValueError(
                     f"{where} names {source!r}, which is not enabled; "
-                    f"set agents.{source} to true or link from an enabled harness"
-                )
-            if source in links:
-                raise ValueError(
-                    f"{where} names {source!r}, which itself links its skills from "
-                    f"{links[source]!r}; link from the harness that holds the real folders"
-                )
-        shared: dict[str, list[str]] = {}
-        for harness in HARNESSES:
-            layout = spec(harness).repo
-            if values[harness] and layout is not None:
-                shared.setdefault(layout.skills, []).append(harness)
-        for folder, sharers in shared.items():
-            if len({links.get(harness) for harness in sharers}) > 1:
-                raise ValueError(
-                    f"agents.{' and agents.'.join(sharers)} share the folder {folder}, "
-                    f"so they must all hold real skills or all link their skills from the same harness"
+                    f"set agents.{source} to true"
                 )
         return self
 
@@ -390,7 +387,7 @@ class Manifest(Section):
     agents: Agents = setting(
         factory=Agents,
         description="Which agent harnesses to render for. At least one must be enabled for `farrier install` to render. The list form `[claude]` enables just those.",
-        examples=[{"claude": True, "codex": {"skills_from": "claude"}}],
+        examples=[{"codex": True, "claude": {"skills_from": "codex"}}],
         default_text="every harness off",
         legacy="A list of harness names enables exactly those harnesses.",
     )
