@@ -7,14 +7,14 @@ from typing import Any
 
 import json
 
-from ostler.book import (Action, Answer, CannotReach, Diverges, Done, Endpoint, Enum, Field, Id, Object, Refusal, Refusals, Rule, Service,
-                         Str)
+from ostler.book import (Action, Answer, CannotReach, Diverges, Done, Endpoint, Enum, Field, Id, Journey, Object, Refusal, Refusals, Rule,
+                         Service, Str)
 from ostler.book.model import Refused
 from ostler.book.http import Client
 from ostler.book.httpsurface import HttpSurface
-from ostler.book.inputs import InputClass, classes, judge, vary
+from ostler.book.inputs import InputClass, bases, classes, judge, vary
 
-from book_fakes import Plain, Quiet, no_stack
+from book_fakes import Arrives, Plain, PutItem, Quiet, no_stack, shelf_book
 
 DAY = date(2026, 11, 4)
 FIELDS = {"kind": Field(Enum(("a", "b"))), "note": Field(Str(), required=False)}
@@ -182,3 +182,15 @@ def test_a_class_the_app_never_received_leaves_the_world_clean_when_the_rows_sti
 def test_a_class_the_app_never_received_leaves_no_clean_world_when_the_rows_differ():
     sent = _stopped_at_its_length(("stray",))
     assert not sent.clean
+
+
+class ArrivesThenPutTwice(Journey):
+    """An item arrives, the same item is put again, and another is put."""
+
+    def steps(self, today: date) -> tuple[object, ...]:
+        return (Arrives("a"), PutItem("a"), PutItem("b"))
+
+
+def test_an_outside_step_shapes_the_model_the_base_is_found_on() -> None:
+    found = bases(shelf_book(journeys=(ArrivesThenPutTwice,)))
+    assert found[PutItem].where.endswith("step 3")

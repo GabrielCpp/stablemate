@@ -17,6 +17,7 @@ from datetime import date, timedelta
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Callable, Iterable, Iterator, Mapping, TypeGuard, cast
 
+from ostler.book.arrange import Arrange
 from ostler.book.backstage import CannotArrange
 from ostler.book.boundary import Needs
 from ostler.book.cast import Actor
@@ -413,6 +414,8 @@ def bases(service: Service[Any], today: date | None = None) -> dict[type[Any], B
                     Owners.seed(given, model)
             for k, step in enumerate(journey().steps(model.today)):
                 if not _carried(step):
+                    if isinstance(step, Arrange):
+                        model.perform(step)
                     continue
                 before, kept = model.copy(), copy.deepcopy(step)
                 setattr(before, "owners", dict(Owners.seeded))

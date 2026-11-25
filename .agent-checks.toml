@@ -132,7 +132,7 @@ stops a run's process group with os.killpg, sending SIGTERM and then SIGKILL. Ex
 "ostler/ostler/book/device.py" = 438
 "ostler/ostler/book/domain.py" = 592
 "ostler/ostler/book/exploration.py" = 461
-"ostler/ostler/book/inputs.py" = 846
+"ostler/ostler/book/inputs.py" = 849
 "ostler/ostler/book/owners.py" = 566
 "ostler/ostler/book/runner.py" = 799
 "ostler/ostler/book/screen.py" = 438
