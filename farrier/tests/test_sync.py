@@ -6,10 +6,9 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from repo_install import configured
 
 from farrier import cli
-from farrier._vendor.stablemate_core.schema import HomeConfig
-from farrier.install import set_layers
 
 
 @pytest.fixture
@@ -22,20 +21,6 @@ def library(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     (root / "packs").mkdir()
-    return root
-
-
-def configured(monkeypatch, library: Path, tmp_path: Path) -> Path:
-    """A folder whose agents.yml selects the library's one skill."""
-    monkeypatch.setattr(cli, "resolve_library_dir", lambda _cli: library)
-    monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
-    monkeypatch.setattr(cli, "load_home_config", lambda: HomeConfig())
-    set_layers(library)
-    root = tmp_path / "demo"
-    root.mkdir()
-    (root / "agents.yml").write_text(
-        "agents:\n  claude: true\nskills:\n  - demo/plain\n", encoding="utf-8"
-    )
     return root
 
 

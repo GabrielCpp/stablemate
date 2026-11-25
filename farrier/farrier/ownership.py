@@ -48,6 +48,11 @@ def is_owned(path: Path, root: Path) -> bool:
     return False
 
 
+def is_bytecode(path: Path) -> bool:
+    """True for an interpreter cache file, which a script run leaves behind and farrier never renders."""
+    return "__pycache__" in path.parts or path.suffix in {".pyc", ".pyo"}
+
+
 def owned_files(directory: Path) -> list[Path]:
     """Every file under *directory* that farrier generated, in path order."""
     if not directory.is_dir():
@@ -55,7 +60,7 @@ def owned_files(directory: Path) -> list[Path]:
     return [
         path
         for path in sorted(directory.rglob("*"))
-        if path.is_file() and is_owned(path, directory)
+        if path.is_file() and not is_bytecode(path) and is_owned(path, directory)
     ]
 
 
