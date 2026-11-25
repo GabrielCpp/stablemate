@@ -272,7 +272,7 @@ def test_feed_logs_a_failed_digest_and_closes_with_the_reason(monkeypatch: pytes
 
     logged: list[tuple[Any, ...]] = []
     monkeypatch.setattr(digest, "build_digest", boom)
-    monkeypatch.setattr(groom_app.logger, "exception", lambda *args: logged.append(args))
+    monkeypatch.setattr("groom.routes.sockets.logger.exception", lambda *args: logged.append(args))
     with _client() as client, client.websocket_connect("/feed?run=acme") as socket:
         with pytest.raises(WebSocketDisconnect) as closed:
             socket.receive_json()
@@ -292,7 +292,7 @@ def test_feed_closes_when_a_later_digest_fails(monkeypatch: pytest.MonkeyPatch) 
         return real(*args, **kwargs)
 
     monkeypatch.setattr(digest, "build_digest", flaky)
-    monkeypatch.setattr(groom_app, "FEED_MIN_EVERY_S", 0.01)
+    monkeypatch.setattr("groom.routes.sockets.FEED_MIN_EVERY_S", 0.01)
     with _client() as client, client.websocket_connect("/feed?run=acme&every=0.05") as socket:
         assert socket.receive_json()["type"] == "digest"
         with pytest.raises(WebSocketDisconnect) as closed:
@@ -354,7 +354,7 @@ def test_dispatched_event_reaches_only_the_feed_of_its_run(monkeypatch: pytest.M
 
 def test_feed_digest_timer_sends_a_quiet_digest_when_nothing_happens() -> None:
     with (
-        patch.object(groom_app, "FEED_MIN_EVERY_S", 0.01),
+        patch("groom.routes.sockets.FEED_MIN_EVERY_S", 0.01),
         _client() as client,
         client.websocket_connect("/feed?run=acme&every=0.05") as socket,
     ):

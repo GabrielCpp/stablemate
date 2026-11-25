@@ -333,7 +333,7 @@ def test_the_retry_route_puts_an_unreadable_summary_back_in_the_queue() -> None:
         history.discover_archives()
         with patch.object(archive, "build_index", side_effect=OSError("x")):
             history.compute_archive("run-older", now)
-        with patch.object(groom_app, "_summary_pass", AsyncMock(return_value=0)), TestClient(app=groom_app.create_app()) as client:
+        with patch("groom.summaries._summary_pass", AsyncMock(return_value=0)), TestClient(app=groom_app.create_app()) as client:
             answer = client.post("/api/history/run-older/retry")
         row = history.stored("run-older")
     assert answer.status_code in (200, 201)
@@ -346,8 +346,8 @@ def test_a_summary_pass_reads_the_older_archives_on_the_archive_pool() -> None:
         folder = _archived("run-older", now)
         _without_summary(folder)
         with (
-            patch.object(groom_app, "SUMMARY_PAUSE_S", 0.0),
-            patch.object(groom_app, "_summary_wake", None),
+            patch("groom.summaries.SUMMARY_PAUSE_S", 0.0),
+            patch("groom.summaries._summary_wake", None),
             patch.object(pools.ARCHIVE, "run", wraps=pools.ARCHIVE.run) as archive_run,
             patch.object(pools.QUERY, "run", wraps=pools.QUERY.run) as query_run,
         ):
@@ -441,7 +441,7 @@ def test_a_summary_loop_that_stopped_leaves_no_wake_to_skip_the_next_pass_archiv
             passed.set()
             return 0
 
-        with patch.object(groom_app, "_summary_pass", one_pass):
+        with patch("groom.summaries._summary_pass", one_pass):
             loop_task = asyncio.create_task(groom_app._summary_loop())
             await passed.wait()
             loop_task.cancel()
@@ -454,7 +454,7 @@ def test_a_summary_loop_that_stopped_leaves_no_wake_to_skip_the_next_pass_archiv
         patch.object(history, "discover", lambda: []),
         patch.object(history, "discover_archives", lambda: ["run-older"]),
         patch.object(history, "compute_archive", archived.append),
-        patch.object(groom_app, "SUMMARY_PAUSE_S", 0.0),
+        patch("groom.summaries.SUMMARY_PAUSE_S", 0.0),
     ):
         asyncio.run(groom_app._summary_pass())
     assert archived == ["run-older"]

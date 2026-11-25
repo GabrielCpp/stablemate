@@ -102,8 +102,8 @@ def test_telemetry_gate_answer_reaches_the_waiting_process(native_root, monkeypa
         raise AssertionError("a reachable waiting process must persist its own answer")
 
     monkeypatch.setattr(groom_app.attend, "attend_gate", lambda **kwargs: None)
-    monkeypatch.setattr(groom_app, "_reconcile", no_discovery)
-    monkeypatch.setattr(groom_app, "answer_gate", no_fallback)
+    monkeypatch.setattr("groom.native._reconcile", no_discovery)
+    monkeypatch.setattr("groom.routes.gates.answer_gate", no_fallback)
     channel = control.SocketChannel.open(run_dir)
     try:
         with ThreadPoolExecutor(max_workers=1) as executor:

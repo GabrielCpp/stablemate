@@ -109,14 +109,13 @@ def _wait_for(check, what: str, timeout: float = 30.0) -> None:
 def _container_run(
     container: str = CONTAINER, *, native: bool = False, run_id: str = RUN, workspace: str = "/nonexistent/acme",
 ) -> Iterator[None]:
-    from groom import app as app_module
     from groom import sidecar_hub, state
     from groom.models import WorkflowState
 
     async def _no_volumes(_container_id: str) -> None:
         return None
 
-    with patch.object(app_module, "_ensure_volumes", _no_volumes):
+    with patch("groom.native._ensure_volumes", _no_volumes):
         state.upsert_workflow(
             container, name="coder-acme", workflow_type="coder", repo_name="acme", repo_branch="main",
             current_node="build", activity="building", run_id=run_id, state=WorkflowState.RUNNING,

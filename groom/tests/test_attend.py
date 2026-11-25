@@ -741,7 +741,7 @@ def test_a_run_that_ended_on_purpose_is_not_attended_as_a_death(
     """A `--core` reload or a `switch-cli` re-execs the run, so its root span ends `reload`."""
     deaths: list[str] = []
     monkeypatch.setattr(state, "RUNS", {"r1": RunTelemetry(run_id="r1", terminal=terminal)})
-    monkeypatch.setattr(groom_app, "_attend_death", deaths.append)
+    monkeypatch.setattr("groom.alerting._attend_death", deaths.append)
     monkeypatch.setattr(groom_app.notify, "push", lambda title, message: None)
 
     asyncio.run(groom_app._dispatch_alerts([Alert("r1", "ENDED", "run ended")]))
@@ -751,7 +751,7 @@ def test_a_run_that_ended_on_purpose_is_not_attended_as_a_death(
 def test_a_run_that_ended_failed_is_attended_as_a_death(monkeypatch: pytest.MonkeyPatch):
     deaths: list[str] = []
     monkeypatch.setattr(state, "RUNS", {"r1": RunTelemetry(run_id="r1", terminal="failed")})
-    monkeypatch.setattr(groom_app, "_attend_death", deaths.append)
+    monkeypatch.setattr("groom.alerting._attend_death", deaths.append)
     monkeypatch.setattr(groom_app.notify, "push", lambda title, message: None)
 
     asyncio.run(groom_app._dispatch_alerts([Alert("r1", "ENDED", "run ended")]))

@@ -199,7 +199,7 @@ def test_a_batch_refreshes_only_runs_without_figures_when_not_stale(monkeypatch:
     async def record(run_id: str) -> None:
         seen.append(run_id)
 
-    monkeypatch.setattr(groom_app, "_refresh_figures", record)
+    monkeypatch.setattr("groom.native_figures._refresh_figures", record)
     state.RUNS["fresh"] = RunTelemetry(run_id="fresh", figures={"x": 1})
     state.RUNS["new"] = RunTelemetry(run_id="new")
 

@@ -893,7 +893,7 @@ def _served(reply: dict):
 def test_diff_endpoint_without_a_view_sends_the_sidecar_no_new_parameter_and_returns_no_base():
     _reset()
     rpc, sent = _served({"diff": "d", "untracked": ["u"], "failed": False, "repos": ["a"]})
-    with patch.object(groom_app, "_sidecar_rpc", rpc):
+    with patch("groom.routes.workspace._sidecar_rpc", rpc):
         body = _get_diff(repo="a")
 
     assert sent == [{"repo": "a"}]
@@ -907,7 +907,7 @@ def test_diff_endpoint_with_the_branch_view_forwards_it_and_returns_the_base_the
         "base": "4f1c9ab0", "base_ref": "origin/main", "base_branch": "main", "base_reason": "",
     }
     rpc, sent = _served(reply)
-    with patch.object(groom_app, "_sidecar_rpc", rpc):
+    with patch("groom.routes.workspace._sidecar_rpc", rpc):
         body = _get_diff(repo="a", view="branch")
 
     assert sent == [{"repo": "a", "view": "branch"}]
@@ -919,7 +919,7 @@ def test_diff_endpoint_with_the_branch_view_forwards_it_and_returns_the_base_the
 def test_diff_endpoint_says_a_sidecar_that_reports_no_base_is_too_old_for_the_branch_view():
     _reset()
     rpc, sent = _served({"diff": "uncommitted", "untracked": [], "failed": False})
-    with patch.object(groom_app, "_sidecar_rpc", rpc):
+    with patch("groom.routes.workspace._sidecar_rpc", rpc):
         body = _get_diff(view="branch")
 
     assert body["based"] is False
@@ -984,7 +984,7 @@ def test_handle_answer_flips_state_and_broadcasts_an_answered_event():
     def _capture_mark():
         captured.setdefault("messages", []).append({"type": "fleet"})
 
-    with patch.object(groom_app, "answer_gate", _fake_answer_gate), \
+    with patch("groom.routes.gates.answer_gate", _fake_answer_gate), \
          patch.object(live, "mark_fleet", _capture_mark), \
          patch.object(state, "broadcast", _capture_broadcast):
         asyncio.run(
@@ -1016,7 +1016,7 @@ def test_handle_answer_failure_does_not_flip_or_dispatch():
     async def _capture_broadcast(fragment):
         captured.setdefault("frames", []).append(fragment)
 
-    with patch.object(groom_app, "answer_gate", _fake_answer_gate), \
+    with patch("groom.routes.gates.answer_gate", _fake_answer_gate), \
          patch.object(state, "broadcast", _capture_broadcast):
         asyncio.run(
             groom_app._handle_command(
@@ -1143,7 +1143,7 @@ def test_outbox_post_resolves_run_id_to_container_id_before_answering():
         state.clear_gate(cid, fp)
         return AnswerResult(ok=True, message="answered")
 
-    with patch.object(groom_app, "answer_gate", _fake_answer_gate):
+    with patch("groom.routes.gates.answer_gate", _fake_answer_gate):
         client = _hermetic_client()
         try:
             resp = client.post(
@@ -1166,7 +1166,7 @@ def test_outbox_post_race_returns_the_already_answered_message_and_does_not_flip
     async def _fake_answer_gate(cid, fp, ans, *, workspace_volume, native=False, allow_headerless=False):
         return AnswerResult(ok=False, message="already answered in another tab")
 
-    with patch.object(groom_app, "answer_gate", _fake_answer_gate):
+    with patch("groom.routes.gates.answer_gate", _fake_answer_gate):
         client = _hermetic_client()
         try:
             resp = client.post(
@@ -1368,10 +1368,10 @@ def test_spawn_scan_returns_before_discovery_completes():
         return 0
 
     async def _scenario() -> None:
-        with patch.object(groom_app, "_reconcile", _slow_reconcile):
+        with patch("groom.native._reconcile", _slow_reconcile):
             await groom_app._spawn_scan()
             order.append("spawn-returned")
-            scan_task = groom_app._scan_task
+            scan_task = groom_app.background._scan_task
             assert scan_task is not None
             await scan_task
 
@@ -1390,7 +1390,7 @@ def test_background_scan_clears_scanning_on_error():
         raise RuntimeError("docker exploded")
 
     async def _scenario() -> None:
-        with patch.object(groom_app, "_reconcile", _boom):
+        with patch("groom.native._reconcile", _boom):
             with contextlib.suppress(RuntimeError):
                 await groom_app._background_scan()
 
@@ -1629,7 +1629,7 @@ def _run_apply_hello(container_id: str, data: dict) -> None:
         pass
 
     async def _scenario() -> None:
-        with patch.object(groom_app, "_ensure_volumes", _noop_ensure), \
+        with patch("groom.native._ensure_volumes", _noop_ensure), \
              patch.object(state, "broadcast", _noop_broadcast):
             await groom_app._apply_hello(container_id, data)
 
@@ -1661,7 +1661,7 @@ def test_a_tab_is_told_when_a_sidecar_connects_and_when_it_drops():
     }
     client = _hermetic_client()
     try:
-        with patch.object(groom_app, "_ensure_volumes", _noop_ensure_volumes):
+        with patch("groom.native._ensure_volumes", _noop_ensure_volumes):
             with client.websocket_connect("/ws") as tab:
                 tab.receive_json()
                 with client.websocket_connect("/sidecar") as sidecar_socket:
@@ -1788,7 +1788,7 @@ def test_answer_goes_over_the_socket_first_and_uses_the_runs_own_path():
     async def _file_write_must_not_run(*args, **kwargs):
         raise AssertionError("the file fallback ran on a socket-acknowledged answer")
 
-    with patch.object(groom_app, "answer_gate", _file_write_must_not_run):
+    with patch("groom.routes.gates.answer_gate", _file_write_must_not_run):
         result = asyncio.run(groom_app._answer(wf, "abc123", "docs/gate.md", "go ahead"))
 
     assert result.ok is True
@@ -1812,7 +1812,7 @@ def test_an_already_answered_refusal_is_terminal_with_no_file_fallback():
     async def _file_write_must_not_run(*args, **kwargs):
         raise AssertionError("the file fallback would double-write an answered gate")
 
-    with patch.object(groom_app, "answer_gate", _file_write_must_not_run):
+    with patch("groom.routes.gates.answer_gate", _file_write_must_not_run):
         result = asyncio.run(groom_app._answer(wf, "abc123", "docs/gate.md", "go ahead"))
 
     assert result.ok is False
@@ -1832,7 +1832,7 @@ def test_a_gate_the_run_is_not_waiting_on_falls_back_to_the_file_write():
         called["file_path"] = fp
         return AnswerResult(ok=True, message="answered")
 
-    with patch.object(groom_app, "answer_gate", _fake_answer_gate):
+    with patch("groom.routes.gates.answer_gate", _fake_answer_gate):
         result = asyncio.run(groom_app._answer(wf, "abc123", "docs/other.md", "go"))
 
     assert result.ok is True
@@ -1851,7 +1851,7 @@ def test_a_dead_socket_falls_back_to_the_file_write():
         called["file_path"] = fp
         return AnswerResult(ok=True, message="answered")
 
-    with patch.object(groom_app, "answer_gate", _fake_answer_gate):
+    with patch("groom.routes.gates.answer_gate", _fake_answer_gate):
         result = asyncio.run(groom_app._answer(wf, "abc123", "docs/gate.md", "go"))
 
     assert result.ok is True
@@ -1868,7 +1868,7 @@ def test_push_blocked_writes_the_row_and_dispatches_attendant():
     async def _capture_notify(message):
         captured.append(message)
 
-    with patch.object(groom_app, "_broadcast_notify", _capture_notify):
+    with patch("groom.alerting._broadcast_notify", _capture_notify):
         client = _hermetic_client()
         try:
             resp = client.post(

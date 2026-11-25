@@ -2,2014 +2,283 @@
 
 from __future__ import annotations
 
-import asyncio
-import json
-import logging
-import os
-import re
-import sqlite3
-import time
-import uuid
-from collections.abc import Callable
-from datetime import UTC, datetime
-from pathlib import Path
-from typing import Annotated, Any, Literal
-
-from watchfiles import DefaultFilter, awatch
-from litestar import Litestar, Request, Response, delete, get, post, websocket
-from litestar.connection import WebSocket
-from litestar.enums import MediaType
-from litestar.exceptions import ClientException, HTTPException, NotFoundException, ServiceUnavailableException, WebSocketDisconnect
-from litestar.params import PathParameter, QueryParameter
+from litestar import Litestar
 from litestar.static_files import create_static_files_router
 
 from groom import (
-    activity,
-    alerts,
-    archive,
     attend,
-    attend_ledger,
-    attend_transcript,
-    banner,
-    discovery,
-    dispatch,
-    dispatch_ledger,
-    digest,
+    background,
     docker_io,
-    figures,
-    gitdiff,
     history,
     live,
-    live_transcript,
     localfs,
+    native,
     notify,
-    otlp,
-    norms,
-    overview,
     pools,
-    projection,
-    records,
-    run_inbox,
-    sidecar_hub,
-    sidecar_turns,
-    state,
-    store,
-    tasks,
-    turns,
 )
-from groom.attention import RULE_EVENTS, AttentionEvent, AttentionFrame, DigestFrame, EventFrame
-from groom.gates import answer_gate, extract_question, native_questions
-from groom.live_history import LiveHistory
-from groom.models import AnswerResult, GateInfo, RunTelemetry, WorkflowContainer, WorkflowState
-from groom.settings import AttendSettings, write_attend_settings
-from workhorse import control
-from workhorse import reload as reload_mod
-
-logger = logging.getLogger(__name__)
-
-ASSETS_DIR = Path(__file__).parent / "assets"
-
-_ASSET_URL_RE = re.compile(rb'(?:href|src)="(/assets/([^"?]+))"')
-
-
-def stamp_assets(html: bytes) -> bytes:
-    """Version every ``/assets/...`` URL in the shell with that file's mtime+size."""
-
-    def stamp(match: re.Match[bytes]) -> bytes:
-        url, name = match.group(1), match.group(2).decode()
-        try:
-            info = (ASSETS_DIR / name).stat()
-        except OSError:
-            return match.group(0)
-        version = f"{int(info.st_mtime)}-{info.st_size}".encode()
-        return match.group(0).replace(url, url + b"?v=" + version)
-
-    return _ASSET_URL_RE.sub(stamp, html)
-
-
-_DASHBOARD_HTML = stamp_assets(
-    (Path(__file__).parent / "templates" / "dashboard.html").read_bytes()
+from groom.alerting import (
+    _QUESTION_NOTIFY_LIMIT,
+    _broadcast_notify,
+    _dispatch_alerts,
+)
+from groom.background import (
+    ARCHIVE_EVERY_S,
+    HARVEST_EVERY_S,
+    PRUNE_EVERY_S,
+    RULES_TICK_S,
+    _background_scan,
+    _bind_history_lock,
+    _bind_live,
+    _heartbeat_loop,
+    _recover_attend,
+    _recover_dispatch,
+    _spawn_archive,
+    _spawn_heartbeat,
+    _spawn_rules,
+    _spawn_scan,
+    _stop_archive,
+    _stop_heartbeat,
+    _stop_rules,
+    heartbeat_s,
+)
+from groom.gate_backfill import (
+    _BACKFILLS,
+    GATE_BACKFILL_RETRY_S,
+    GATE_BACKFILL_STEADY_S,
+    _backfill_wait_gate,
+    _ensure_gate_backfill,
+)
+from groom.native import (
+    _NORM_TASKS,
+    _TAIL_RUNS,
+    _TAILS,
+    SERVED_BY_HOST,
+    SERVED_BY_SIDECAR,
+    SERVED_BY_VOLUME,
+    TRANSCRIPT_POLL_S,
+    _detail_message,
+    _project_native_rows,
+    _queue_norms,
+    _sync_native_row,
+)
+from groom.native_attend import (
+    _attend_gates,
+)
+from groom.native_figures import (
+    _FIGURES_DIRTY,
+    _FIGURES_RUNNING,
+    _figures_rev,
+    _refresh_figures,
+    _schedule_figures,
+)
+from groom.routes.attend import (
+    attend_queue,
+    attend_session,
+    attend_sessions,
+    attend_settings_get,
+    attend_settings_post,
+    attend_stop,
+    dispatch_delete,
+    dispatch_enqueue,
+    dispatch_items,
+    dispatch_queues,
+    dispatch_stop,
+)
+from groom.routes.gates import (
+    _answer,
+    _handle_command,
+)
+from groom.routes.push import (
+    inbox_get,
+    inbox_post,
+    outbox_post,
+    push_blocked,
+    push_exited,
+    push_progress,
+    refresh,
+)
+from groom.routes.records import (
+    archive_entry,
+    archive_records,
+    archive_search,
+    archive_turn,
+    run_entry,
+    run_records,
+    run_search,
+    run_turn,
+)
+from groom.routes.reload import (
+    reload,
+)
+from groom.routes.runs import (
+    _archive_overview,
+    _archive_read,
+    _live_turns,
+    api_history,
+    archive_activity,
+    archive_overview,
+    history_retry,
+    outbox_get,
+    run_activity,
+    run_overview,
+)
+from groom.routes.sockets import (
+    FEED_DEFAULT_EVERY_S,
+    FEED_MIN_EVERY_S,
+    _apply_hello,
+    _apply_socket_blocked,
+    _apply_socket_turn,
+    _apply_socket_workspace,
+    dashboard_sidecar,
+    dashboard_ws,
+    feed_ws,
+)
+from groom.routes.telemetry import (
+    api_live,
+    otlp_logs,
+    otlp_metrics,
+    otlp_traces,
+)
+from groom.routes.workspace import (
+    ASSETS_DIR,
+    _push_received,
+    _store_history_batch,
+    api_state,
+    diff,
+    file_content,
+    files,
+    index,
+    logger,
+    repos,
+    stamp_assets,
+    worker_detail,
+)
+from groom.summaries import (
+    SUMMARY_EVERY_S,
+    SUMMARY_PAUSE_S,
+    _spawn_summaries,
+    _stop_summaries,
+    _summary_loop,
+    _summary_pass,
+    _wake_summaries,
+    _write_summary,
 )
 
-_QUESTION_NOTIFY_LIMIT = 200
-
-RULES_TICK_S = float(os.environ.get("GROOM_RULES_TICK_S", "60"))
-PRUNE_EVERY_S = float(os.environ.get("GROOM_PRUNE_EVERY_S", "3600"))
-HARVEST_EVERY_S = float(os.environ.get("GROOM_HARVEST_EVERY_S", "300"))
-ARCHIVE_EVERY_S = archive.ARCHIVE_EVERY_S
-TRANSCRIPT_POLL_S = float(os.environ.get("GROOM_TRANSCRIPT_POLL_S", "0.5"))
-SERVED_BY_SIDECAR = "sidecar"
-SERVED_BY_VOLUME = "volume"
-SERVED_BY_HOST = "host"
-
-
-def _all_workflows() -> list:
-    return list(state.WORKFLOWS.values())
-
-
-def _figures_rev(wf: WorkflowContainer) -> int:
-    """How many span batches the watched run has absorbed plus how many cached norms of its workflow changed after their first read, so a pane knows when its Overview figures are stale."""
-    run_id = projection.run_id_of(wf)
-    history = state.HISTORIES.get(run_id)
-    workflow = projection.run_workflow(wf, state.RUNS.get(run_id))
-    return (history.revision if history is not None else 0) + norms.revision(workflow)
-
-
-_NORM_TASKS: set[asyncio.Task] = set()
-
-
-async def _read_norms(container_id: str, workflow: str, node: str) -> None:
-    """Read one node's norms through the query pool, then push the watching tabs when they changed."""
-    if await norms.refresh(workflow, node):
-        live.mark_run(container_id)
-
-
-def _queue_norms(wf: WorkflowContainer, tel: RunTelemetry | None) -> None:
-    """Queue a norm read when the run's node has none cached or the run just moved to it. A render never waits on the read."""
-    node = tel.current_node if tel else wf.current_node
-    workflow = projection.run_workflow(wf, tel)
-    if not norms.needs_read(projection.run_id_of(wf), workflow, node):
-        return
-    task = tasks.spawn(_read_norms(wf.container_id, workflow, node), name="read-norms")
-    _NORM_TASKS.add(task)
-    task.add_done_callback(_NORM_TASKS.discard)
-
-
-def _stamp_revisions(detail: dict, wf: WorkflowContainer) -> None:
-    """Add the revisions a pane follows: the Overview's figures, and the Activity and Raw feeds. A run with no history reports 0."""
-    history = state.HISTORIES.get(projection.run_id_of(wf))
-    detail["figures_rev"] = _figures_rev(wf)
-    detail["activity_rev"] = history.activity_rev if history is not None else 0
-    detail["metrics_rev"] = history.metrics_rev if history is not None else 0
-    detail["workspace_rev"] = wf.workspace_rev
-
-
-async def _detail_message(wf: WorkflowContainer) -> dict:
-    """One run's detail pane, addressed to the tabs watching that run."""
-    tel, facts, logs, history = await _run_facts(wf)
-    _queue_norms(wf, tel)
-    message = projection.detail_message(wf, tel, facts, logs, history=history)
-    _stamp_revisions(message["detail"], wf)
-    return message
-
-
-live.use_detail_builder(_detail_message)
-
-
-def _native_run_dir(wf: WorkflowContainer) -> str:
-    """Where a native run's transcripts live on groom's own host, or empty for a container run."""
-    return wf.runs_volume if wf.native else ""
-
-
-async def _tail_transcript(wf: WorkflowContainer) -> None:
-    """Read the new complete transcript lines of a native run whose pane is open into its history, and mark the run when lines arrived, whoever asked for the read."""
-    run_dir = _native_run_dir(wf)
-    history = state.HISTORIES.get(projection.run_id_of(wf))
-    if not run_dir or history is None or not history.loaded:
-        return
-    async with state.HISTORY_LOCK:
-        before = history.activity_rev
-        await asyncio.to_thread(live_transcript.poll, history, run_dir)
-        arrived = history.activity_rev != before
-    if arrived:
-        live.mark_run(wf.container_id)
-
-
-_TRANSCRIPT_FILTER = DefaultFilter()
-
-
-async def _follow_transcript(wf: WorkflowContainer) -> None:
-    """Read a watched native run's new transcript lines the moment a transcript file changes, and every ``TRANSCRIPT_POLL_S`` once the system refuses or drops the file watch, until the last tab leaves."""
-    run_dir = _native_run_dir(wf)
-    marker = f"{os.sep}transcripts{os.sep}"
-    try:
-        async for changes in awatch(run_dir, watch_filter=_TRANSCRIPT_FILTER, debounce=100, step=50):
-            if not any(marker in path for _, path in changes):
-                continue
-            await _tail_transcript(wf)
-    except Exception:  # noqa: BLE001 - a run whose files cannot be watched is still followed by reading them
-        logger.error("groom: no file watch for %s, reading its transcript every %s s", wf.container_id, TRANSCRIPT_POLL_S, exc_info=True)
-    while True:
-        await asyncio.sleep(TRANSCRIPT_POLL_S)
-        try:
-            await _tail_transcript(wf)
-        except Exception:  # noqa: BLE001 - one failed read must not end the follow
-            logger.exception("transcript read failed for %s", wf.container_id)
-
-
-def _watch_transcript(wf: WorkflowContainer) -> None:
-    key = projection.run_id_of(wf)
-    task = state.TRANSCRIPT_TASKS.get(key)
-    if task is not None and not task.done():
-        return
-    if not _native_run_dir(wf):
-        return
-    state.TRANSCRIPT_TASKS[key] = tasks.spawn(_follow_transcript(wf), name="follow-transcript")
-
-
-_TAILS: dict[str, dict[str, bool]] = {}
-_TAIL_RUNS: dict[str, str] = {}
-_TAIL_TASKS: set[asyncio.Task] = set()
-
-
-async def _tail_until_quiet(container_id: str) -> None:
-    """Tail one container's transcript and push its pane, again for as long as new announcements arrive meanwhile."""
-    flags = _TAILS[container_id]
-    try:
-        while True:
-            wf = state.WORKFLOWS.get(container_id)
-            conn = sidecar_hub.get(container_id)
-            history = state.HISTORIES.get(projection.run_id_of(wf)) if wf is not None else None
-            if conn is not None and history is not None and history.loaded:
-                await live_transcript.tail(conn, history, _TAIL_RUNS.get(container_id, ""))
-            live.mark_run(container_id)
-            if not flags["again"]:
-                return
-            flags["again"] = False
-    except Exception:  # noqa: BLE001 - a pane that missed a transcript pass is not a broken groom
-        logger.exception("transcript tail failed for %s", container_id)
-    finally:
-        _TAILS.pop(container_id, None)
-
-
-def _schedule_tail(container_id: str) -> None:
-    """Ask for a container transcript pass without waiting for it; an unwatched container is skipped."""
-    if not state.watchers_of(container_id):
-        return
-    flags = _TAILS.get(container_id)
-    if flags is not None:
-        flags["again"] = True
-        return
-    _TAILS[container_id] = {"again": False}
-    task = tasks.spawn(_tail_until_quiet(container_id), name="tail-transcript")
-    _TAIL_TASKS.add(task)
-    task.add_done_callback(_TAIL_TASKS.discard)
-
-
-async def _broadcast_notify(message: str, rule: str = "", failed: bool = False) -> None:
-    """A one-shot alert for the tabs to toast (and raise a browser notification for), naming the alert rule that raised it and, for an ended run, whether it failed."""
-    frame: dict[str, Any] = {"type": "notify", "message": message}
-    if rule:
-        frame["rule"] = rule
-    if rule == "ENDED":
-        frame["failed"] = failed
-    await state.broadcast(frame)
-
-
-async def _ensure_volumes(container_id: str) -> None:
-    """Fill in the workspace/runs volume names for a container we've only heard about via a sidecar push so far (pushes carry no docker-level metadata — only what the container's own env exposes)."""
-    wf = state.WORKFLOWS.get(container_id)
-    if wf and wf.native:
-        return
-    if wf and wf.workspace_volume:
-        return
-    inspect = await asyncio.to_thread(docker_io.docker_inspect, container_id)
-    if not inspect:
-        return
-    found = discovery.container_from_inspect(inspect)
-    state.upsert_workflow(
-        container_id,
-        workspace_volume=found.workspace_volume,
-        runs_volume=found.runs_volume,
-        workflow_type=found.workflow_type,
-    )
-
-
-def _sync_native_row(run: RunTelemetry, fired: list[alerts.Alert] | None = None) -> bool:
-    """Project a run's telemetry hot-cache entry onto a dashboard row when the run is **native** — i.e."""
-    if run.native is None:
-        run.native = localfs.is_local_dir(run.run_dir) or localfs.is_local_dir(
-            run.workspace
-        )
-    if not run.native:
-        return False
-    before = state.WORKFLOWS.get(run.run_id)
-    prev = (
-        (before.state, before.current_node, before.activity, before.last_session,
-         tuple((g.file_path, g.question, g.kind) for g in before.gates.values()))
-        if before
-        else None
-    )
-    if not run.terminal and run.wait_kind in ("operator", "machine"):
-        gate = GateInfo(
-            workflow_id=run.run_id,
-            file_path=run.wait_gate_path,
-            question=run.wait_gate_question,
-            kind=run.wait_kind,
-        )
-    else:
-        gate = None
-    gates = {gate.file_path: gate} if gate is not None else {}
-    if run.terminal:
-        new_state = WorkflowState.FINISHED
-    elif gates:
-        new_state = WorkflowState.BLOCKED
-    else:
-        new_state = WorkflowState.RUNNING
-    wf = state.upsert_workflow(
-        run.run_id,
-        name=run.workflow or run.run_id[:12],
-        native=True,
-        workflow_type=run.workflow,
-        repo_name=run.repo,
-        repo_branch=run.branch,
-        run_id=run.run_id,
-        workspace_volume=run.workspace,
-        runs_volume=run.run_dir,
-        current_node=run.current_node,
-        activity=run.activity,
-        pid=run.pid,
-        state=new_state,
-    )
-    wf.gates = dict(gates)
-    wf.last_session = run.last_session
-    _attend_gates(wf, list(wf.gates.values()))
-    return prev is None or prev != (
-        wf.state,
-        wf.current_node,
-        wf.activity,
-        wf.last_session,
-        tuple((g.file_path, g.question, g.kind) for g in wf.gates.values()),
-    )
-
-
-async def _project_native_rows(records: list) -> None:
-    """After an OTLP ingest, refresh the dashboard rows of the native runs it touched and broadcast once if any changed."""
-    run_ids = {r.get("run_id") for r in records if r.get("run_id")}
-    changed = []
-    newly_blocked = []
-    fired: list[alerts.Alert] = []
-    for run_id in run_ids:
-        run = state.RUNS.get(run_id)
-        if run is None:
-            continue
-        existing = state.WORKFLOWS.get(run_id)
-        was_blocked = (
-            existing is not None
-            and existing.state == WorkflowState.BLOCKED
-            and existing.last_session == run.last_session
-        )
-        changed.append(_sync_native_row(run, fired))
-        wf = state.WORKFLOWS.get(run_id)
-        if wf is not None and wf.state == WorkflowState.BLOCKED and not was_blocked:
-            newly_blocked.append(wf)
-    await _dispatch_alerts(fired)
-    for run_id in run_ids:
-        run = state.RUNS.get(run_id)
-        if run is not None:
-            live.schedule_liveness(run)
-            _ensure_gate_backfill(run)
-    live.mark_fleet()
-    for run_id in run_ids:
-        live.mark_run(run_id)
-    for wf in newly_blocked:
-        if wf.gates:
-            gate = next(iter(wf.gates.values()))
-            await _broadcast_notify(
-                f"{wf.workflow_type or wf.name} is waiting on {gate.file_path}"
-            )
-
-
-_FIGURES_RUNNING: set[str] = set()
-_FIGURES_DIRTY: set[str] = set()
-_FIGURES_TASKS: set[asyncio.Task] = set()
-
-
-async def _refresh_figures(run_id: str) -> None:
-    """Recompute one run's row figures through the query pool, with at most one pass running per run and one rerun queued behind it."""
-    if run_id in _FIGURES_RUNNING:
-        _FIGURES_DIRTY.add(run_id)
-        return
-    _FIGURES_RUNNING.add(run_id)
-    try:
-        while True:
-            _FIGURES_DIRTY.discard(run_id)
-            try:
-                computed = await pools.QUERY.run(figures.run_figures, run_id)
-            except Exception:
-                logger.warning("row figures for %s could not be read", run_id, exc_info=True)
-            else:
-                run = state.RUNS.get(run_id)
-                if run is not None and run.figures != computed:
-                    run.figures = computed
-                    live.mark_fleet()
-            if run_id not in _FIGURES_DIRTY:
-                return
-    finally:
-        _FIGURES_RUNNING.discard(run_id)
-
-
-def _schedule_figures(records: list, *, stale: bool) -> None:
-    """After a committed batch, refresh the figures of the runs it touched; ``stale`` False refreshes only runs that have none yet."""
-    for run_id in {r.get("run_id") for r in records if r.get("run_id")}:
-        run = state.RUNS.get(run_id)
-        if run is None or (not stale and run.figures is not None):
-            continue
-        task = tasks.spawn(_refresh_figures(run_id), name="refresh-figures")
-        _FIGURES_TASKS.add(task)
-        task.add_done_callback(_FIGURES_TASKS.discard)
-
-
-@get("/", include_in_schema=False)
-async def index() -> Response:
-    return Response(content=_DASHBOARD_HTML, media_type=MediaType.HTML)
-
-
-@get("/api/state", include_in_schema=False)
-async def api_state(q: Annotated[str, QueryParameter()] = "") -> dict:
-    """The whole fleet as JSON — **the same payload the websocket pushes**."""
-    return projection.state_message(_all_workflows(), q)
-
-
-@get("/repos", include_in_schema=False)
-async def repos() -> list[dict]:
-    """The container+repo picker's contents: one group per container, each with the checkouts found on its volume."""
-    workflows = [wf for wf in _all_workflows() if wf.workspace_volume]
-
-    async def _repos_for(wf: WorkflowContainer) -> tuple:
-        lister = localfs.list_repo_dirs if wf.native else docker_io.list_repo_dirs
-        dirs = await asyncio.to_thread(lister, wf.workspace_volume)
-        return wf, dirs
-
-    resolved = await asyncio.gather(*(_repos_for(wf) for wf in workflows)) if workflows else []
-    return projection.repo_entries(list(resolved))
-
-
-async def _sidecar_rpc(container_id: str, method: str, params: dict) -> dict | None:
-    """Serve a data-plane read from the container's live sidecar socket, or ``None`` when no sidecar is connected or the RPC fails — the caller then falls back to the throwaway-container volume read."""
-    conn = sidecar_hub.get(container_id)
-    if conn is None:
-        return None
-    try:
-        return await conn.rpc(method, params)
-    except sidecar_hub.SidecarError:
-        return None
-
-
-def _checkout_names(served: dict) -> dict:
-    """The checkouts a sidecar reports beside a read, or nothing when it is too old to name them."""
-    return {"repos": [str(name) for name in served["repos"]]} if isinstance(served.get("repos"), list) else {}
-
-
-def _branch_start(served: dict) -> dict:
-    """Where a sidecar says the branch started, or ``based: False`` when it is too old to say."""
-    if not isinstance(served.get("base_reason"), str):
-        return {"based": False}
-    return {
-        "based": True,
-        "base": str(served.get("base") or ""),
-        "base_ref": str(served.get("base_ref") or ""),
-        "base_branch": str(served.get("base_branch") or ""),
-        "base_reason": served["base_reason"],
-    }
-
-
-@get("/files/{container_id:str}", include_in_schema=False)
-async def files(
-    container_id: Annotated[str, PathParameter()],
-    repo: Annotated[str, QueryParameter()] = "",
-) -> dict:
-    """The repo-relative file paths of one checkout, whether the read failed, and whether the source reports failures, as ``{"paths", "failed", "reported", "served"}``, plus ``"repos"`` when the sidecar names the run's checkouts."""
-    served = await _sidecar_rpc(container_id, "getTree", {"repo": repo})
-    if served is not None:
-        return {
-            "paths": list(served.get("paths") or []),
-            "failed": bool(served.get("failed")),
-            "reported": "failed" in served,
-            "served": SERVED_BY_SIDECAR,
-            **_checkout_names(served),
-        }
-
-    wf = state.WORKFLOWS.get(container_id)
-    volume = wf.workspace_volume if wf else ""
-    if not volume:
-        return {"paths": [], "failed": True, "reported": True, "served": SERVED_BY_VOLUME}
-    native = bool(wf and wf.native)
-    reader = localfs.read_tree if native else docker_io.read_tree
-    read = await asyncio.to_thread(reader, volume, repo)
-    return {"paths": list(read["paths"]), "failed": read["failed"], "reported": True, "served": SERVED_BY_HOST if native else SERVED_BY_VOLUME}
-
-
-@get("/file/{container_id:str}", include_in_schema=False)
-async def file_content(
-    container_id: Annotated[str, PathParameter()],
-    repo: Annotated[str, QueryParameter()] = "",
-    path: Annotated[str, QueryParameter()] = "",
-) -> dict:
-    """One file's text, the highlight.js language its name implies, whether the read failed, and whether the source reports failures, as ``{"path", "content", "lang", "failed", "reported", "served"}``. ``served`` is ``"sidecar"`` when the run's sidecar answered and ``"volume"`` for every fallback reader, so a client can tell a live answer from a stand-in."""
-    lang = projection.file_lang(path)
-    served = await _sidecar_rpc(container_id, "getFile", {"repo": repo, "path": path})
-    if served is not None:
-        return {
-            "path": path,
-            "content": served.get("content") or "",
-            "lang": lang,
-            "failed": bool(served.get("failed")),
-            "reported": "failed" in served,
-            "served": SERVED_BY_SIDECAR,
-        }
-
-    def unread() -> dict:
-        return {"path": path, "content": "", "lang": lang, "failed": True, "reported": True, "served": SERVED_BY_VOLUME}
-
-    wf = state.WORKFLOWS.get(container_id)
-    volume = wf.workspace_volume if wf else ""
-    rel = f"{repo}/{path}".lstrip("/") if repo else path
-    if wf and wf.native and not repo:
-        gates = projection.reported_gates(wf, projection.telemetry_for(wf))
-        gate = next((gate for gate in gates if gate.file_path == path), None)
-        if gate is not None:
-            absolute = Path(_gate_abs_path(wf, gate))
-            if absolute.is_absolute():
-                volume, rel = str(absolute.parent), absolute.name
-    if not volume or not rel:
-        return unread()
-    reader = localfs.read_file if wf and wf.native else docker_io.read_file
-    try:
-        text = await asyncio.to_thread(reader, volume, rel)
-    except ValueError:
-        return unread()
-    if text is None:
-        return unread()
-    served_by = SERVED_BY_HOST if wf and wf.native else SERVED_BY_VOLUME
-    return {"path": path, "content": text, "lang": lang, "failed": False, "reported": True, "served": served_by}
-
-
-async def _run_facts(wf: WorkflowContainer) -> tuple:
-    """Seed history once per subscription; compose subsequent pushes in memory."""
-    run_id = projection.run_id_of(wf)
-    history = state.HISTORIES.get(run_id)
-    seeded = False
-    if history is None or not history.loaded:
-        async with state.HISTORY_LOCK:
-            history = state.HISTORIES.get(run_id)
-            if history is None:
-                history = LiveHistory(log_limit=projection.LOG_TRAIL_LIMIT)
-            if run_id and not history.loaded:
-                spans = await pools.QUERY.run(store.detail_spans, run_id)
-                logs = await pools.QUERY.run(
-                    store.query_logs, run=run_id, limit=projection.LOG_TRAIL_LIMIT
-                )
-                metric_rows = await pools.QUERY.run(
-                    store.detail_metrics, run_id, projection.LOG_TRAIL_LIMIT
-                )
-                history.update_spans(spans)
-                history.logs = logs
-                history.metrics = metric_rows
-                if run_dir := _native_run_dir(wf):
-                    await asyncio.to_thread(live_transcript.poll, history, run_dir)
-                history.loaded = True
-                seeded = True
-            if state.watchers_of(wf.container_id):
-                state.HISTORIES[run_id] = history
-    if seeded and not wf.native and sidecar_hub.get(wf.container_id) is not None:
-        _schedule_tail(wf.container_id)
-    facts = next(iter(alerts.live_status(run=run_id)), {}) if run_id else {}
-    facts.update(history.facts())
-    return state.RUNS.get(run_id), facts, history.logs, history.recent()
-
-
-async def _store_history_batch(
-    rows: list[dict], writer: Callable[[list[dict]], None], *,
-    kind: Literal["spans", "logs", "metrics"] = "spans"
-) -> None:
-    """Commit and advance watched snapshots atomically with respect to seeding."""
-    async with state.HISTORY_LOCK:
-        histories = {
-            run_id: state.HISTORIES[run_id]
-            for run_id in sorted({row["run_id"] for row in rows})
-            if run_id in state.HISTORIES
-        }
-        await pools.INGEST.run(writer, rows)
-        for run_id, history in histories.items():
-            batch = [row for row in rows if row["run_id"] == run_id]
-            if kind == "logs":
-                history.update_logs(batch)
-            elif kind == "metrics":
-                history.update_metrics(batch)
-            else:
-                history.update_spans(batch)
-
-
-async def _push_received(rows: list[dict]) -> None:
-    run_ids = {row["run_id"] for row in rows}
-    for cid in state.watched_ids():
-        wf = state.WORKFLOWS.get(cid)
-        if wf is not None and projection.run_id_of(wf) in run_ids:
-            live.mark_run(cid)
-
-
-@get("/worker/{container_id:str}", include_in_schema=False)
-async def worker_detail(container_id: Annotated[str, PathParameter()]) -> dict:
-    """One run's detail pane as JSON — activity, its gates, live metrics, log trail."""
-    wf = state.WORKFLOWS.get(container_id)
-    if wf is None:
-        return {"found": False, "id": container_id}
-    tel, facts, logs, history = await _run_facts(wf)
-    _queue_norms(wf, tel)
-    detail = projection.run_detail(wf, tel, facts, logs, history=history)
-    _stamp_revisions(detail, wf)
-    return detail
-
-
-@get("/diff/{container_id:str}", include_in_schema=False)
-async def diff(
-    container_id: Annotated[str, PathParameter()],
-    repo: Annotated[str, QueryParameter()] = "",
-    view: Annotated[str, QueryParameter()] = "",
-) -> dict:
-    """One checkout's uncommitted change: the diff, the untracked files, whether the read failed, and whether the source reports failures, and ``"served"`` saying whether the sidecar or a fallback reader answered, plus ``"repos"`` when the sidecar names the run's checkouts. ``?view=branch`` reads the change since the branch started instead, with the base the sidecar computed and ``"based"`` saying whether it reported one."""
-    branch = view == gitdiff.VIEW_BRANCH
-    served = await _sidecar_rpc(container_id, "getDiff", {"repo": repo, **({"view": view} if branch else {})})
-    if served is not None:
-        return {
-            "diff": served.get("diff") or "",
-            "untracked": list(served.get("untracked") or []),
-            "failed": bool(served.get("failed")),
-            "reported": "failed" in served,
-            "served": SERVED_BY_SIDECAR,
-            **(_branch_start(served) if branch else {}),
-            **_checkout_names(served),
-        }
-
-    wf = state.WORKFLOWS.get(container_id)
-    volume = wf.workspace_volume if wf else ""
-    if wf and wf.native and volume:
-        if branch:
-            read_branch = await asyncio.to_thread(localfs.read_branch_diff, volume, repo)
-            return {**read_branch, "based": True, "reported": True, "served": SERVED_BY_HOST}
-        read = await asyncio.to_thread(localfs.read_diff, volume, repo)
-        return {**read, "reported": True, "served": SERVED_BY_HOST}
-    if not volume or branch:
-        return {**gitdiff.unreadable(), "reported": True, "served": SERVED_BY_VOLUME}
-    read = await asyncio.to_thread(docker_io.read_diff, volume, repo)
-    return {**read, "reported": True, "served": SERVED_BY_VOLUME}
-
-
-@get("/api/run/{run_id:str}/outbox", include_in_schema=False)
-async def outbox_get(run_id: Annotated[str, PathParameter()]) -> dict:
-    """The gate this run is parked on, if any — its path, question and status."""
-    wf = _workflow_by_run_id(run_id)
-    if wf is None:
-        return {"found": False}
-    gate = next(iter(projection.reported_gates(wf, projection.telemetry_for(wf))), None)
-    if gate is None:
-        return {"found": False}
-    return {
-        "found": True,
-        "file_path": gate.file_path,
-        "question": gate.question,
-        "status": gate.status,
-    }
-
-
-def _overview_with_ending(run_id: str) -> dict:
-    return {**overview.run_overview(run_id), "ending": banner.banner(run_id)}
-
-
-@get("/api/run/{run_id:str}/overview", include_in_schema=False)
-async def run_overview(run_id: Annotated[str, PathParameter()]) -> dict:
-    """One run's cost so far and its time per flow, from the queries behind ``groom cost`` and ``groom profile``."""
-    return await pools.QUERY.run(_overview_with_ending, run_id)
-
-
-def _archived(run_id: str) -> tuple[dict | None, Path | None]:
-    """The stored row of an archived run and the folder holding its archive under its exact id. The row is None when the run is not an archive, and the folder is None when the archive's files are gone."""
-    row = history.stored(run_id)
-    if row is None or not row["archived"]:
-        return None, None
-    return row, archive.exact_dir(run_id)
-
-
-def _archive_overview(run_id: str) -> dict | None:
-    """An archived run's Overview, read from its frozen archive, or from its stored summary when the archive's files are gone. None when the run is not an archive. The run is resolved by exact id before anything is read, because ``run_source`` falls back to the live store and ``archive_dir`` to a prefix."""
-    row, folder = _archived(run_id)
-    if row is None:
-        return None
-    if folder is None:
-        return overview.stored_overview(row, history.comparison(run_id))
-    with archive.dropping_an_unreadable_index(folder):
-        found = _overview_with_ending(run_id)
-    if found["ending"]:
-        found["ending"]["moment"] = ""
-    return {**found, "archive": "ready"}
-
-
-@get("/api/archive/{run_id:str}/overview", include_in_schema=False)
-async def archive_overview(run_id: Annotated[str, PathParameter()]) -> dict:
-    """One archived run's Overview, on its own pool so that reading an archive never holds the dashboard's queries."""
-    found = await pools.ARCHIVE.run(_archive_overview, run_id)
-    if found is None:
-        raise NotFoundException(f"no archived run {run_id}")
-    return found
-
-
-@get("/api/history", include_in_schema=False)
-async def api_history(archives: Annotated[int, QueryParameter()] = 0) -> dict:
-    """The runs that ended in the retention window, newest first, with the totals above the table, or every summary there is with ``archives=1``. Reads the stored summaries and nothing else, and asks the worker to give any archive without a row one."""
-    found = await pools.QUERY.run(history.listing, alerts.unfinished_run_ids(), None, bool(archives))
-    if found["unlisted"]:
-        _wake_summaries()
-    return found
-
-
-@post("/api/history/{run_id:str}/retry", include_in_schema=False)
-async def history_retry(run_id: Annotated[str, PathParameter()]) -> dict:
-    """Ask for an archive whose summary could not be read to be read again."""
-    asked = await asyncio.to_thread(history.retry, run_id)
-    if asked:
-        live.bump("history")
-        _wake_summaries()
-    return {"ok": asked}
-
-
-async def _live_turns(run_id: str) -> activity.LiveRows:
-    """The watched run's live transcript rows by turn slug, brought up to date first when the run is native."""
-    wf = _workflow_by_run_id(run_id)
-    if wf is not None and wf.native:
-        await _tail_transcript(wf)
-    history = state.HISTORIES.get(run_id)
-    if history is None:
-        return {}
-    async with state.HISTORY_LOCK:
-        rows = list(history.transcript)
-    live: activity.LiveRows = {}
-    for row in rows:
-        live.setdefault(str(row["slug"]), []).append(row)
-    return live
-
-
-def _standing(run_id: str) -> dict | None:
-    """Where a live run is now: its current step, or the operator gate it waits at."""
-    wf = _workflow_by_run_id(run_id)
-    if wf is None:
-        return None
-    tel = projection.telemetry_for(wf)
-    here = projection.running_node(wf, tel)
-    if here is None or tel is None:
-        return None
-    gate = next(iter(projection.reported_gates(wf, tel)), None)
-    return {
-        "node": here["node"],
-        "since_ts": here["since_ts"],
-        "wait_kind": here["wait_kind"],
-        "turn_active": tel.turn_active,
-        "path": gate.file_path if gate else "",
-        "question": extract_question(gate.question) if gate and gate.question else "",
-    }
-
-
-def _gate_reader(run_id: str):
-    """A reader of one gate file in the run's workspace, or none when the run keeps no workspace groom can read."""
-    wf = _workflow_by_run_id(run_id)
-    if wf is None or not wf.workspace_volume:
-        return lambda _path: None
-    read = localfs.read_file if wf.native else docker_io.read_file
-    volume = wf.workspace_volume
-    return lambda path: read(volume, path)
-
-
-def _archive_read(run_id: str, read: Callable, *args):
-    """``read(*args)`` over one archived run's frozen file. The run is resolved by exact id before anything is read, and ``run_source`` is entered here because the pool does not copy the context variable that redirects the reads."""
-    row, folder = _archived(run_id)
-    if row is None:
-        raise NotFoundException(f"no archived run {run_id}")
-    if folder is None:
-        raise HTTPException(status_code=410, detail="this archive's files are gone")
-    with archive.dropping_an_unreadable_index(folder), archive.run_source(run_id):
-        return read(*args)
-
-
-def _in_archive(run_id: str) -> Callable:
-    async def read(fn: Callable, *args):
-        return await pools.ARCHIVE.run(_archive_read, run_id, fn, *args)
-
-    return read
-
-
-async def _timeline(read: Callable, run_id: str, live: activity.LiveRows, standing: dict | None, logs: int) -> dict:
-    return await read(activity.timeline, run_id, live, standing, bool(logs))
-
-
-async def _records(read: Callable, run_id: str, before: str, limit: int, metrics: int) -> dict:
-    try:
-        return await read(records.page, run_id, before, limit, bool(metrics))
-    except records.BadCursor as exc:
-        raise ClientException(detail="not a cursor of this run's records") from exc
-
-
-async def _search(read: Callable, run_id: str, q: str, live: activity.LiveRows, pending: bool) -> dict:
-    try:
-        return await read(activity.search, run_id, q, live, pending)
-    except activity.SearchFailed as exc:
-        raise ServiceUnavailableException(detail="the transcripts could not be searched") from exc
-
-
-async def _entry(read: Callable, run_id: str, key: str, *rest) -> dict:
-    try:
-        return await read(activity.entry, run_id, key, *rest)
-    except activity.EntryNotFound as exc:
-        raise NotFoundException(detail="no such step or gate") from exc
-
-
-async def _turn(read: Callable, run_id: str, slug: str, live: activity.LiveRows, pending: bool) -> dict:
-    try:
-        return await read(activity.turn, run_id, slug, live, pending)
-    except activity.TurnNotFound as exc:
-        raise NotFoundException(detail="no such turn") from exc
-    except activity.TurnUnreadable as exc:
-        raise ServiceUnavailableException(detail="the turn could not be read") from exc
-
-
-@get("/api/run/{run_id:str}/activity", include_in_schema=False)
-async def run_activity(run_id: Annotated[str, PathParameter()], logs: Annotated[int, QueryParameter()] = 0) -> dict:
-    """One run's agent turns, oldest first, with the one still running read from its live transcript. `logs=1` adds the run's info logs at their place in the timeline."""
-    return await _timeline(pools.QUERY.run, run_id, await _live_turns(run_id), _standing(run_id), logs)
-
-
-@get("/api/archive/{run_id:str}/activity", include_in_schema=False)
-async def archive_activity(run_id: Annotated[str, PathParameter()], logs: Annotated[int, QueryParameter()] = 0) -> dict:
-    """One archived run's turns, read from its frozen file on the archive pool."""
-    return await _timeline(_in_archive(run_id), run_id, {}, None, logs)
-
-
-_RunId = Annotated[str, PathParameter()]
-_Cursor = Annotated[str, QueryParameter()]
-_PageSize = Annotated[int, QueryParameter()]
-_Switch = Annotated[int, QueryParameter()]
-
-
-@get("/api/run/{run_id:str}/records", include_in_schema=False)
-async def run_records(run_id: _RunId, before: _Cursor = "", limit: _PageSize = records.PAGE, metrics: _Switch = 0) -> dict:
-    """One page of the run's stored records, newest first, from the cursor a previous page returned."""
-    return await _records(pools.QUERY.run, run_id, before, limit, metrics)
-
-
-@get("/api/archive/{run_id:str}/records", include_in_schema=False)
-async def archive_records(run_id: _RunId, before: _Cursor = "", limit: _PageSize = records.PAGE, metrics: _Switch = 0) -> dict:
-    """One page of an archived run's stored records, newest first, read from its frozen file."""
-    return await _records(_in_archive(run_id), run_id, before, limit, metrics)
-
-
-@get("/api/run/{run_id:str}/search", include_in_schema=False)
-async def run_search(run_id: Annotated[str, PathParameter()], q: Annotated[str, QueryParameter()] = "") -> dict:
-    """The turns of this one run whose transcript says the query, each with its first matching line."""
-    wf = state.WORKFLOWS.get(run_id)
-    return await _search(pools.QUERY.run, run_id, q, await _live_turns(run_id), wf is not None and not wf.native)
-
-
-@get("/api/archive/{run_id:str}/search", include_in_schema=False)
-async def archive_search(run_id: Annotated[str, PathParameter()], q: Annotated[str, QueryParameter()] = "") -> dict:
-    """The turns of one archived run whose transcript says the query."""
-    return await _search(_in_archive(run_id), run_id, q, {}, False)
-
-
-@get("/api/run/{run_id:str}/entry/{key:str}", include_in_schema=False)
-async def run_entry(
-    run_id: Annotated[str, PathParameter()], key: Annotated[str, PathParameter()]
-) -> dict:
-    """One step, operator gate, backend retry or churn alert of the run, read in full."""
-    return await _entry(pools.QUERY.run, run_id, key, await _live_turns(run_id), _standing(run_id), _gate_reader(run_id))
-
-
-@get("/api/archive/{run_id:str}/entry/{key:str}", include_in_schema=False)
-async def archive_entry(
-    run_id: Annotated[str, PathParameter()], key: Annotated[str, PathParameter()]
-) -> dict:
-    """One step, gate, backend retry or churn alert of an archived run, read in full. Its workspace is gone, so a gate's answer reads as unavailable."""
-    return await _entry(_in_archive(run_id), run_id, key, {}, None, lambda _path: None)
-
-
-@get("/api/run/{run_id:str}/activity/{slug:str}", include_in_schema=False)
-async def run_turn(
-    run_id: Annotated[str, PathParameter()], slug: Annotated[str, PathParameter()]
-) -> dict:
-    """One agent turn: its head figures, its messages and its tool calls."""
-    wf = state.WORKFLOWS.get(run_id)
-    return await _turn(pools.QUERY.run, run_id, slug, await _live_turns(run_id), wf is not None and not wf.native)
-
-
-@get("/api/archive/{run_id:str}/activity/{slug:str}", include_in_schema=False)
-async def archive_turn(
-    run_id: Annotated[str, PathParameter()], slug: Annotated[str, PathParameter()]
-) -> dict:
-    """One agent turn of an archived run, read from the records the archive kept."""
-    return await _turn(_in_archive(run_id), run_id, slug, {}, False)
-
-
-@post("/api/run/{run_id:str}/outbox", include_in_schema=False)
-async def outbox_post(run_id: Annotated[str, PathParameter()], data: dict) -> dict:
-    """Answer the gate this run is parked on."""
-    wf = _workflow_by_run_id(run_id)
-    if wf is None:
-        return {"ok": False, "message": "no such run"}
-    file_path = str(data.get("file_path", ""))
-    answer = str(data.get("answer", ""))
-    result = await _answer(wf, wf.container_id, file_path, answer)
-    return {"ok": result.ok, "message": result.message}
-
-
-@get("/api/run/{run_id:str}/inbox", include_in_schema=False)
-async def inbox_get(
-    run_id: Annotated[str, PathParameter()],
-    include_all: Annotated[bool, QueryParameter()] = False,
-) -> dict:
-    """This run's inbox — outstanding messages by default, every message (replied or not) when ``?include_all=true`` — mirroring the CLI's ``read``."""
-    wf = _workflow_by_run_id(run_id)
-    if wf is None:
-        return {"messages": []}
-    messages = await asyncio.to_thread(run_inbox.messages, wf)
-    if not include_all:
-        messages = [m for m in messages if not m.reply]
-    return {"messages": [m.model_dump() for m in messages]}
-
-
-@post("/api/run/{run_id:str}/inbox", include_in_schema=False)
-async def inbox_post(run_id: Annotated[str, PathParameter()], data: dict) -> dict:
-    """Append an operator message to this run's inbox — the ``ask`` verb, reachable over HTTP rather than only the CLI so a browser tab (or a babysitting session without shell access to the run dir) can leave one."""
-    wf = _workflow_by_run_id(run_id)
-    if wf is None:
-        return {"ok": False, "message": "no such run"}
-    body = str(data.get("body", ""))
-    if not body:
-        return {"ok": False, "message": "message body is required"}
-    message_id = str(data.get("id") or uuid.uuid4().hex[:12])
-    at = datetime.now(UTC).isoformat()
-    message = await asyncio.to_thread(run_inbox.append, wf, message_id=message_id, body=body, at=at)
-    if message is None:
-        return {"ok": False, "message": "no run directory yet"}
-    return {"ok": True, "message": message.model_dump()}
-
-
-async def _reconcile() -> int:
-    """One discovery pass: upsert every found workflow, then prune the ones whose container is gone (skipping the prune when docker is unreachable so a transient outage never wipes the fleet)."""
-    found = await asyncio.to_thread(discovery.scan)
-    for wf in found:
-        state.WORKFLOWS[wf.container_id] = wf
-    present = await asyncio.to_thread(discovery.present_container_ids)
-    if present is not None:
-        state.prune_workflows(present)
-    return len(found)
-
-
-@post("/refresh", include_in_schema=False)
-async def refresh() -> dict:
-    """Re-run the reconciliation scan on demand (e.g."""
-    state.SCANNING = True
-    live.mark_fleet()
-    try:
-        count = await _reconcile()
-    finally:
-        state.SCANNING = False
-    live.mark_fleet()
-    return {"ok": True, "count": count}
-
-
-@post("/push/progress", include_in_schema=False)
-async def push_progress(data: dict) -> dict:
-    container_id = str(data.get("container_id", ""))[:12]
-    if not container_id:
-        return {"ok": False}
-    await _ensure_volumes(container_id)
-    state.upsert_workflow(
-        container_id,
-        name=data.get("name"),
-        repo_name=data.get("repo_name"),
-        repo_branch=data.get("repo_branch"),
-        current_node=data.get("current_node"),
-        state=WorkflowState.RUNNING,
-    )
-    live.mark_fleet()
-    live.mark_run(container_id)
-    return {"ok": True}
-
-
-@get("/api/attend/queue", include_in_schema=False)
-async def attend_queue() -> dict:
-    """Every run currently waiting on an attendant, oldest first — the whole fleet."""
-    return {"mode": attend.mode(), "jobs": attend.queue()}
-
-
-@get("/api/attend/sessions", include_in_schema=False)
-async def attend_sessions() -> dict:
-    """The attendance log: the latest 200, newest first."""
-    rows = await asyncio.to_thread(attend_ledger.attend_recent, 200)
-    return {"mode": attend.mode(), "sessions": rows}
-
-
-@get("/api/attend/sessions/{session_id:str}", include_in_schema=False)
-async def attend_session(session_id: Annotated[str, PathParameter()]) -> dict:
-    """One attendance, rendered as a conversation — not as JSON."""
-    row = await asyncio.to_thread(attend_ledger.attend_by_session, session_id)
-    await asyncio.to_thread(attend_transcript.ensure_body, session_id)
-    rendered = await asyncio.to_thread(attend_transcript.render_session, session_id)
-    workspace = str((row or {}).get("workspace") or "")
-    resume = f"claude --resume {session_id}"
-    rendered["resume"] = f"cd {workspace} && {resume}" if workspace else resume
-    rendered["record"] = row
-    rendered["attempts"] = list((row or {}).get("session_ids") or [])
-    return rendered
-
-
-@post("/api/attend/sessions/{job_id:str}/stop", include_in_schema=False)
-async def attend_stop(job_id: Annotated[str, PathParameter()]) -> dict:
-    """Kill this attendant and hand its run back to the operator's own terminal."""
-    stopped = await asyncio.to_thread(attend.stop, job_id)
-    live.mark_fleet()
-    return {"ok": stopped}
-
-
-@get("/api/settings/attend", include_in_schema=False)
-async def attend_settings_get() -> dict:
-    """The effective attend settings, and where each value came from."""
-    return (await asyncio.to_thread(attend.settings)).as_dict()
-
-
-@post("/api/settings/attend", include_in_schema=False)
-async def attend_settings_post(data: dict) -> dict:
-    """Turn the attendant on or off, persisted to the unified home config."""
-    current = await asyncio.to_thread(attend.settings)
-    enabled = bool(data.get("enabled"))
-    wanted = (current.last_mode or attend.HEADLESS) if enabled else attend.OFF
-    updated = AttendSettings(
-        mode=wanted,
-        last_mode=current.last_mode if wanted == attend.OFF else wanted,
-        cli=current.cli,
-        deny=current.deny,
-    )
-    await asyncio.to_thread(write_attend_settings, updated)
-    live.mark_fleet()
-    return (await asyncio.to_thread(attend.settings)).as_dict()
-
-
-@get("/api/dispatch/queues", include_in_schema=False)
-async def dispatch_queues() -> dict:
-    """Every configured queue, with its concurrency and current occupancy."""
-    return {"queues": await asyncio.to_thread(dispatch.queue_status)}
-
-
-@post("/api/dispatch/{queue:str}/items", include_in_schema=False)
-async def dispatch_enqueue(queue: Annotated[str, PathParameter()], data: dict) -> Response:
-    """Enqueue one item onto this queue."""
-    params = data.get("params") if isinstance(data.get("params"), dict) else {}
-    try:
-        item = await asyncio.to_thread(dispatch.enqueue, queue, params)
-    except dispatch.UnknownQueue:
-        return Response(content={"ok": False, "error": f"no such queue: {queue}"}, status_code=404)
-    live.mark_fleet()
-    return Response(content={"ok": True, "item": item})
-
-
-@get("/api/dispatch/{queue:str}/items", include_in_schema=False)
-async def dispatch_items(queue: Annotated[str, PathParameter()]) -> dict:
-    """This queue's items, newest first — the latest 200, same cap `attend_sessions` uses."""
-    rows = await asyncio.to_thread(dispatch_ledger.dispatch_list, queue, 200)
-    return {"items": rows}
-
-
-@delete("/api/dispatch/{queue:str}/items/{item_id:str}", include_in_schema=False, status_code=200)
-async def dispatch_delete(
-    queue: Annotated[str, PathParameter()], item_id: Annotated[str, PathParameter()]
-) -> dict:
-    """Cancel a still-`pending` item before it ever spawns."""
-    del queue
-    return {"ok": await asyncio.to_thread(dispatch.cancel_pending, item_id)}
-
-
-@post("/api/dispatch/{queue:str}/items/{item_id:str}/stop", include_in_schema=False)
-async def dispatch_stop(
-    queue: Annotated[str, PathParameter()], item_id: Annotated[str, PathParameter()]
-) -> dict:
-    """Kill this item's process and free its queue slot for the next `pending` one."""
-    del queue
-    stopped = await asyncio.to_thread(dispatch.stop, item_id)
-    live.mark_fleet()
-    return {"ok": stopped}
-
-
-@post("/push/blocked", include_in_schema=False)
-async def push_blocked(data: dict) -> dict:
-    """Used both by groom-sidecar and by the await_operator.py backstop push — same shape, same handling, whichever gets there first (or both; the second call is just a harmless re-render)."""
-    container_id = str(data.get("container_id", ""))[:12]
-    file_path = str(data.get("file_path", ""))
-    if not container_id or not file_path:
-        return {"ok": False}
-    await _ensure_volumes(container_id)
-    question = str(data.get("question", ""))
-    wf = state.upsert_workflow(
-        container_id,
-        name=data.get("name"),
-        repo_name=data.get("repo_name"),
-        repo_branch=data.get("repo_branch"),
-        state=WorkflowState.BLOCKED,
-    )
-    wf.gates[file_path] = GateInfo(workflow_id=container_id, file_path=file_path, question=question)
-
-    live.mark_fleet()
-    live.mark_run(container_id)
-    await _broadcast_notify(f"{wf.name}: {question[:_QUESTION_NOTIFY_LIMIT]}")
-    gate = next(iter(wf.gates.values()))
-    _attend_gates(wf, [gate])
-    return {"ok": True}
-
-
-@post("/push/exited", include_in_schema=False)
-async def push_exited(data: dict) -> dict:
-    """The workflow process ended (fired once by the container entrypoint via ``groom-sidecar --exit-code``)."""
-    container_id = str(data.get("container_id", ""))[:12]
-    if not container_id:
-        return {"ok": False}
-    await _ensure_volumes(container_id)
-    exit_code = data.get("exit_code")
-    wf = state.upsert_workflow(
-        container_id,
-        name=data.get("name"),
-        repo_name=data.get("repo_name"),
-        repo_branch=data.get("repo_branch"),
-        state=WorkflowState.FINISHED,
-        exit_code=int(exit_code) if isinstance(exit_code, (int, str)) and str(exit_code).lstrip("-").isdigit() else None,
-    )
-    wf.gates.clear()
-    attend.release(container_id)
-    if wf.exit_code is not None and wf.exit_code not in _NOT_A_DEATH_EXIT:
-        _attend_death(container_id)
-    live.mark_fleet()
-    live.mark_run(container_id)
-    return {"ok": True}
-
-
-_NOT_A_DEATH_EXIT = frozenset({0, reload_mod.RELOAD_EXIT_CODE})
-_NOT_A_DEATH_TERMINAL = frozenset(alerts.CLEAN_TERMINALS) | {"interrupted", "reload"}
-
-
-def _attend_death(container_id: str) -> None:
-    """Put an attendant on a run that ended without reaching its own end."""
-    wf = state.WORKFLOWS.get(container_id)
-    if wf is None or not wf.native:
-        return
-    try:
-        attend.attend_death(
-            run_id=wf.container_id,
-            workflow=wf.workflow_type or wf.name,
-            run_dir=wf.runs_volume,
-            workspace=wf.workspace_volume,
-        )
-    except Exception:
-        logger.exception("attend: dead-run dispatch failed for %s", container_id)
-
-
-async def _dispatch_alerts(fired: list[alerts.Alert]) -> None:
-    """Fan one batch of newly-fired alerts out to every channel: the activity log, the AFK push (ntfy/webhook, off the event loop — urllib blocks), and the browser notification path blocked-gates already use."""
-    for alert in fired:
-        telemetry = state.RUNS.get(alert.run_id)
-        event = AttentionEvent(
-            run_id=alert.run_id, event=RULE_EVENTS[alert.rule], message=alert.message,
-            node=telemetry.current_node if telemetry else "",
-            question=telemetry.wait_gate_question if telemetry else "",
-            gate_path=telemetry.wait_gate_path if telemetry else "",
-            terminal=telemetry.terminal if telemetry else "",
-        )
-        now = time.time()
-        state.record_event(alert.run_id, event, now)
-        for feed in state.feeds_of(alert.run_id):
-            _feed_put(feed, event, now)
-        await state.broadcast(AttentionFrame(events=[event]).model_dump())
-        state.record_log(
-            {"event": "alert", "rule": alert.rule, "run_id": alert.run_id, "message": alert.message}
-        )
-        if alert.rule == "ENDED" and (run := state.RUNS.get(alert.run_id)) is not None and run.terminal != "reload":
-            _wake_summaries()
-        if alert.rule == "DIED" or (
-            alert.rule == "ENDED"
-            and (run := state.RUNS.get(alert.run_id)) is not None
-            and run.terminal not in _NOT_A_DEATH_TERMINAL
-        ):
-            _attend_death(alert.run_id)
-        await asyncio.to_thread(notify.push, f"groom: {alert.rule}", alert.message)
-        ended = projection.ended_of(state.RUNS.get(alert.run_id)) if alert.rule == "ENDED" else None
-        await _broadcast_notify(f"[{alert.rule}] {alert.message}", alert.rule, bool(ended and ended["failed"]))
-
-
-def _real_runs(records: list[dict]) -> list[dict]:
-    """Drop records a test process produced, before anything stores or alerts on them."""
-    return [r for r in records if not store.is_test_run_dir(str(r.get("run_dir", "")))]
-
-
-def _truthy(value: str) -> bool:
-    """A query flag, read the way a checkbox writes it (`1`, `on`) and the way a hand-typed URL does (`true`, `yes`)."""
-    return value.strip().lower() in ("1", "true", "yes", "on")
-
-
-_RETRY_AFTER_S = "5"
-
-
-def _store_unavailable() -> Response:
-    return Response(
-        content=b"",
-        status_code=503,
-        media_type="application/x-protobuf",
-        headers={"Retry-After": _RETRY_AFTER_S},
-    )
-
-
-@post("/v1/traces", include_in_schema=False)
-async def otlp_traces(request: Request) -> Response:
-    """Standard OTLP/HTTP trace receiver — parse → store → eval rules → broadcast, mirroring push_blocked's shape."""
-    body = b""
-    try:
-        body = await request.body()
-        spans = _real_runs(otlp.parse_traces(body))
-    except Exception as exc:  # noqa: BLE001 - undecodable payload, whatever the cause → 400
-        logger.warning(
-            "OTLP traces rejected from %s content-type=%r content-encoding=%r "
-            "content-length=%r body-bytes=%d: %s: %s",
-            request.client,
-            request.headers.get("content-type"),
-            request.headers.get("content-encoding"),
-            request.headers.get("content-length"),
-            len(body),
-            type(exc).__name__,
-            exc,
-        )
-        return Response(content=b"", status_code=400, media_type="application/x-protobuf")
-    try:
-        await _store_history_batch(spans, store.insert_spans)
-    except sqlite3.Error:
-        return _store_unavailable()
-    await _dispatch_alerts(alerts.ingest_spans(spans))
-    await _project_native_rows(spans)
-    _schedule_figures(spans, stale=True)
-    await _push_received(spans)
-    return Response(content=b"", media_type="application/x-protobuf", status_code=200)
-
-
-@post("/v1/metrics", include_in_schema=False)
-async def otlp_metrics(request: Request) -> Response:
-    """Standard OTLP/HTTP metric receiver."""
-    try:
-        points = _real_runs(otlp.parse_metrics(await request.body()))
-    except Exception:  # noqa: BLE001 - undecodable payload, whatever the cause → 400
-        return Response(content=b"", status_code=400, media_type="application/x-protobuf")
-    try:
-        await _store_history_batch(points, store.insert_metrics, kind="metrics")
-    except sqlite3.Error:
-        return _store_unavailable()
-    await _dispatch_alerts(alerts.ingest_metrics(points))
-    await _project_native_rows(points)
-    _schedule_figures(points, stale=False)
-    await _push_received(points)
-    return Response(content=b"", media_type="application/x-protobuf", status_code=200)
-
-
-@post("/v1/logs", include_in_schema=False)
-async def otlp_logs(request: Request) -> Response:
-    """Standard OTLP/HTTP log receiver."""
-    try:
-        records = _real_runs(otlp.parse_logs(await request.body()))
-    except Exception:  # noqa: BLE001 - undecodable payload, whatever the cause → 400
-        return Response(content=b"", status_code=400, media_type="application/x-protobuf")
-    try:
-        await _store_history_batch(records, store.insert_logs, kind="logs")
-    except sqlite3.Error:
-        return _store_unavailable()
-    await _push_received(records)
-    return Response(content=b"", media_type="application/x-protobuf", status_code=200)
-
-
-
-
-@get("/api/live", include_in_schema=False)
-async def api_live(run: Annotated[str, QueryParameter()] = "") -> list[dict]:
-    """Where each live run is right now — the rows behind ``groom status``."""
-    return alerts.live_status(run=run)
-
-
-
-
-def _attend_gates(wf: WorkflowContainer, gates: list[GateInfo]) -> None:
-    """Put an attendant on the gates this row reports being parked on."""
-    if not wf.native:
-        return
-    try:
-        if not wf.gates:
-            attend.release(wf.container_id)
-            return
-        for gate in gates:
-            attend.attend_gate(
-                run_id=wf.container_id,
-                workflow=wf.workflow_type or wf.name,
-                run_dir=wf.runs_volume,
-                workspace=wf.workspace_volume,
-                gate_path=_gate_abs_path(wf, gate),
-                question=gate.question,
-                kind=gate.kind or attend.ATTENDABLE_KIND,
-            )
-    except Exception:
-        logger.exception("attend: dispatch failed for %s", wf.container_id)
-
-
-def _same_gate(run_path: str, file_path: str) -> bool:
-    """Whether the path a run reports for its gate names the same file as the (possibly workspace-relative) path a groom row carries."""
-    rel = file_path.lstrip("/")
-    return bool(run_path) and (run_path == file_path or run_path.endswith(f"/{rel}"))
-
-
-async def _answer_via_socket(
-    wf: WorkflowContainer | None, file_path: str, answer: str
-) -> AnswerResult | None:
-    """Deliver one answer over the run's control socket, or ``None`` when the file fallback should decide instead."""
-    if wf is None:
-        return None
-    listing = await _run_questions(wf)
-    if not listing or not listing.get("ok"):
-        return None
-    questions = [q for q in listing.get("questions") or [] if isinstance(q, dict)]
-    match = next(
-        (q for q in questions if _same_gate(str(q.get("path", "")), file_path)), None
-    )
-    if match is None:
-        return None
-    request = control.Request(
-        action=control.ANSWER, path=str(match.get("path", "")), body=answer
-    )
-    if wf.native:
-        try:
-            reply = await asyncio.to_thread(control.send, wf.runs_volume, request)
-        except (FileNotFoundError, control.ControlProtocolError, control.Unanswered):
-            return None
-    else:
-        try:
-            reply = await sidecar_hub.answer_gate(
-                wf.container_id, "", request.path, answer
-            )
-        except sidecar_hub.SidecarError:
-            return None
-        if reply.get("error") == "no listener":
-            return None
-    if not reply:
-        return None
-    if reply.get("ok"):
-        return AnswerResult(ok=True, message="answered over the run's control socket")
-    error = str(reply.get("error", ""))
-    if error == "already answered":
-        return AnswerResult(ok=False, message=error)
-    return None
-
-
-async def _run_questions(wf: WorkflowContainer) -> dict | None:
-    """The one-shot `questions` round-trip — used only by the answer flow."""
-    if wf.native:
-        if not wf.runs_volume:
-            return None
-        return await native_questions(wf.runs_volume, "gate one-shot", wf.container_id) or None
-    try:
-        reply = await sidecar_hub.ask_questions(wf.container_id)
-    except sidecar_hub.SidecarError:
-        return None
-    if reply.get("error") == "no listener":
-        return None
-    return reply or None
-
-
-def _gate_abs_path(wf: WorkflowContainer, gate: GateInfo) -> str:
-    """The gate's path on this host, for a consumer that has to open the file."""
-    anchor = gate.base or wf.workspace_volume
-    if not anchor:
-        return gate.file_path
-    return str(Path(anchor) / gate.file_path)
-
-
-async def _answer(wf: WorkflowContainer | None, container_id: str, file_path: str, answer: str) -> AnswerResult:
-    """Write an operator's answer into one gate and settle the fleet around it — the state flip, the log, the broadcast."""
-    gate = wf.gates.get(file_path) if wf else None
-    tel = projection.telemetry_for(wf) if wf else None
-    if (gate and gate.kind == "machine") or (
-        tel and tel.wait_kind == "machine" and _same_gate(tel.wait_gate_path, file_path)
-    ):
-        return AnswerResult(ok=False, message="machine waits require their producer's result")
-    workspace_volume = (gate.base if gate and gate.base else wf.workspace_volume) if wf else ""
-    allow_headerless = bool(gate and gate.legacy_headerless)
-    if allow_headerless:
-        run = projection.telemetry_for(wf) if wf else None
-        allow_headerless = bool(run and run.wait_kind == "operator"
-                                and _same_gate(run.wait_gate_path, file_path))
-    socket_result = await _answer_via_socket(wf, file_path, answer)
-    if socket_result is not None:
-        result = socket_result
-        if result.ok:
-            state.clear_gate(container_id, file_path)
-    else:
-        answer_path = file_path
-        if wf and wf.native and gate and Path(file_path).is_absolute():
-            workspace_volume = str(Path(file_path).parent)
-            answer_path = Path(file_path).name
-        result = await answer_gate(
-            container_id,
-            answer_path,
-            answer,
-            workspace_volume=workspace_volume,
-            native=bool(wf and wf.native),
-            allow_headerless=allow_headerless,
-        )
-    if result.ok:
-        state.clear_gate(container_id, file_path)
-    state.record_log(
-        {
-            "event": "answer",
-            "container_id": container_id,
-            "file_path": file_path,
-            "ok": result.ok,
-            "message": result.message,
-            "via": "socket" if socket_result is not None else "file",
-        }
-    )
-    if result.ok and wf is not None and not wf.gates and wf.state == WorkflowState.BLOCKED:
-        wf.state = WorkflowState.RUNNING
-
-    live.mark_fleet()
-    live.mark_run(container_id)
-    if result.ok:
-        await state.broadcast(
-            {"type": "answered", "id": container_id, "file_path": file_path}
-        )
-    return result
-
-
-def _workflow_by_run_id(run_id: str) -> WorkflowContainer | None:
-    """A run addressed by run id rather than container id."""
-    wf = state.WORKFLOWS.get(run_id)
-    if wf is not None:
-        return wf
-    for candidate in state.WORKFLOWS.values():
-        if candidate.run_id == run_id:
-            return candidate
-    return None
-
-
-async def _handle_command(data: dict, queue: asyncio.Queue | None = None) -> None:
-    cmd = data.get("cmd")
-    if cmd == "watch":
-        if queue is None:
-            return
-        run_id = str(data.get("run_id", ""))
-        state.watch(queue, run_id)
-        if run_id:
-            wf = state.WORKFLOWS.get(run_id)
-            if wf is not None:
-                _watch_transcript(wf)
-                await live.open_detail(queue, run_id)
-        return
-    if cmd != "answer":
-        return
-    container_id = str(data.get("workflow_id", ""))
-    file_path = str(data.get("file_path", ""))
-    answer = str(data.get("answer", ""))
-    wf = state.WORKFLOWS.get(container_id)
-    result = await _answer(wf, container_id, file_path, answer)
-    if not result.ok and queue is not None:
-        await state.send(queue, projection.answer_rejected_message(container_id, file_path, result.message))
-
-
-async def _send_loop(socket: WebSocket, queue: asyncio.Queue) -> None:
-    while True:
-        message = await queue.get()
-        await socket.send_text(json.dumps(message))
-
-
-async def _recv_loop(socket: WebSocket, queue: asyncio.Queue) -> None:
-    while True:
-        data = await socket.receive_json()
-        await _handle_command(data, queue)
-
-
-@websocket("/ws")
-async def dashboard_ws(socket: WebSocket) -> None:
-    """One socket per open tab, carrying JSON in both directions: fleet-wide ``state``/``notify``/``answered`` frames plus this tab's own ``detail`` and ``answer_rejected`` frames down, ``{"cmd": "answer"|"watch", ...}`` up."""
-    await socket.accept()
-    queue = state.new_client_queue()
-    state.add_client(queue)
-    try:
-        await socket.send_text(json.dumps(live.snapshot()))
-        send_task = asyncio.create_task(_send_loop(socket, queue))
-        recv_task = asyncio.create_task(_recv_loop(socket, queue))
-        done, pending = await asyncio.wait({send_task, recv_task}, return_when=asyncio.FIRST_COMPLETED)
-        for task in pending:
-            task.cancel()
-        for task in done:
-            exc = task.exception()
-            if exc is not None and not isinstance(exc, WebSocketDisconnect):
-                raise exc
-    finally:
-        state.remove_client(queue)
-
-
-FEED_MIN_EVERY_S = 60.0
-FEED_DEFAULT_EVERY_S = 1800.0
-
-
-_FEED_QUEUE_MAX = 200
-
-
-def _feed_put(queue: asyncio.Queue, event: AttentionEvent, ts: float) -> None:
-    """Queue one event for a feed without ever blocking the collector: a full queue drops it."""
-    try:
-        queue.put_nowait((ts, event))
-    except asyncio.QueueFull:
-        pass
-
-
-async def _until_disconnect(socket: WebSocket) -> None:
-    """Return when the peer goes away; a feed client sends nothing, so anything it does send is dropped."""
-    try:
-        while True:
-            await socket.receive_data("text")
-    except WebSocketDisconnect:
-        return
-
-
-@websocket("/feed")
-async def feed_ws(
-    socket: WebSocket,
-    run: Annotated[str, QueryParameter()],
-    every: Annotated[float, QueryParameter()] = FEED_DEFAULT_EVERY_S,
-    since: Annotated[float | None, QueryParameter()] = None,
-) -> None:
-    """One filtered socket for one run, meant for a program rather than a tab: ``event`` frames the moment an alert fires and a ``digest`` frame every ``every`` seconds, quiet or not, so silence reads as a signal."""
-    await socket.accept()
-    interval = max(every, FEED_MIN_EVERY_S)
-    queue: asyncio.Queue = asyncio.Queue(maxsize=_FEED_QUEUE_MAX)
-    state.add_feed(queue, run)
-    seq = 0
-
-    async def emit(frame: EventFrame | DigestFrame) -> None:
-        await socket.send_text(frame.model_dump_json())
-
-    try:
-        now = time.time()
-        if since is not None:
-            replay = [(ts, event) for ts, event in state.EVENTS.get(run, ()) if ts > since]
-            replayed = {event.event for _, event in replay}
-            replay += [
-                (now, event)
-                for event in projection.attention_events(_all_workflows())
-                if event.run_id == run and event.event not in replayed
-            ]
-            window_start = since
-        else:
-            replay = [
-                (now, event)
-                for event in projection.attention_events(_all_workflows())
-                if event.run_id == run
-            ]
-            window_start = now - interval
-        for ts, event in replay:
-            seq += 1
-            await emit(EventFrame(seq=seq, ts=ts, event=event))
-        seq += 1
-        await emit(digest.build_digest(run, window_start, now).model_copy(update={"seq": seq, "ts": now}))
-        last = now
-        gone = asyncio.create_task(_until_disconnect(socket))
-        pending = asyncio.create_task(queue.get())
-        try:
-            while True:
-                remaining = last + interval - time.time()
-                done, _ = await asyncio.wait(
-                    {pending, gone}, timeout=max(remaining, 0.0),
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-                if gone in done:
-                    return
-                if pending in done:
-                    ts, event = pending.result()
-                    pending = asyncio.create_task(queue.get())
-                    seq += 1
-                    await emit(EventFrame(seq=seq, ts=ts, event=event))
-                else:
-                    now = time.time()
-                    seq += 1
-                    frame = digest.build_digest(run, last, now)
-                    await emit(frame.model_copy(update={"seq": seq, "ts": now}))
-                    last = now
-        finally:
-            gone.cancel()
-            pending.cancel()
-    except WebSocketDisconnect:
-        pass
-    except Exception as exc:
-        logger.exception("feed for run %s failed", run)
-        await socket.close(code=1011, reason=f"feed failed: {type(exc).__name__}: {exc}"[:120])
-    finally:
-        state.remove_feed(queue)
-
-
-async def _apply_hello(container_id: str, data: dict) -> None:
-    """Fold a sidecar's on-connect ``hello`` into the fleet."""
-    identity = data.get("identity") or {}
-    snapshot = data.get("snapshot") or {}
-    await _ensure_volumes(container_id)
-    wf = state.upsert_workflow(
-        container_id,
-        name=identity.get("name"),
-        repo_name=identity.get("repo_name"),
-        repo_branch=identity.get("repo_branch"),
-        run_id=identity.get("run_id") or None,
-        workflow_type=identity.get("workflow") or None,
-    )
-    wf.current_node = snapshot.get("current_node") or wf.current_node
-    wf.gates.clear()
-    if snapshot.get("terminal"):
-        wf.state = WorkflowState.FINISHED
-        conn = sidecar_hub.get(container_id)
-        if conn is not None:
-            sidecar_turns.schedule(
-                conn,
-                run_id=str(identity.get("run_id") or ""),
-                workflow=str(identity.get("workflow") or ""),
-                final=True,
-            )
-    else:
-        for gate in snapshot.get("gates") or []:
-            file_path = str(gate.get("file_path", ""))
-            if not file_path:
-                continue
-            wf.gates[file_path] = GateInfo(workflow_id=container_id, file_path=file_path, question=str(gate.get("question", "")))
-        wf.state = WorkflowState.BLOCKED if wf.gates else WorkflowState.RUNNING
-    live.mark_fleet()
-    live.mark_run(container_id)
-
-
-async def _apply_socket_progress(container_id: str, data: dict) -> None:
-    state.upsert_workflow(container_id, current_node=data.get("current_node"), state=WorkflowState.RUNNING)
-    live.mark_fleet()
-    live.mark_run(container_id)
-
-
-def _apply_socket_turn(conn: sidecar_hub.SidecarConnection, data: dict) -> None:
-    """A container says one of its turn records moved; go and fetch it, and show a watching pane what the live transcript gained."""
-    _TAIL_RUNS[conn.container_id] = str(data.get("run", ""))
-    _schedule_tail(conn.container_id)
-    sidecar_turns.schedule(
-        conn,
-        run=str(data.get("run", "")),
-        run_id=str(data.get("run_id", "")),
-        workflow=str(data.get("workflow", "")),
-    )
-
-
-def _apply_socket_workspace(container_id: str) -> None:
-    wf = state.WORKFLOWS.get(container_id)
-    if wf is None:
-        return
-    wf.workspace_rev += 1
-    live.mark_run(container_id)
-
-
-async def _apply_socket_blocked(container_id: str, data: dict) -> None:
-    file_path = str(data.get("file_path", ""))
-    if not file_path:
-        return
-    question = str(data.get("question", ""))
-    wf = state.upsert_workflow(container_id, state=WorkflowState.BLOCKED)
-    wf.gates[file_path] = GateInfo(workflow_id=container_id, file_path=file_path, question=question)
-    live.mark_fleet()
-    live.mark_run(container_id)
-    await _broadcast_notify(f"{wf.name}: {question[:_QUESTION_NOTIFY_LIMIT]}")
-    if wf.gates:
-        _attend_gates(wf, list(wf.gates.values()))
-
-
-@websocket("/sidecar")
-async def dashboard_sidecar(socket: WebSocket) -> None:
-    """The container-dialed data-plane socket (distinct from the browser ``/ws``): the sidecar is the client, so no inbound reachability into the container is needed."""
-    await socket.accept()
-    conn: sidecar_hub.SidecarConnection | None = None
-    try:
-        while True:
-            data = await socket.receive_json()
-            if not isinstance(data, dict):
-                continue
-            mtype = data.get("type")
-            if mtype == "hello":
-                container_id = str((data.get("identity") or {}).get("container_id", ""))[:12]
-                if not container_id:
-                    continue
-                conn = sidecar_hub.SidecarConnection(container_id, socket)
-                sidecar_hub.register(conn)
-                await _apply_hello(container_id, data)
-            elif conn is None:
-                continue
-            elif mtype == "rpc_result":
-                conn.resolve(
-                    str(data.get("id", "")),
-                    ok=bool(data.get("ok")),
-                    data=data.get("data"),
-                    error=str(data.get("error", "")),
-                )
-            elif mtype == "progress":
-                await _apply_socket_progress(conn.container_id, data)
-            elif mtype == "blocked":
-                await _apply_socket_blocked(conn.container_id, data)
-            elif mtype == "turn":
-                _apply_socket_turn(conn, data)
-            elif mtype == "workspace":
-                _apply_socket_workspace(conn.container_id)
-    except WebSocketDisconnect:
-        pass
-    finally:
-        if conn is not None:
-            sidecar_hub.unregister(conn)
-            live.mark_fleet()
-            live.mark_run(conn.container_id)
-
-
-@post("/reload", include_in_schema=False)
-async def reload(container_id: Annotated[str, QueryParameter()] = "") -> dict:
-    """Broadcast a ``reload`` to connected sidecars (all, or one when ``container_id`` is given)."""
-    targets = [container_id] if container_id else sidecar_hub.connected_ids()
-    reloaded = 0
-    for cid in targets:
-        conn = sidecar_hub.get(cid)
-        if conn is None:
-            continue
-        try:
-            await conn.send_reload()
-            reloaded += 1
-        except Exception:  # noqa: BLE001 - a dead socket just means nothing to reload there
-            pass
-    return {"ok": True, "reloaded": reloaded}
-
-
-_scan_task: asyncio.Task | None = None
-_rules_task: asyncio.Task | None = None
-_heartbeat_task: asyncio.Task | None = None
-_archive_task: asyncio.Task | None = None
-
-
-async def _rules_loop() -> None:
-    """Periodic evaluation of the time-based alert rules, plus the two housekeeping passes that bound groom's memory over a long serve: evicting finished/dead runs from the hot cache, and re-pruning the durable store on its own slower clock."""
-    last_prune = time.monotonic() - PRUNE_EVERY_S
-    last_harvest = time.monotonic()
-    while True:
-        await asyncio.sleep(RULES_TICK_S)
-        try:
-            now = time.time()
-            await _dispatch_alerts(alerts.check_time_rules(now))
-            state.evict_runs(alerts.stale_run_ids(now))
-            live.mark_fleet()
-            if time.monotonic() - last_harvest >= HARVEST_EVERY_S:
-                await asyncio.to_thread(turns.harvest)
-                last_harvest = time.monotonic()
-            if time.monotonic() - last_prune >= PRUNE_EVERY_S:
-                archived = await asyncio.to_thread(archive.archived_run_ids)
-                await asyncio.to_thread(store.prune, store.RETENTION_DAYS, None, archived)
-                last_prune = time.monotonic()
-        except Exception:  # noqa: BLE001
-            logger.exception("groom: alert rules tick failed")
-
-
-async def _backfill_wait_gate(run: RunTelemetry) -> bool:
-    """Fetch the live question over the control socket when telemetry's copy of gate_path/gate_question is missing, and say whether it arrived."""
-    if not run.native or not run.run_dir:
-        return False
-    reply = await native_questions(run.run_dir, "gate backfill", run.run_id)
-    if not reply or not reply.get("ok"):
-        return False
-    raw_questions = reply.get("questions")
-    questions = [q for q in raw_questions if isinstance(q, dict)] if isinstance(raw_questions, list) else []
-    if not questions:
-        return False
-    question = questions[0]
-    run.wait_gate_path = str(question.get("path", ""))
-    run.wait_gate_question = str(question.get("question", ""))
-    return bool(run.wait_gate_path)
-
-
-GATE_BACKFILL_RETRY_S = (5.0, 10.0, 20.0)
-GATE_BACKFILL_STEADY_S = 60.0
-_BACKFILLS: dict[str, asyncio.Task] = {}
-
-
-def _awaits_gate_path(run: RunTelemetry) -> bool:
-    return (
-        not run.terminal
-        and run.wait_kind in ("operator", "machine")
-        and not run.wait_gate_path
-    )
-
-
-async def _backfill_until_found(run: RunTelemetry) -> None:
-    """Ask for a waiting run's gate path now, then again after 5, 10 and 20 seconds and every 60 after that, for as long as the wait is open without one."""
-    attempt = 0
-    try:
-        while _awaits_gate_path(run):
-            try:
-                found = await _backfill_wait_gate(run)
-            except Exception:  # noqa: BLE001 - a failed ask is retried, not fatal
-                logger.exception("gate backfill failed for %s", run.run_id)
-                found = False
-            if found:
-                fired: list[alerts.Alert] = []
-                _sync_native_row(run, fired)
-                await _dispatch_alerts(fired)
-                live.mark_fleet()
-                return
-            delay = GATE_BACKFILL_RETRY_S[attempt] if attempt < len(GATE_BACKFILL_RETRY_S) else GATE_BACKFILL_STEADY_S
-            attempt += 1
-            await asyncio.sleep(delay)
-    finally:
-        _BACKFILLS.pop(run.run_id, None)
-
-
-def _ensure_gate_backfill(run: RunTelemetry) -> None:
-    if not run.native or run.run_id in _BACKFILLS or not _awaits_gate_path(run):
-        return
-    task = tasks.spawn(_backfill_until_found(run), name="gate-backfill")
-    _BACKFILLS[run.run_id] = task
-
-
-async def _bind_live() -> None:
-    """on_startup hook: bind the push flush to this loop and hand it the detail builder."""
-    live.bind(asyncio.get_running_loop())
-    state.WATCH_REFRESH = live.resend_detail
-
-
-def heartbeat_s() -> float:
-    return float(os.environ.get("GROOM_HEARTBEAT_S", "5"))
-
-
-async def _heartbeat_loop() -> None:
-    while True:
-        await asyncio.sleep(heartbeat_s())
-        try:
-            state.broadcast_nowait({"type": "ping"})
-        except Exception:  # noqa: BLE001
-            logger.warning("groom: heartbeat failed", exc_info=True)
-
-
-async def _spawn_heartbeat() -> None:
-    """on_startup hook: start the ping that keeps an idle dashboard socket from reading stale."""
-    global _heartbeat_task
-    _heartbeat_task = tasks.spawn(_heartbeat_loop(), name="heartbeat")
-
-
-async def _stop_heartbeat() -> None:
-    if _heartbeat_task is not None:
-        _heartbeat_task.cancel()
-
-
-async def _bind_history_lock() -> None:
-    """on_startup hook: give the loop that serves this app a history lock of its own, because a lock binds to the first loop that waits on it."""
-    state.HISTORY_LOCK = asyncio.Lock()
-
-
-async def _archive_loop() -> None:
-    """Write expired runs out to disk on a slow clock, forever."""
-    last = time.monotonic() - ARCHIVE_EVERY_S
-    while True:
-        await asyncio.sleep(RULES_TICK_S)
-        if time.monotonic() - last < ARCHIVE_EVERY_S:
-            continue
-        last = time.monotonic()
-        try:
-            result = await asyncio.to_thread(archive.sweep)
-            if result.archived or result.failed:
-                logger.info(
-                    "groom: archived %d run(s), %d row(s), %d byte(s); %d failed,"
-                    " %d still pending",
-                    len(result.archived), result.rows, result.bytes,
-                    len(result.failed), result.pending,
-                )
-        except Exception:  # noqa: BLE001
-            logger.warning("groom: archival sweep failed", exc_info=True)
-
-
-SUMMARY_EVERY_S = float(os.environ.get("GROOM_SUMMARY_EVERY_S", "60"))
-SUMMARY_PAUSE_S = float(os.environ.get("GROOM_SUMMARY_PAUSE_S", "0.25"))
-_summary_wake: asyncio.Event | None = None
-_summary_task: asyncio.Task | None = None
-
-
-def _wake_summaries() -> None:
-    if _summary_wake is not None:
-        _summary_wake.set()
-
-
-async def _write_summary(run_id: str) -> None:
-    """Write one run's summary, then tell every tab it is there so an open Overview and the History list read it."""
-    await pools.SUMMARY.run(history.compute, run_id)
-    await state.broadcast({"type": "summary", "run_id": run_id})
-    live.bump("history")
-
-
-async def _summary_pass() -> int:
-    """Find the ended runs with no current summary and write them one at a time, pausing between runs so the event loop and the store serve the dashboard first. Archives that stored no summary follow, one at a time, and give way as soon as another run needs one."""
-    wanted = await pools.SUMMARY.run(history.discover)
-    if wanted:
-        live.bump("history")
-    for run_id in wanted:
-        await _write_summary(run_id)
-        await asyncio.sleep(SUMMARY_PAUSE_S)
-    older = await pools.SUMMARY.run(history.discover_archives)
-    if older:
-        live.bump("history")
-    for run_id in older:
-        if _summary_wake is not None and _summary_wake.is_set():
-            break
-        await pools.ARCHIVE.run(history.compute_archive, run_id)
-        live.bump("history")
-        await asyncio.sleep(SUMMARY_PAUSE_S)
-    return len(wanted) + len(older)
-
-
-async def _summary_loop() -> None:
-    """Fill the run summaries on a slow clock, and at once when a run ends."""
-    global _summary_wake
-    wake = _summary_wake = asyncio.Event()
-    wake.set()
-    try:
-        while True:
-            try:
-                await asyncio.wait_for(wake.wait(), SUMMARY_EVERY_S)
-            except TimeoutError:
-                pass
-            wake.clear()
-            try:
-                await _summary_pass()
-            except Exception:  # noqa: BLE001
-                logger.warning("groom: run summaries could not be written", exc_info=True)
-    finally:
-        if _summary_wake is wake:
-            _summary_wake = None
-
-
-async def _spawn_summaries() -> None:
-    """on_startup hook: start the worker that writes run summaries."""
-    global _summary_task
-    _summary_task = tasks.spawn(_summary_loop(), name="summaries")
-
-
-async def _stop_summaries() -> None:
-    if _summary_task is not None:
-        _summary_task.cancel()
-
-
-async def _spawn_archive() -> None:
-    """on_startup hook: start the archival ticker."""
-    global _archive_task
-    _archive_task = tasks.spawn(_archive_loop(), name="archive")
-
-
-async def _stop_archive() -> None:
-    if _archive_task is not None:
-        _archive_task.cancel()
-
-
-async def _spawn_rules() -> None:
-    """on_startup hook: start the alert-rule ticker, and nothing else."""
-    global _rules_task
-    _rules_task = tasks.spawn(_rules_loop(), name="alert-rules")
-
-
-async def _stop_rules() -> None:
-    if _rules_task is not None:
-        _rules_task.cancel()
-
-
-async def _background_scan() -> None:
-    """The startup discovery pass, run off the event loop *after* the server is already accepting connections."""
-    try:
-        await _reconcile()
-    finally:
-        state.SCANNING = False
-        live.mark_fleet()
-
-
-async def _recover_attend() -> None:
-    """on_startup hook: restart the attendants this groom was holding when it died."""
-    try:
-        restarted = await asyncio.to_thread(attend.recover_orphans)
-    except Exception:
-        logger.exception("attend: boot recovery failed")
-        return
-    if restarted:
-        logger.info("attend: restarted %d attendant(s) left running by a dead groom", restarted)
-
-
-async def _recover_dispatch() -> None:
-    """on_startup hook: mark every `running` dispatch row dead pids own as `failed`."""
-    try:
-        closed = await asyncio.to_thread(dispatch.recover_orphans)
-    except Exception:
-        logger.exception("dispatch: boot recovery failed")
-        return
-    if closed:
-        logger.info("dispatch: marked %d orphaned item(s) failed after a dead groom", closed)
-
-
-async def _spawn_scan() -> None:
-    """on_startup hook: only *schedule* discovery and return immediately, so uvicorn finishes lifespan-startup and binds the port right away instead of blocking on the whole docker scan (the old _startup_scan did the latter)."""
-    global _scan_task
-    _scan_task = tasks.spawn(_background_scan(), name="discovery-scan")
+__all__ = [
+    "ARCHIVE_EVERY_S",
+    "ASSETS_DIR",
+    "FEED_DEFAULT_EVERY_S",
+    "FEED_MIN_EVERY_S",
+    "GATE_BACKFILL_RETRY_S",
+    "GATE_BACKFILL_STEADY_S",
+    "HARVEST_EVERY_S",
+    "PRUNE_EVERY_S",
+    "RULES_TICK_S",
+    "SERVED_BY_HOST",
+    "SERVED_BY_SIDECAR",
+    "SERVED_BY_VOLUME",
+    "SUMMARY_EVERY_S",
+    "SUMMARY_PAUSE_S",
+    "TRANSCRIPT_POLL_S",
+    "_BACKFILLS",
+    "_FIGURES_DIRTY",
+    "_FIGURES_RUNNING",
+    "_NORM_TASKS",
+    "_QUESTION_NOTIFY_LIMIT",
+    "_TAILS",
+    "_TAIL_RUNS",
+    "_answer",
+    "_apply_hello",
+    "_apply_socket_blocked",
+    "_apply_socket_turn",
+    "_apply_socket_workspace",
+    "_archive_overview",
+    "_archive_read",
+    "_attend_gates",
+    "_backfill_wait_gate",
+    "_background_scan",
+    "_bind_history_lock",
+    "_broadcast_notify",
+    "_detail_message",
+    "_dispatch_alerts",
+    "_ensure_gate_backfill",
+    "_figures_rev",
+    "_handle_command",
+    "_heartbeat_loop",
+    "_live_turns",
+    "_project_native_rows",
+    "_push_received",
+    "_queue_norms",
+    "_refresh_figures",
+    "_schedule_figures",
+    "_spawn_scan",
+    "_store_history_batch",
+    "_summary_loop",
+    "_summary_pass",
+    "_sync_native_row",
+    "_wake_summaries",
+    "_write_summary",
+    "api_history",
+    "api_live",
+    "api_state",
+    "archive_activity",
+    "archive_entry",
+    "archive_overview",
+    "archive_records",
+    "archive_search",
+    "archive_turn",
+    "attend",
+    "background",
+    "attend_queue",
+    "attend_session",
+    "attend_sessions",
+    "attend_settings_get",
+    "attend_settings_post",
+    "attend_stop",
+    "create_app",
+    "dashboard_sidecar",
+    "dashboard_ws",
+    "diff",
+    "dispatch_delete",
+    "dispatch_enqueue",
+    "dispatch_items",
+    "dispatch_queues",
+    "dispatch_stop",
+    "docker_io",
+    "feed_ws",
+    "file_content",
+    "files",
+    "heartbeat_s",
+    "history",
+    "history_retry",
+    "inbox_get",
+    "inbox_post",
+    "index",
+    "live",
+    "localfs",
+    "native",
+    "logger",
+    "notify",
+    "otlp_logs",
+    "otlp_metrics",
+    "otlp_traces",
+    "outbox_get",
+    "outbox_post",
+    "push_blocked",
+    "push_exited",
+    "push_progress",
+    "refresh",
+    "reload",
+    "repos",
+    "run_activity",
+    "run_entry",
+    "run_overview",
+    "run_records",
+    "run_search",
+    "run_turn",
+    "stamp_assets",
+    "worker_detail",
+]
 
 
 def create_app() -> Litestar:

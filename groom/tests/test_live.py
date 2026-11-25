@@ -311,7 +311,7 @@ def test_the_gate_backfill_retries_on_failure_and_marks_the_fleet_on_success(dir
         await settled()
         return _drain(queue)
 
-    with patch.object(groom_app, "GATE_BACKFILL_RETRY_S", (0.02, 0.02, 0.02)), \
+    with patch("groom.gate_backfill.GATE_BACKFILL_RETRY_S", (0.02, 0.02, 0.02)), \
          patch.object(control, "send", reply):
         frames = asyncio.run(drive())
 
@@ -496,7 +496,7 @@ def test_a_transcript_line_reaches_the_open_run_through_its_follower(tmp_path):
         await until(lambda: bool(sent.extend(_details(_drain(queue))) or sent), "the appended line reaching the tab")
         return opened, sent[-1]["detail"]["activity_rev"]
 
-    with watch_started(groom_app) as watching:
+    with watch_started(groom_app.native) as watching:
         opened, after = asyncio.run(drive(watching))
     assert after > opened
 
@@ -511,8 +511,8 @@ def test_a_transcript_line_reaches_the_open_run_when_the_os_refuses_the_file_wat
             yield set()
         raise RuntimeError("Error creating recommended watcher: Too many open files (os error 24)")
 
-    monkeypatch.setattr(groom_app, "awatch", refuse)
-    monkeypatch.setattr(groom_app, "TRANSCRIPT_POLL_S", 0.01)
+    monkeypatch.setattr("groom.native.awatch", refuse)
+    monkeypatch.setattr("groom.native.TRANSCRIPT_POLL_S", 0.01)
 
     async def drive():
         live.bind(asyncio.get_running_loop())
@@ -679,7 +679,7 @@ def test_a_summary_pass_that_archives_a_run_sends_a_higher_history_revision_and_
             patch.object(groom_app.history, "discover", lambda: []),
             patch.object(groom_app.history, "discover_archives", lambda: archives),
             patch.object(groom_app.history, "compute_archive", lambda run_id: True),
-            patch.object(groom_app, "SUMMARY_PAUSE_S", 0),
+            patch("groom.summaries.SUMMARY_PAUSE_S", 0),
         ):
             await groom_app._summary_pass()
         await settled()

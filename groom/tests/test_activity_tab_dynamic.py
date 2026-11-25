@@ -69,7 +69,6 @@ async def _no_volumes(_container_id: str) -> None:
 def _run(run: str, tmp: Path, *, native: bool = True, turns: bool = True, running: bool = False, hostile: bool = False, rich: bool = False, old: bool = False, long_live: bool = False, captured: str = "") -> Iterator[str]:
     from groom.models import WorkflowState
 
-    from groom import app as app_module
     from groom import state as groom_state
     from groom import store
     from groom import turns as turn_archive
@@ -119,7 +118,7 @@ def _run(run: str, tmp: Path, *, native: bool = True, turns: bool = True, runnin
         (live / f"{RUNNING}.jsonl").write_text("".join(json.dumps({
             "sessionId": SESSION, "update": update, "_meta": {"ts": time.time() - 30 + number * 0.01, "node": "qa-story"},
         }) + "\n" for number in range(lines)))
-    patched = patch.object(app_module, "_ensure_volumes", _no_volumes)
+    patched = patch("groom.native._ensure_volumes", _no_volumes)
     patched.start()
     groom_state.upsert_workflow(
         container, name=f"coder-{run}", workflow_type="coder", repo_name="acme", repo_branch="main",

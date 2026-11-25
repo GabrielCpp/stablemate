@@ -1962,7 +1962,7 @@ def test_v1_traces_rejects_garbage_with_400():
         client = _hermetic_client()
         try:
             body = b"\xff\xfenot protobuf"
-            with patch.object(groom_app.logger, "warning") as warning:
+            with patch("groom.routes.telemetry.logger.warning") as warning:
                 resp = client.post("/v1/traces", content=body)
         finally:
             client.__exit__(None, None, None)

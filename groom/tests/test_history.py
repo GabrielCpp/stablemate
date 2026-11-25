@@ -314,7 +314,7 @@ def test_a_summary_pass_writes_the_rows_that_are_missing_one_run_at_a_time() -> 
     with _DB():
         seed("run-pass-1", now - 3600)
         seed("run-pass-2", now - 7200)
-        with patch.object(groom_app, "SUMMARY_PAUSE_S", 0.0):
+        with patch("groom.summaries.SUMMARY_PAUSE_S", 0.0):
             written = asyncio.run(groom_app._summary_pass())
         items = listed()
         again = asyncio.run(groom_app._summary_pass())

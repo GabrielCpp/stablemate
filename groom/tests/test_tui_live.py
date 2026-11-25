@@ -59,7 +59,7 @@ class _Live:
         async def _no_reconcile() -> int:
             return 0
 
-        self._patch = patch.object(app_module, "_reconcile", _no_reconcile)
+        self._patch = patch("groom.native._reconcile", _no_reconcile)
         self._patch.start()
 
         import uvicorn

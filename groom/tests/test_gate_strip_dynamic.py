@@ -89,14 +89,13 @@ def _long_run() -> None:
 
 @contextmanager
 def _gated() -> Iterator[Path]:
-    from groom import app as app_module
     from groom import state
 
     state.RUNS.pop(RUN, None)
     with (
         tempfile.TemporaryDirectory() as tmp,
         _seeded(),
-        patch.object(app_module, "_sync_native_row", lambda *_: False),
+        patch("groom.native._sync_native_row", lambda *_: False),
     ):
         _long_run()
         try:

@@ -212,7 +212,7 @@ class _Live:
             return 0
 
         self._app_module = app_module
-        self._reconcile_patch = patch.object(app_module, "_reconcile", _no_reconcile)
+        self._reconcile_patch = patch("groom.native._reconcile", _no_reconcile)
         self._reconcile_patch.start()
         self._archive_patch = patch.object(app_module, "_spawn_archive", _no_archive)
         self._archive_patch.start()
