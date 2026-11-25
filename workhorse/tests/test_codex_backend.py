@@ -9,8 +9,9 @@ from unittest.mock import patch
 
 import pytest
 
+from workhorse import otel
 from workhorse.config_run import AgentResilience
-from workhorse.runner import process
+from workhorse.runner import process, usage
 from workhorse.runner.backends import AgentProfile, codex, jsonl, turn
 from workhorse.runner.backends.codex import CodexBackend
 from workhorse.runner.backends.guard import Policy
@@ -164,3 +165,34 @@ if __name__ == "__main__":
     import sys
 
     raise SystemExit(subprocess.call([sys.executable, "-m", "pytest", "-q", __file__]))
+
+
+def _completed(input_tokens: int, cached: int, output: int) -> dict[str, object]:
+    return {"type": "turn.completed", "usage": {"input_tokens": input_tokens, "cached_input_tokens": cached, "output_tokens": output}}
+
+
+def _usage_of_turn(root: Path, session_id: str, events: list[dict[str, object]]) -> usage.TurnUsage:
+    def _stream(cmd: list[str], node_id: str, timeout: float, stdin_data: str | None, on_event: turn.OnEvent, **kwargs: object) -> turn.TurnState:
+        state = turn.TurnState(result_text="OK")
+        for event in [{"type": "thread.started", "thread_id": session_id}, *events]:
+            on_event(event, state, node_id)
+        return state
+
+    with otel.tapping_usage() as reported:
+        _ = CodexBackend(_stream).run_turn("P", "n", root / ".sid", timeout=RESILIENCE.result_timeout_s, resilience=RESILIENCE)
+    (reported_usage,) = reported
+    return reported_usage
+
+
+def test_a_fresh_codex_turn_reports_its_uncached_input_apart_from_its_cache_reads(tmp_path: Path) -> None:
+    turn_usage = _usage_of_turn(tmp_path, "s1", [_completed(1_000_000, 900_000, 10_000)])
+
+    assert (turn_usage.input_tokens, turn_usage.cache_read_input_tokens, turn_usage.output_tokens) == (100_000, 900_000, 10_000)
+
+
+def test_a_resumed_codex_turn_reports_only_what_it_added_to_the_session(tmp_path: Path) -> None:
+    _ = _usage_of_turn(tmp_path, "s1", [_completed(1_150_000, 1_000_000, 20_000)])
+
+    turn_usage = _usage_of_turn(tmp_path, "s1", [_completed(2_640_000, 2_400_000, 45_000)])
+
+    assert (turn_usage.input_tokens, turn_usage.cache_read_input_tokens, turn_usage.output_tokens) == (90_000, 1_400_000, 25_000)

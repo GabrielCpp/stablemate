@@ -7,11 +7,13 @@ import os
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from workhorse.runner import acp
 from workhorse.runner import usage as _usage
+from workhorse.runner.usage import TurnUsage
 from workhorse.runner.backends import AgentProfile, TurnRequest, git_worktree
 from workhorse.runner.backends.guard import Policy, hook_command, policy_file
 from workhorse.runner.backends.policy import confined_policy
@@ -93,6 +95,52 @@ def flags_with_role_files(delegates: tuple[Delegate, ...]) -> Iterator[list[str]
                 "-c", f"agents.{delegate.name}.config_file={json.dumps(str(role_file))}",
             ]
         yield flags
+
+
+_CUMULATIVE_FIELDS = ("input_tokens", "cache_read_input_tokens", "output_tokens", "reasoning_output_tokens")
+
+
+def _cumulative_path(session_id_path: Path | None) -> Path | None:
+    return session_id_path.with_name(session_id_path.name + ".usage.json") if session_id_path else None
+
+
+def _read_cumulative(path: Path | None, session_id: str | None) -> dict[str, int]:
+    if path is None or session_id is None or not path.exists():
+        return {}
+    try:
+        stored = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(stored, dict) or stored.get("session_id") != session_id:
+        return {}
+    return {name: stored[name] for name in _CUMULATIVE_FIELDS if isinstance(stored.get(name), int)}
+
+
+def per_turn_usage(usage: TurnUsage, session_id: str | None, session_id_path: Path | None, resumed: bool) -> TurnUsage:
+    """What this turn alone consumed, with input counting only the uncached tokens.
+
+    Codex reports session-cumulative counts whose input includes the cached input, so a resumed session's earlier turns are subtracted first.
+    """
+    if usage.is_empty:
+        return usage
+    path = _cumulative_path(session_id_path)
+    before = _read_cumulative(path, session_id) if resumed else {}
+    cumulative = {name: getattr(usage, name) for name in _CUMULATIVE_FIELDS}
+    if path is not None and session_id:
+        stored = {name: count for name, count in cumulative.items() if count is not None}
+        try:
+            _ = path.write_text(json.dumps({"session_id": session_id, **stored}), encoding="utf-8")
+        except OSError:
+            pass
+    delta = {
+        name: None if count is None else max(count - before.get(name, 0), 0)
+        for name, count in cumulative.items()
+    }
+    cached = delta["cache_read_input_tokens"]
+    fresh = delta["input_tokens"]
+    if fresh is not None:
+        fresh = max(fresh - (cached or 0), 0)
+    return replace(usage, **{**delta, "input_tokens": fresh})
 
 
 NON_FAILURE_MARKERS = ("apply_patch verification failed", "blocked by PreToolUse hook", "`--dangerously-bypass-hook-trust` is enabled")
@@ -263,4 +311,5 @@ class CodexBackend(JsonlBackend):
                 resilience=turn.resilience, cwd=turn.cwd,
                 env_extra=self.harness_env(), non_failure_markers=NON_FAILURE_MARKERS,
             )
+        state.usage = per_turn_usage(state.usage, state.session_id or sid, turn.session_id_path, sid is not None)
         return finalize_turn("codex", turn.node_id, state, turn.session_id_path, turn.timeout)
