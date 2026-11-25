@@ -67,7 +67,10 @@ def elements(service: Service[Any]) -> tuple[type, ...]:
 
 
 def raw(service: Service[Any]) -> dict[str, tuple[str, ...]]:
-    return {e.__name__: tuple(cast(Any, e).source) for e in elements(service)}
+    merged: dict[str, dict[str, None]] = {}
+    for e in elements(service):
+        merged.setdefault(e.__name__, {}).update(dict.fromkeys(cast(Any, e).source))
+    return {name: tuple(pointers) for name, pointers in merged.items()}
 
 
 def is_web(pointer: str) -> bool:
@@ -373,7 +376,7 @@ def changed_since(service: Service[Any], app_root: str, commit: str, only: froze
         if line.startswith("commit "):
             _, full, current = line.split(" ", 2)
             kept = only is None or full in only
-        elif kept and line.strip() and not ignored(line, service.app.ignore):
+        elif kept and line.strip() and not ignored(line, service.app.ignore) and os.path.exists(os.path.join(app_root, line)):
             changed.setdefault(line, []).append(current)
     return changed
 
