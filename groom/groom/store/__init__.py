@@ -63,12 +63,10 @@ from groom.store.loops import (
     run_work_items,
 )
 from groom.store.profile import (
-    _ROW_ATTRS,
     _latest,
     _observed_bounds,
     _profile_models,
     _profile_sessions,
-    _run_span,
     _run_spans,
     _session_ending,
     run_flows,
@@ -201,7 +199,6 @@ __all__ = [
     "_PURGE_CHUNK",
     "_PY_TEMP_DIR",
     "_READING_FROM",
-    "_ROW_ATTRS",
     "_RUN_SPAN_COLUMNS",
     "_Reader",
     "_SCHEMA",
@@ -252,7 +249,6 @@ __all__ = [
     "_promoted",
     "_promoted_or_attr",
     "_resume_intervals",
-    "_run_span",
     "_run_spans",
     "_session_ending",
     "_span_category",

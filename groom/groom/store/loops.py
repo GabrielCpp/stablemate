@@ -6,7 +6,9 @@ from typing import Any
 
 from groom.store.connection import read_connection, reading
 from groom.store.costs import _charge, _charges, _cost, _duration, _output
+from groom.span_views import view
 from groom.store.progress import parse_progress
+from groom.store.run_cache import run_spans
 
 
 logger = logging.getLogger(__name__)
@@ -114,6 +116,10 @@ def run_work_items(run: str) -> list[dict[str, Any]]:
 
     ``done`` is the highest item count the item's own spans reported, so a caller can tell whether the run's count moved past it.
     """
+    return view(run_spans(run), "run_work_items", lambda: _work_items(run))
+
+
+def _work_items(run: str) -> list[dict[str, Any]]:
     items: dict[str, dict[str, Any]] = {}
     for node, by_item in _node_laps(run=run).items():
         for (_, work_id), laps in by_item.items():

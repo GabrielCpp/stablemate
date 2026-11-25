@@ -343,9 +343,19 @@ def register_table(
         STORE.install(table)
 
 
+_ON_RESET: list[Callable[[], None]] = []
+
+
+def on_reset(forget: Callable[[], None]) -> None:
+    """Have :func:`reset` call ``forget`` too, for a cache of what the old database held."""
+    _ON_RESET.append(forget)
+
+
 def reset() -> None:
     """Close the module connection so the next call reopens (tests switch GROOM_DB between cases)."""
     STORE.reset()
+    for forget in _ON_RESET:
+        forget()
 
 
 def health() -> StoreHealth:

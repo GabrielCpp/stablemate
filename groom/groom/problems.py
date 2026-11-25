@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from groom import churn
+from groom.span_views import per_span_list
 
 TURN_SPAN = "agent_turn"
 
@@ -33,6 +34,7 @@ def _retry_turns(spans: list[dict[str, Any]]) -> list[tuple[dict[str, Any], dict
     return found
 
 
+@per_span_list
 def found(spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Every problem of a run, once each: failed steps, failed gate checks, backend retries and churn alerts. The attention tile counts these and the Activity timeline lists them."""
     items: list[dict[str, Any]] = []
@@ -65,6 +67,7 @@ def sessions(spans: list[dict[str, Any]]) -> int:
     return len(generations) if generations else (1 if spans else 0)
 
 
+@per_span_list
 def standing(spans: list[dict[str, Any]]) -> dict[str, Any]:
     """The attention tile: gates, time waiting, and the one problem count.
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import bisect
+import functools
 import json
 import re
 import time
@@ -13,8 +14,9 @@ from typing import Any
 from workhorse import gates as gate_file
 from workhorse.turnkey import VisitKey
 
-from groom import churn, flows, gates, localfs, overview, problems, store, transcript_parse, turns
+from groom import churn, flows, gates, history, localfs, overview, problems, store, transcript_parse, turns
 from groom.projection import TURN_SPAN
+from groom.span_views import per_span_list, view
 
 LiveRows = dict[str, list[dict[str, Any]]]
 
@@ -58,10 +60,25 @@ def _base(key: str) -> str:
     return key.partition(VISIT_MARK)[0]
 
 
-def _record_directory(archived: list[dict[str, Any]], row: dict[str, Any], strict: bool) -> Path | None:
+class _Archived(list):
+    """A run's archived turn rows, with each visit slug's rows found without a scan."""
+
+    @functools.cached_property
+    def by_slug(self) -> dict[str, list[dict[str, Any]]]:
+        found: dict[str, list[dict[str, Any]]] = {}
+        for one in self:
+            found.setdefault(_slug_of(one), []).append(one)
+        return found
+
+
+def _archived(run_id: str) -> _Archived:
+    return _Archived(store.query_turns(run=run_id, limit=100_000))
+
+
+def _record_directory(archived: _Archived, row: dict[str, Any], strict: bool) -> Path | None:
     """The archived record directory of one row. A slug that several visits share only matches the record of this visit's session, or when it names no session the record stamped inside this visit's window."""
     base = _base(row["slug"])
-    mine = [one for one in archived if _slug_of(one) == base and turns.record_path(one).is_dir()]
+    mine = [one for one in archived.by_slug.get(base, []) if turns.record_path(one).is_dir()]
     session_id = row["session_id"]
     if strict:
         if session_id:
@@ -249,14 +266,24 @@ def _span_entry(kind: str, span: dict[str, Any], result: str) -> dict[str, Any]:
     }
 
 
+@per_span_list
+def _retry_events(spans: list[dict[str, Any]]) -> list[tuple[float, dict[str, Any]]]:
+    """Every retry event the spans carry, by time, in span order within one time."""
+    found = [
+        (float(event.get("ts") or 0), event.get("attrs") or {})
+        for one in spans
+        for event in one["attrs"].get("events") or []
+        if isinstance(event, dict) and event.get("name") == "retry"
+    ]
+    return sorted(found, key=lambda pair: pair[0])
+
+
 def _retry_note(span: dict[str, Any], earlier: dict[str, Any], spans: list[dict[str, Any]]) -> dict[str, str]:
     """The backend's own account of a retry: the last retry event stamped between the failed attempt's end and this attempt's start."""
     low, high = float(earlier["end_ts"]) - WINDOW_SLACK_S, float(span["start_ts"]) + WINDOW_SLACK_S
-    noted: list[tuple[float, dict[str, Any]]] = []
-    for one in spans:
-        for event in one["attrs"].get("events") or []:
-            if isinstance(event, dict) and event.get("name") == "retry" and low <= float(event.get("ts") or 0) <= high:
-                noted.append((float(event["ts"]), event.get("attrs") or {}))
+    events = _retry_events(spans)
+    times = [ts for ts, _ in events]
+    noted = events[bisect.bisect_left(times, low):bisect.bisect_right(times, high)]
     if not noted:
         return {}
     given = max(noted, key=lambda pair: pair[0])[1]
@@ -490,11 +517,28 @@ def _with_logs(items: list[dict[str, Any]], rows: list[dict[str, Any]]) -> None:
         entries.insert(bisect.bisect_right([one["ts"] for one in entries], entry["ts"]), entry)
 
 
+def _ended(run_id: str) -> bool:
+    if store._READING_FROM.get() is not None:
+        return True
+    row = history.stored(run_id)
+    return row is not None and row["state"] == history.READY and row["ended_ts"] is not None
+
+
 def timeline(run_id: str, live: LiveRows | None = None, standing: dict[str, Any] | None = None, logs: bool = False) -> dict[str, Any]:
-    """The run's agent turns oldest first, and the same turns grouped by work item and flow pass with the steps, gates, retries and churn alerts around them. `standing` is where the run is now: the step it is in, or the operator gate it waits at, which no stored span shows yet."""
+    """The run's agent turns oldest first, and the same turns grouped by work item and flow pass with the steps, gates, retries and churn alerts around them. `standing` is where the run is now: the step it is in, or the operator gate it waits at, which no stored span shows yet.
+
+    A run that ended has no live turn, no standing and no transcript left to change, so its timeline is built once per span list and shared by every reader, which must not change it.
+    """
+    if live or standing or not _ended(run_id):
+        return _timeline(run_id, live, standing, logs)
+    built = view(store.run_turn_spans(run_id), ("timeline", logs), lambda: _timeline(run_id, None, None, logs))
+    return built | {"as_of": time.time()}
+
+
+def _timeline(run_id: str, live: LiveRows | None, standing: dict[str, Any] | None, logs: bool) -> dict[str, Any]:
     spans = store.run_turn_spans(run_id)
     placed = flows.span_passes(spans)
-    archived = store.query_turns(run=run_id, limit=100_000)
+    archived = _archived(run_id)
     attempts = _attempts(spans, archived)
     repeated = _repeated(attempts)
     rows = []
@@ -532,7 +576,7 @@ def timeline(run_id: str, live: LiveRows | None = None, standing: dict[str, Any]
     return {"run_id": run_id, "rows": rows, "items": items, "problems": len(problems.found(spans)), "log_count": store.count_logs(run_id) if holds_logs else 0, "as_of": time.time()}
 
 
-def _record_files(run_id: str, head: dict[str, Any], archived: list[dict[str, Any]], strict: bool) -> dict[str, Path] | None:
+def _record_files(run_id: str, head: dict[str, Any], archived: _Archived, strict: bool) -> dict[str, Path] | None:
     directory = _record_directory(archived, head, strict)
     if directory is not None:
         return {path.name: path for path in directory.iterdir() if path.is_file()}
@@ -594,7 +638,7 @@ def _cut(slug: str, held: list[dict[str, Any]]) -> bool:
 def turn(run_id: str, slug: str, live: LiveRows | None = None, pending: bool = False) -> dict[str, Any]:
     """One turn: its head figures and what the agent said and did in it, from the stored record or the live transcript. A key that names one of several visits sharing a slug reads only that visit's records. A finished turn with no transcript in any record reads as unmatched, unless `pending` says its records may still be pulled from a container."""
     spans = store.run_turn_spans(run_id)
-    archived = store.query_turns(run=run_id, limit=100_000)
+    archived = _archived(run_id)
     return _read_turn(run_id, slug, live, pending, spans, archived, _attempts(spans, archived), flows.span_passes(spans))
 
 
@@ -604,7 +648,7 @@ def _read_turn(
     live: LiveRows | None,
     pending: bool,
     spans: list[dict[str, Any]],
-    archived: list[dict[str, Any]],
+    archived: _Archived,
     attempted: dict[str, list[dict[str, Any]]],
     placed: dict[str, tuple[str, int, bool]],
 ) -> dict[str, Any]:
@@ -914,7 +958,7 @@ def search(run_id: str, query: str, live: LiveRows | None = None, pending: bool 
         return {"run_id": run_id, "query": "", "matches": []}
     matches: list[dict[str, str]] = []
     spans = store.run_turn_spans(run_id)
-    archived = store.query_turns(run=run_id, limit=100_000)
+    archived = _archived(run_id)
     attempted = _attempts(spans, archived)
     placed = flows.span_passes(spans)
     slugs = list(attempted) + [slug for slug, held in (live or {}).items() if slug not in attempted and held]

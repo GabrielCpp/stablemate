@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
+from groom.span_views import per_span_list
+
 UNFINISHED = "Unfinished flow or state"
 
 
@@ -162,6 +164,7 @@ def _represented(
     return None
 
 
+@per_span_list
 def build_flows(spans: list[dict[str, Any]]) -> list[dict[str, Any]]:
     by_id = {span["span_id"]: span for span in spans}
     containers = _containers(spans)
@@ -321,6 +324,7 @@ def _numbered(spans: list[dict[str, Any]]) -> tuple[dict[str, tuple[str, int, bo
     return found, statuses
 
 
+@per_span_list
 def span_passes(spans: list[dict[str, Any]]) -> dict[str, tuple[str, int, bool]]:
     """Each agent turn's and each leaf step's flow and pass, by span id, and whether that pass is still open.
 
@@ -329,6 +333,7 @@ def span_passes(spans: list[dict[str, Any]]) -> dict[str, tuple[str, int, bool]]
     return _numbered(spans)[0]
 
 
+@per_span_list
 def pass_status(spans: list[dict[str, Any]]) -> dict[tuple[str, str, int], str]:
     """The ended status of each stored flow pass, keyed by work item, flow and pass number as ``span_passes`` counts them."""
     return _numbered(spans)[1]

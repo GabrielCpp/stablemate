@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from groom.span_views import per_span_list
+
 Signature = tuple[tuple[str, str], ...]
 
 _RESERVED_ATTRS = ("workhorse.", "status_message", "events")
@@ -40,6 +42,7 @@ def observe(labels: dict[str, Signature], counts: dict[str, int], node: str, att
     return counts[node], False
 
 
+@per_span_list
 def alerts(spans: list[dict[str, Any]]) -> list[tuple[dict[str, Any], int]]:
     """The churn alerts the stored spans would have fired, each as the visit that tipped it and its repeat count, replaying them in the order they ended."""
     labels: dict[str, Signature] = {}

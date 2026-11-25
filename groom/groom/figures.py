@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from groom import archive, store
+from groom.span_views import view
 
 
 def cost_totals(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -24,10 +25,16 @@ def cost_totals(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def run_costs(run_id: str) -> dict[str, Any]:
+    """The cost totals of one run, summed again only when its spans changed."""
+    spans = store.run_turn_spans(run_id)
+    return view(spans, "cost_totals", lambda: cost_totals(store.node_costs(run_id, limit=1000)))
+
+
 def read(run_id: str) -> tuple[dict[str, Any], dict[str, Any] | None, tuple[int, int] | None]:
     """The cost totals, the profile and the item count of one run, from the store functions behind ``groom cost`` and ``groom profile``."""
     with archive.run_source(run_id):
-        costs = cost_totals(store.node_costs(run_id, limit=1000))
+        costs = run_costs(run_id)
         profile = store.run_profile(run_id)
         progress = store.latest_progress(run_id)
     return costs, profile, progress
@@ -60,7 +67,7 @@ def tile_figures(costs: dict[str, Any], profile: dict[str, Any] | None, progress
 def run_figures(run_id: str) -> dict[str, Any]:
     """The figures one run row shows, from the store functions behind ``groom cost`` and ``groom profile``."""
     with archive.run_source(run_id):
-        costs = cost_totals(store.node_costs(run_id, limit=1000))
+        costs = run_costs(run_id)
         profile = store.run_row_profile(run_id)
         progress = store.latest_progress(run_id)
     return row_figures(costs, profile, progress)

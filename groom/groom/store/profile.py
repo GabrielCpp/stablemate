@@ -1,64 +1,29 @@
 from __future__ import annotations
 
-import json
 import logging
-import sqlite3
 from collections import defaultdict
-from collections.abc import Callable
 from typing import Any
 
-from groom import memory, problems
+from groom import problems
 from groom.flows import build_flows
 
 from groom.store.connection import read_connection, reading
-from groom.store.costs import (
-    _cache_read,
-    _cache_write,
-    _charge,
-    _charges,
-    _duration,
-    _input,
-    _output,
-)
 from groom.store.profile_parts import (
-    _kept_attr,
     _profile_groups,
     _profile_time_partition,
     _profile_turn_summary,
     _profile_verdict_decisions,
 )
 from groom.store.progress import active_seconds
-from groom.store.spans import _RUN_SPAN_COLUMNS
+from groom.span_views import SpanList, view
+from groom.store.run_cache import run_spans
 
 
 logger = logging.getLogger(__name__)
 
 
-def _run_span(row: sqlite3.Row, keep: Callable[[str], bool]) -> dict[str, Any]:
-    """One span row as a dict, with the attributes ``keep`` accepts."""
-    span = {key: row[key] for key in row.keys() if key != "attrs_json"}  # noqa: SIM118
-    span["attrs"] = {
-        k: v for k, v in json.loads(row["attrs_json"] or "{}").items() if keep(k)
-    }
-    return span
-
-
-def _run_spans(
-    run: str, keep: Callable[[str], bool] = _kept_attr
-) -> list[dict[str, Any]]:
-    cursor = read_connection().execute(
-        f"{_charges('run_id = ?')}SELECT {_RUN_SPAN_COLUMNS}, {_duration} AS profile_duration_ms,"  # noqa: S608
-        f" {_charge} AS profile_cost_usd, {_output} AS profile_output_tokens,"
-        f" {_input} AS profile_input_tokens, {_cache_read} AS profile_cache_read_tokens,"
-        f" {_cache_write} AS profile_cache_write_tokens,"
-        " est_cost_usd, spans.rowid AS row_id, resume_generation"
-        " FROM spans LEFT JOIN charges USING (span_id)"
-        " WHERE run_id = ? ORDER BY start_ts",
-        (run, run),
-    )
-    spans = [_run_span(row, keep) for row in cursor]
-    memory.note_read(len(spans))
-    return spans
+def _run_spans(run: str) -> SpanList:
+    return run_spans(run)
 
 
 @reading
@@ -70,7 +35,13 @@ def run_turn_spans(run: str) -> list[dict[str, Any]]:
 @reading
 def run_flows(run: str) -> dict[str, Any]:
     """One run's finished work as flow, state and node rows, with the totals the rows add up to."""
-    spans = _run_spans(run) if run else []
+    if not run:
+        return _flows([])
+    spans = _run_spans(run)
+    return view(spans, "run_flows", lambda: _flows(spans))
+
+
+def _flows(spans: list[dict[str, Any]]) -> dict[str, Any]:
     turns = [span for span in spans if span["name"] == "agent_turn"]
     rows = build_flows(spans)
     finished = sum(
@@ -191,17 +162,6 @@ def _latest(spans: list[dict[str, Any]], *keys: str) -> str:
     return ""
 
 
-_ROW_ATTRS = frozenset(
-    {
-        "workhorse.span_kind",
-        "workhorse.wait_kind",
-        "workhorse.depth",
-        "workhorse.flow",
-        "workhorse.state",
-    }
-)
-
-
 def _observed_bounds(
     run: str, spans: list[dict[str, Any]]
 ) -> tuple[float, float] | None:
@@ -229,13 +189,17 @@ def _observed_bounds(
 
 @reading
 def run_row_profile(run: str) -> dict[str, Any] | None:
-    """The part of a run's profile its row shows, the time partition and the flows, from a read that keeps only the attributes those need."""
+    """The part of a run's profile its row shows: the time partition and the flows."""
     if not run:
         return None
-    spans = _run_spans(run, _ROW_ATTRS.__contains__)
+    spans = _run_spans(run)
     bounds = _observed_bounds(run, spans)
     if bounds is None:
         return None
+    return view(spans, ("run_row_profile", bounds), lambda: _row_profile(spans, bounds))
+
+
+def _row_profile(spans: list[dict[str, Any]], bounds: tuple[float, float]) -> dict[str, Any]:
     return {
         "time_s": _profile_time_partition(spans, *bounds),
         "flows": build_flows(spans),
@@ -251,6 +215,10 @@ def run_profile(run: str) -> dict[str, Any] | None:
     bounds = _observed_bounds(run, spans)
     if bounds is None:
         return None
+    return view(spans, ("run_profile", bounds), lambda: _profile(run, spans, bounds))
+
+
+def _profile(run: str, spans: list[dict[str, Any]], bounds: tuple[float, float]) -> dict[str, Any]:
     start_ts, end_ts = bounds
     turns = [span for span in spans if span["name"] == "agent_turn"]
     return {
