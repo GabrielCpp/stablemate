@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 import shutil
-import subprocess
 import time
 from collections.abc import Callable, Iterable, Iterator
 from contextlib import contextmanager
@@ -15,6 +14,9 @@ from typing import Any, TextIO
 
 from workhorse import gitstate, turnkey
 from workhorse.runner.acp import MappedUpdate, TranscriptMapper, user_message_chunk
+from workhorse.runner.transcript_export import EXPORTERS as _EXPORTERS
+from workhorse.runner.transcript_export import export_session
+from workhorse.runner.transcript_export import probe_exporters as probe_exporters
 
 logger = logging.getLogger(__name__)
 
@@ -61,34 +63,6 @@ _STORES: dict[str, Callable[[str], list[Path]]] = {
 }
 
 
-def _opencode_export(session_id: str) -> bytes | None:
-    """OpenCode's public full-session export, including reasoning and tool parts."""
-    for _attempt in range(2):
-        try:
-            result = subprocess.run(
-                ["opencode", "export", session_id],
-                capture_output=True,
-                check=False,
-                timeout=30,
-            )
-        except (OSError, subprocess.SubprocessError):
-            return None
-        if result.returncode != 0:
-            return None
-        try:
-            loaded = json.loads(result.stdout)
-        except ValueError:
-            continue
-        if isinstance(loaded, dict):
-            return result.stdout
-    return None
-
-
-_EXPORTERS: dict[str, Callable[[str], bytes | None]] = {
-    "opencode": _opencode_export,
-}
-
-
 def store_files(backend: str, session_id: str) -> list[Path]:
     """What this backend kept for ``session_id``, or an empty list."""
     resolver = _STORES.get(backend)
@@ -107,28 +81,6 @@ def probe_stores(session_id: str) -> tuple[str, list[Path]]:
         if files:
             return backend, files
     return "", []
-
-
-def export_session(backend: str, session_id: str) -> bytes | None:
-    """A backend's public full-session export, or ``None`` when unavailable."""
-    exporter = _EXPORTERS.get(backend)
-    if exporter is None:
-        return None
-    try:
-        return exporter(session_id)
-    except OSError:
-        return None
-
-
-def probe_exporters(session_id: str) -> tuple[str, bytes | None]:
-    """Which public backend exporter recognizes ``session_id``, if any."""
-    for backend in _EXPORTERS:
-        exported = export_session(backend, session_id)
-        if exported is not None:
-            return backend, exported
-    return "", None
-
-
 
 
 @dataclass(frozen=True, slots=True)

@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from workhorse import turnkey
-from workhorse.runner import transcript
+from workhorse.runner import transcript, transcript_export
 
 
 def _begin(run_dir: Path, node: str = "qa-plan") -> str:
@@ -174,7 +174,7 @@ def test_opencode_export_uses_the_public_full_session_command():
     completed = subprocess.CompletedProcess(
         args=[], returncode=0, stdout=b'{"messages":[]}', stderr=b""
     )
-    with patch.object(transcript.subprocess, "run", return_value=completed) as run:
+    with patch.object(transcript_export.subprocess, "run", return_value=completed) as run:
         exported = transcript.export_session("opencode", "ses_123")
 
     assert exported == b'{"messages":[]}'
@@ -194,7 +194,7 @@ def test_opencode_export_rereads_a_partial_successful_snapshot():
     complete = subprocess.CompletedProcess(
         args=[], returncode=0, stdout=b'{"messages":[]}', stderr=b""
     )
-    with patch.object(transcript.subprocess, "run", side_effect=[partial, complete]) as run:
+    with patch.object(transcript_export.subprocess, "run", side_effect=[partial, complete]) as run:
         exported = transcript.export_session("opencode", "ses_123")
 
     assert exported == b'{"messages":[]}'
