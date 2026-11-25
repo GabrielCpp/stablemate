@@ -8,7 +8,6 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-import yaml
 from jinja2 import Environment, StrictUndefined, UndefinedError
 
 from farrier._vendor.stablemate_core.harness import (
@@ -28,7 +27,6 @@ from farrier._vendor.stablemate_core.skill_refs import (
 from farrier.agents import REPO_SKILL_DIRS
 from farrier.frontmatter import (
     first_heading,
-    frontmatter_mapping,
     frontmatter_metadata,
     frontmatter_tags,
     normalize_tags,
@@ -53,6 +51,16 @@ from farrier.layers import available_names, find_in_layers
 from farrier.link_rebase import rebase_links
 from farrier.naming import compose_name, repo_prefix, yaml_quote
 from farrier.ownership import is_generated
+from farrier.prompt_render import (
+    ARGUMENTS,
+    ARGUMENTS_CALL,
+    CODEX_NAME_ONLY,
+    COMMAND_ARGUMENTS,
+    SKILL_ARGUMENTS,
+    command_text,
+    prompt_skill_text,
+    strip_arguments_placeholder,
+)
 from farrier.selection_errors import unknown_selection_error
 from farrier.sources import (
     POLICY_ROOT,
@@ -121,12 +129,6 @@ def read_asset_text(asset: Asset) -> str:
         ) from exc
 
 
-def strip_arguments_placeholder(body: str) -> str:
-    """Drop a command's ``$ARGUMENTS`` line when its body is aggregated instead."""
-    lines = [line for line in body.splitlines() if line.strip() != "$ARGUMENTS"]
-    return "\n".join(lines)
-
-
 USER_HARNESS_DIRS = {
     spec.name: spec.home.dir
     for spec in with_surface(Surface.HOME_ROOT)
@@ -142,6 +144,7 @@ USER_ROOT_FILES = {
 
 TEMPLATE_TOKENS = (
     "{%",
+    ARGUMENTS_CALL,
     "skill_link(",
     "skill_path(",
     "skill_command(",
@@ -260,7 +263,6 @@ class Renderer:
                 self.prompt_output_path(library_name(source), target),
             )
             for source in self.prompts
-            if self.takes_prompts(target)
         ]
         if self.scope == "repo":
             taken = {entry.name for entry in entries}
@@ -367,19 +369,21 @@ class Renderer:
         return layout is not None and layout.prompts is not None
 
     def prompt_output_path(self, name: str, target: str) -> Path:
+        """Where a prompt lands: the prompt folder, else a skill run by name."""
         source = self.prompt_source(name)
         generated = public_name(self.prefix, source)
+        if not self.takes_prompts(target):
+            return self.skill_dir_path(target) / generated / "SKILL.md"
         if self.scope == "user":
-            if target != "claude":
-                raise SystemExit(
-                    f"{target} has no user-scope prompt directory — prompts are "
-                    "Claude-only at user scope."
-                )
             return self.repo / ".claude" / "commands" / f"{generated}.md"
         layout = repo_layout(target, "prompt")
-        if layout.prompts is None:
-            raise SystemExit(f"Unknown prompt render target: {target}")
-        return self.repo / layout.prompts / f"{generated}{layout.prompt_suffix}"
+        return self.repo / (layout.prompts or "") / f"{generated}{layout.prompt_suffix}"
+
+    def arguments_text(self, target: str) -> str:
+        """What a prompt's ``$ARGUMENTS`` renders as for *target*."""
+        if not self.takes_prompts(target):
+            return SKILL_ARGUMENTS
+        return COMMAND_ARGUMENTS.get(target, ARGUMENTS)
 
     def skill_dir_path(self, target: str) -> Path:
         if self.scope == "user":
@@ -388,7 +392,13 @@ class Renderer:
             return self.repo / REPO_SKILL_DIRS[target]
         raise SystemExit(f"Unknown skill dir target: {target}")
 
-    def render_templates(self, content: str, target: str, from_file: Path) -> str:
+    def render_templates(
+        self,
+        content: str,
+        target: str,
+        from_file: Path,
+        arguments: str = ARGUMENTS,
+    ) -> str:
         if not any(token in content for token in TEMPLATE_TOKENS):
             return content
         env = Environment(autoescape=False, undefined=StrictUndefined)
@@ -414,6 +424,7 @@ class Renderer:
                 template=self.template_values,
                 vars=self.template_values,
                 target=target,
+                arguments=arguments,
             )
         except UndefinedError as exc:
             raise SystemExit(
@@ -476,7 +487,13 @@ class Renderer:
             key: self.render_templates(value, target, output_path)
             for key, value in header.items()
         }
-        return header, self.render_templates(body, target, output_path).strip()
+        arguments = ARGUMENTS
+        if source.kind == "prompt":
+            body = body.replace(ARGUMENTS, ARGUMENTS_CALL)
+            arguments = self.arguments_text(target)
+        return header, self.render_templates(
+            body, target, output_path, arguments
+        ).strip()
 
     def generated_skill(self, source: Source, target: str, output_path: Path) -> str:
         header, body = self.rendered_source(source, target, output_path)
@@ -517,54 +534,6 @@ class Renderer:
                 asset_banner(asset, dest_rel, self.overwritten_by) + body + "\n"
             )
         return outputs
-
-    def command_description(
-        self, source: Source, header: dict[str, str], body: str
-    ) -> str:
-        """The `description` for a generated Claude command's front matter."""
-        if header.get("description"):
-            return header["description"]
-        return first_heading(body, public_name(self.prefix, source))
-
-    def generated_command(self, source: Source, target: str, output_path: Path) -> str:
-        """Render a library prompt with target-specific fields and shared provenance."""
-        header, body = self.rendered_source(source, target, output_path)
-        if target == "copilot":
-            rendered = self.render_templates(
-                source.path.read_text(encoding="utf-8"), target, output_path
-            )
-            native_header = frontmatter_mapping(rendered)
-            native_header.pop("metadata", None)
-            native_header["description"] = self.command_description(
-                source, header, body
-            )
-            lines = [
-                "---",
-                yaml.safe_dump(
-                    native_header, sort_keys=False, allow_unicode=True
-                ).rstrip("\n"),
-            ]
-        else:
-            lines = [
-                "---",
-                f"description: {yaml_quote(self.command_description(source, header, body))}",
-            ]
-            for key, aliases in (
-                ("argument-hint", ("argument-hint", "argumentHint")),
-                ("model", ("model",)),
-                ("allowed-tools", ("allowed-tools", "allowedTools")),
-            ):
-                value = next((header[a] for a in aliases if header.get(a)), None)
-                if value:
-                    lines.append(f"{key}: {yaml_quote(value)}")
-        dest_rel = self.dest_rel(output_path)
-        lines.append(
-            skill_metadata_block(
-                source, dest_rel, self.skill_tags(source), self.regenerate
-            ).rstrip("\n")
-        )
-        lines.append("---")
-        return "\n".join(lines) + "\n\n" + f"{body}\n"
 
     def skill_folder_names(
         self, source_dir: Path, outputs: Mapping[Path, str]
@@ -643,6 +612,7 @@ class Renderer:
         outputs: dict[Path, str] = {}
 
         rendered_folders: set[Path] = set()
+        prompt_folders: set[Path] = set()
 
         def render_skills(target: str) -> None:
             """Every selected skill into *target*, each with its bundled assets."""
@@ -657,14 +627,33 @@ class Renderer:
                 outputs[output_path] = self.generated_skill(source, target, output_path)
                 outputs.update(self.generated_assets(source, target, output_path))
 
+        def render_prompts(target: str) -> None:
+            """Every selected prompt into *target*: a command, else a skill run by name."""
+            if self.takes_prompts(target):
+                for source in self.prompts:
+                    output_path = self.prompt_output_path(library_name(source), target)
+                    outputs[output_path] = command_text(
+                        self, source, target, output_path
+                    )
+                return
+            folder = self.skill_dir_path(target)
+            if target in links or folder in prompt_folders:
+                return
+            prompt_folders.add(folder)
+            reaches_codex = folder == self.skill_dir_path("codex")
+            for source in self.prompts:
+                output_path = self.prompt_output_path(library_name(source), target)
+                outputs[output_path] = prompt_skill_text(
+                    self, source, target, output_path
+                )
+                if reaches_codex:
+                    outputs[output_path.parent / "agents" / "openai.yaml"] = Rendered(
+                        CODEX_NAME_ONLY, verbatim=True
+                    )
+
         if agents.get("copilot"):
             render_skills("copilot")
-
-            for source in self.prompts:
-                output_path = self.prompt_output_path(library_name(source), "copilot")
-                outputs[output_path] = self.generated_command(
-                    source, "copilot", output_path
-                )
+            render_prompts("copilot")
 
             for root in roots:
                 root_hit = find_in_layers("library", "roots", f"{root}.md")
@@ -687,28 +676,19 @@ class Renderer:
 
         if agents.get("codex"):
             render_skills("codex")
-            for source in self.prompts:
-                output_path = self.prompt_output_path(library_name(source), "codex")
-                outputs[output_path] = self.generated_command(
-                    source, "codex", output_path
-                )
+            render_prompts("codex")
 
         if agents.get("antigravity"):
             render_skills("antigravity")
+            render_prompts("antigravity")
 
         if agents.get("pi"):
             render_skills("pi")
-            for source in self.prompts:
-                output_path = self.prompt_output_path(library_name(source), "pi")
-                outputs[output_path] = self.generated_command(source, "pi", output_path)
+            render_prompts("pi")
 
         if agents.get("claude"):
             render_skills("claude")
-            for source in self.prompts:
-                output_path = self.prompt_output_path(library_name(source), "claude")
-                outputs[output_path] = self.generated_command(
-                    source, "claude", output_path
-                )
+            render_prompts("claude")
 
         self.check_roots(roots)
 

@@ -80,7 +80,15 @@ the `[user_library.<harness>]` tables of the shared config into the harness home
 (`~/.claude`, `~/.gemini/config` for Antigravity, and `~/.agents` for Codex and Copilot), reads no repo and writes to none.
 Antigravity is a farrier target only. Workhorse never drives it, because its terms of service rule out automated use.
 At repo scope it shares `.agents/skills` with Codex, and a repo with both on gets the path form of each skill reference.
-Its guards run through a generated bridge, `~/.gemini/config/hooks/farrier-guards.py`, and it takes no prompts at home scope.
+Its guards run through a generated bridge, `~/.gemini/config/hooks/farrier-guards.py`.
+
+A harness with no prompt folder takes each selected prompt as a skill the user runs by name.
+At home only Claude has one, and in a repo Antigravity has none. The skill lands as `<name>/SKILL.md`
+in the harness's skill folder, with `disable-model-invocation: true` in its front matter. A folder Codex
+reads also gets `agents/openai.yaml` with `policy.allow_implicit_invocation: false`. Those switches keep
+Pi and Codex from starting the skill on their own. Antigravity documents no such switch.
+A prompt's `$ARGUMENTS` stays as written in a Claude, Codex or Pi command. A Copilot prompt file gets
+`${input:arguments}`, and a skill gets `<arguments>`, with a line saying what the user types after its name.
 A Claude or Codex table that names a `roots` entry also writes that home's always-on rules,
 `~/.claude/CLAUDE.md` or `~/.codex/AGENTS.md`, from one file in the library.
 A table that names `mcp` servers adds each one to `~/.claude.json` or `~/.codex/config.toml`,
@@ -111,7 +119,7 @@ for it and a pack's skills are left out.
 A `[user_library.pi]` table takes `skills`, `roots`, `mcp`, `hooks` and `settings`. Skills land in
 `~/.agents/skills`, shared with Codex and Copilot, and rules in `~/.pi/agent/AGENTS.md`. Servers go
 to `~/.pi/agent/mcp.json`, settings to `~/.pi/agent/settings.json`, and guards through a generated
-extension, `~/.pi/agent/extensions/farrier-guards.ts`. Pi has no helper agents and no home prompts,
+extension, `~/.pi/agent/extensions/farrier-guards.ts`. Pi has no helper agents, its prompts land as skills,
 and a `done` guard must name `pi` in `not_on`.
 
 Pass both, `farrier install --repo . --user`, to refresh the home right after the repo

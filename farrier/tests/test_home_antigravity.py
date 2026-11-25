@@ -7,7 +7,7 @@ import pytest
 import yaml
 
 from _guard_bridge_support import add_guard, read_hooks, run_hook
-from home_install import add_search_server, add_settings, add_skill_pair, install, seed
+from home_install import add_prompt, add_search_server, add_settings, add_skill_pair, install, seed
 from farrier.antigravity_bridge import ANTIGRAVITY_BRIDGE
 from farrier._vendor.stablemate_core.harness import workhorse_harnesses
 
@@ -101,12 +101,18 @@ def test_a_settings_entry_with_hooks_is_refused_and_points_at_guards(
     assert not (home / ".gemini/antigravity-cli/settings.json").exists()
 
 
-def test_a_prompt_selected_for_antigravity_is_unsupported(
+def test_a_prompt_lands_as_a_skill_with_no_codex_policy_file(
     home: Path, library: Path
 ) -> None:
-    with pytest.raises(SystemExit) as refused:
-        install(home, library, '[user_library.antigravity]\nprompts = ["review"]\n')
-    assert "prompts are Claude-only at user scope" in str(refused.value)
+    add_prompt(library)
+    config = '[user_library.antigravity]\nprompts = ["general/go"]\n'
+    assert install(home, library, config) == 0
+    folder = home / ".gemini/config/skills/go"
+    skill = (folder / "SKILL.md").read_text(encoding="utf-8")
+    assert "disable-model-invocation: true" in skill
+    assert "Run `ship <arguments>`." in skill
+    assert not (folder / "agents").exists()
+    assert install(home, library, config, "--check") == 0
 
 
 def test_each_agent_lands_inheriting_the_model_unless_it_names_flash_or_pro(

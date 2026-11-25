@@ -439,14 +439,6 @@ def user_selections(
         include_skills, include_prompts, roots, _scaffolds = collect_selection(
             table.model_dump(exclude_unset=True, exclude=HOME_ONLY), origin
         )
-        if harness != "claude":
-            if table.prompts:
-                raise SystemExit(
-                    f"error: [user_library.{harness}] names prompts. Claude is the only "
-                    "harness with a personal command directory (~/.claude/commands), so "
-                    "prompts are Claude-only at user scope."
-                )
-            include_prompts = set()
         exclude = table.exclude
         skills = selected_sources(
             all_skills, include_skills, set(exclude.skills if exclude else [])

@@ -8,7 +8,14 @@ from pathlib import Path
 import pytest
 
 from _guard_bridge_support import add_guard
-from home_install import add_search_server, add_settings, add_skill_pair, install, seed
+from home_install import (
+    add_prompt,
+    add_search_server,
+    add_settings,
+    add_skill_pair,
+    install,
+    seed,
+)
 
 GUARD = '[user_library.pi]\nhooks = ["stub"]\n'
 EXTENSION = ".pi/agent/extensions/farrier-guards.ts"
@@ -103,10 +110,24 @@ def test_a_settings_entry_with_hooks_is_refused_and_points_at_guards(
     assert not (home / ".pi/agent/settings.json").exists()
 
 
-def test_a_prompt_selected_for_pi_is_unsupported(home: Path, library: Path) -> None:
-    with pytest.raises(SystemExit) as refused:
-        install(home, library, '[user_library.pi]\nprompts = ["review"]\n')
-    assert "prompts are Claude-only at user scope" in str(refused.value)
+def test_a_prompt_lands_as_a_skill_only_its_name_runs(
+    home: Path, library: Path
+) -> None:
+    add_prompt(library)
+    config = '[user_library.pi]\nprompts = ["general/go"]\n'
+    assert install(home, library, config) == 0
+    skill = (home / ".agents/skills/go/SKILL.md").read_text(encoding="utf-8")
+    assert "disable-model-invocation: true" in skill
+    assert 'description: "Ship a story."' in skill
+    assert (
+        "# Ship story <arguments>\n\n`<arguments>` stands for the text after this "
+        "skill's name when the user runs it: `<story-id>`.\n\nRun `ship <arguments>`."
+    ) in skill
+    assert "allow_implicit_invocation: false" in (
+        home / ".agents/skills/go/agents/openai.yaml"
+    ).read_text(encoding="utf-8")
+    assert not (home / ".pi/agent/prompts").exists()
+    assert install(home, library, config, "--check") == 0
 
 
 def test_a_guard_lands_as_one_extension_with_the_tool_map_and_the_block(

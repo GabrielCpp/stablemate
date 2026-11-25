@@ -140,24 +140,7 @@ def test_a_hand_written_file_in_the_way_is_refused(
     assert clash.read_text(encoding="utf-8") == HANDWRITTEN
 
 
-def test_prompts_under_a_non_claude_harness_are_an_error(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    library = make_library(tmp_path)
-    write_config(
-        tmp_path,
-        monkeypatch,
-        '[user_library.codex]\nskills = ["stablemate/db"]\n'
-        'prompts = ["stablemate/grill"]\n',
-    )
-
-    with pytest.raises(SystemExit) as exc:
-        install(tmp_path / "home", library)
-
-    assert "prompts are Claude-only at user scope" in str(exc.value)
-
-
-def test_a_pack_under_a_non_claude_harness_installs_its_skills_only(
+def test_a_pack_under_a_non_claude_harness_installs_its_prompts_as_skills(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     library = make_library(tmp_path)
@@ -176,6 +159,7 @@ def test_a_pack_under_a_non_claude_harness_installs_its_skills_only(
 
     assert (home / ".claude/commands/grill.md").is_file()
     assert (home / ".agents/skills/db/SKILL.md").is_file()
+    assert (home / ".agents/skills/grill/SKILL.md").is_file()
     assert not (home / ".agents/commands").exists()
 
 

@@ -73,3 +73,15 @@ def seed(path: Path, text: str) -> Path:
     path.parent.mkdir(parents=True)
     path.write_text(text, encoding="utf-8")
     return path
+
+
+PROMPT = (
+    '---\ndescription: "Ship a story."\nargument-hint: "<story-id>"\n---\n\n'
+    "# Ship story $ARGUMENTS\n\nRun `ship $ARGUMENTS`.\n"
+)
+
+
+def add_prompt(library: Path) -> None:
+    prompts = library / "library" / "prompts" / "general"
+    prompts.mkdir(parents=True)
+    (prompts / "go.md").write_text(PROMPT, encoding="utf-8")
