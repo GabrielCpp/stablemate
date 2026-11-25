@@ -45,6 +45,62 @@ def test_a_step_alone_is_not_an_empty_turn():
     assert not state.usage.is_empty
 
 
+def _step(tokens: dict, cost: float = 0) -> dict:
+    return {
+        "type": "step_finish",
+        "sessionID": "ses_x",
+        "part": {"type": "step-finish", "tokens": tokens, "cost": cost},
+    }
+
+
+def test_a_step_reports_uncached_input_beside_its_cache_reads():
+    """opencode's input excludes cache reads, since its total is input + output + reasoning + cache."""
+    tokens = {
+        "total": 21996,
+        "input": 5955,
+        "output": 135,
+        "reasoning": 34,
+        "cache": {"write": 0, "read": 15872},
+    }
+    assert 5955 + 135 + 34 + 15872 == 21996
+    state = _replay(_step(tokens))
+    assert state.usage.input_tokens == 5955
+    assert state.usage.cache_read_input_tokens == 15872
+    assert state.usage.output_tokens == 135
+    assert state.usage.reasoning_output_tokens == 34
+
+
+def test_steps_of_one_turn_are_summed_because_each_reports_its_own_counts():
+    """Consecutive steps of a session do not grow steadily, so each is that step's usage and the turn is their sum."""
+    state = _replay(
+        _step(
+            {
+                "total": 22156,
+                "input": 1141,
+                "output": 23,
+                "reasoning": 0,
+                "cache": {"write": 0, "read": 20992},
+            },
+            0.01,
+        ),
+        _step(
+            {
+                "total": 27059,
+                "input": 4863,
+                "output": 180,
+                "reasoning": 0,
+                "cache": {"write": 0, "read": 22016},
+            },
+            0.02,
+        ),
+    )
+    assert state.usage.input_tokens == 1141 + 4863
+    assert state.usage.cache_read_input_tokens == 20992 + 22016
+    assert state.usage.output_tokens == 23 + 180
+    assert state.usage.total_cost_usd == 0.03
+    assert state.usage.steps == 2
+
+
 if __name__ == "__main__":
     fns = [
         v for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)
