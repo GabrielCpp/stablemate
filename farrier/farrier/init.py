@@ -23,7 +23,7 @@ _TEMPLATE = Template("""\
 
 # Which assistant adapters to generate. At least one must be truthy.
 #   claude  -> .claude/skills/<name>/SKILL.md, .claude/commands/<name>.md
-#   codex   -> .agents/skills/<name>/SKILL.md, .agents/prompts/<name>.prompt.md
+#   codex   -> .agents/skills/<name>/SKILL.md, prompts as skills run by name
 #   copilot -> .github/instructions/, .github/skills/, .github/prompts/
 #   antigravity -> .agents/skills/<name>/SKILL.md, shared with codex (farrier only)
 #   pi      -> .agents/skills/<name>/SKILL.md, .pi/prompts/<name>.md (farrier only)

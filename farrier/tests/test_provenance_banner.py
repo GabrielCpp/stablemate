@@ -109,7 +109,6 @@ def _render_claude_command(tmp_path: Path, source: Source) -> str:
 @pytest.mark.parametrize("with_header", [False, True])
 @pytest.mark.parametrize("target,directory,suffix", [
     ("claude", ".claude/commands", ".md"),
-    ("codex", ".agents/prompts", ".prompt.md"),
     ("copilot", ".github/prompts", ".prompt.md"),
 ])
 def test_prompt_carries_description_and_provenance(

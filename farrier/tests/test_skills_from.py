@@ -106,7 +106,13 @@ def test_a_linked_harness_still_gets_its_own_prompts_and_manifest(
     repo = tmp_path / "acme"
     assert install(repo, library, LINKED + "skills:\n  - db\nprompts:\n  - ship\n") == 0
 
-    assert (repo / ".agents/prompts/acme-ship.prompt.md").is_file()
+    prompt_skill = repo / ".agents/skills/acme-ship"
+    assert not prompt_skill.is_symlink()
+    assert "disable-model-invocation: true" in (prompt_skill / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert (prompt_skill / "agents/openai.yaml").is_file()
+    assert (repo / ".claude/commands/acme-ship.md").is_file()
     assert (repo / ".agents/agents-context.codex.json").is_file()
 
 

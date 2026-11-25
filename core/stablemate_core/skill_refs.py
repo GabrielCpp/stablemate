@@ -222,7 +222,7 @@ HARNESS_FOLDERS = {
     ),
     "codex": HarnessFolders(
         skills=(".agents/skills",),
-        prompts=(".agents/prompts",),
+        prompts=(),
         home_skills=(".agents/skills",),
     ),
     "copilot": HarnessFolders(

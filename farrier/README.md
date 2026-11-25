@@ -83,11 +83,11 @@ At repo scope it shares `.agents/skills` with Codex, and a repo with both on get
 Its guards run through a generated bridge, `~/.gemini/config/hooks/farrier-guards.py`.
 
 A harness with no prompt folder takes each selected prompt as a skill the user runs by name.
-At home only Claude has one, and in a repo Antigravity has none. The skill lands as `<name>/SKILL.md`
+At home only Claude has one, and in a repo Codex and Antigravity have none. The skill lands as `<name>/SKILL.md`
 in the harness's skill folder, with `disable-model-invocation: true` in its front matter. A folder Codex
 reads also gets `agents/openai.yaml` with `policy.allow_implicit_invocation: false`. Those switches keep
 Pi and Codex from starting the skill on their own. Antigravity documents no such switch.
-A prompt's `$ARGUMENTS` stays as written in a Claude, Codex or Pi command. A Copilot prompt file gets
+A prompt's `$ARGUMENTS` stays as written in a Claude or Pi command. A Copilot prompt file gets
 `${input:arguments}`, and a skill gets `<arguments>`, with a line saying what the user types after its name.
 A Claude or Codex table that names a `roots` entry also writes that home's always-on rules,
 `~/.claude/CLAUDE.md` or `~/.codex/AGENTS.md`, from one file in the library.

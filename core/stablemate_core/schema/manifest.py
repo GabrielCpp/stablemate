@@ -63,7 +63,7 @@ class Agents(Section):
     )
     codex: HarnessSwitch = setting(
         False,
-        description="Render for Codex: skills under `.agents/skills`, prompts under `.agents/prompts`. A table `{ skills_from: <harness> }` enables it and links its skills.",
+        description="Render for Codex: skills under `.agents/skills`, prompts there as skills run by name. A table `{ skills_from: <harness> }` enables it and links its skills.",
         examples=[True, {"skills_from": "claude"}],
         type_text="boolean or table with `skills_from`",
     )

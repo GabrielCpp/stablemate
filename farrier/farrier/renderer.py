@@ -637,7 +637,7 @@ class Renderer:
                     )
                 return
             folder = self.skill_dir_path(target)
-            if target in links or folder in prompt_folders:
+            if folder in prompt_folders:
                 return
             prompt_folders.add(folder)
             reaches_codex = folder == self.skill_dir_path("codex")

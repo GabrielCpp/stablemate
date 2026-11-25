@@ -116,11 +116,16 @@ library/prompts/planning/plan-story.md          → public id `plan-story`
 
 ### Generated outputs
 
-| Agent   | Prompt output path                          |
-| ------- | ------------------------------------------- |
-| claude  | `.claude/commands/<prefix>-<name>.md`       |
-| codex   | `.agents/prompts/<prefix>-<name>.prompt.md` |
-| copilot | `.github/prompts/<prefix>-<name>.prompt.md` |
+| Agent       | Prompt output path                          |
+| ----------- | ------------------------------------------- |
+| claude      | `.claude/commands/<prefix>-<name>.md`       |
+| copilot     | `.github/prompts/<prefix>-<name>.prompt.md` |
+| pi          | `.pi/prompts/<prefix>-<name>.md`            |
+| codex       | `.agents/skills/<prefix>-<name>/SKILL.md`   |
+| antigravity | `.agents/skills/<prefix>-<name>/SKILL.md`   |
+
+Codex reads no prompt folder in a repo, and Antigravity has none, so a prompt lands
+there as a skill the user runs by name.
 
 The **claude** command is emitted with a generated YAML header so the slash command
 is discoverable — `claude-code-acp` reads `description` from it to advertise the

@@ -119,12 +119,11 @@ CODEX = HarnessSpec(
     name="codex",
     title="Codex",
     skill_ref="dollar",
-    repo=RepoLayout(skills=".agents/skills", prompts=".agents/prompts", prompt_suffix=".prompt.md"),
+    repo=RepoLayout(skills=".agents/skills", prompts=None, prompt_suffix=""),
     home=HomeLayout(dir=".agents", root_file=".codex/AGENTS.md"),
     surfaces=frozenset(
         {
             Surface.REPO_SKILLS,
-            Surface.REPO_PROMPTS,
             Surface.HOME_ROOT,
             Surface.HOME_SKILLS,
             Surface.GUARDS,

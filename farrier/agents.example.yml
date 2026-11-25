@@ -42,7 +42,7 @@
 # truthy or farrier errors. Mapping form (with booleans) or list form.
 #
 #   claude  → .claude/skills/<name>/SKILL.md      + .claude/commands/<name>.md
-#   codex   → .agents/skills/<name>/SKILL.md      + .agents/prompts/<name>.prompt.md
+#   codex   → .agents/skills/<name>/SKILL.md, prompts as skills run by name
 #   copilot → .github/skills/<name>/SKILL.md, .github/prompts/<name>.prompt.md,
 #             and roots → .github/copilot-instructions.md
 # ---------------------------------------------------------------------------
