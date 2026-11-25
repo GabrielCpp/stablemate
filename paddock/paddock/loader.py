@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 
-from paddock import names, paths
+from paddock import fixtures, names, paths
 from paddock.registry import REGISTRY, Task, TaskError, collect
 
 
@@ -80,11 +80,13 @@ def benchmark_names(root: Path) -> list[str]:
 
 def data_repos(root: Path) -> list[Path]:
     """Every repository the benchmarks under *root* work on: each `data/`, or each repo in a folder of them."""
-    found: list[Path] = []
-    for name in benchmark_names(root):
-        data = paths.benchmark_dir(root, name) / paths.DATA
-        found.extend([data] if (data / ".git").exists() else names.repo_children(data))
-    return found
+    return [repo for name in benchmark_names(root) for repo in benchmark_repos(root, name)]
+
+
+def benchmark_repos(root: Path, name: str) -> list[Path]:
+    """The repositories one benchmark works on: its `data/`, or each repo in a folder of them."""
+    data = paths.benchmark_dir(root, name) / paths.DATA
+    return [data] if (data / ".git").exists() else names.repo_children(data)
 
 
 def load_benchmark(root: Path, name: str) -> Benchmark:
@@ -117,4 +119,11 @@ def load_all(root: Path) -> tuple[list[Benchmark], dict[str, str]]:
 def load_task(root: Path, benchmark: str, task: str) -> tuple[Benchmark, Task]:
     """The benchmark *benchmark* and its task called *task*."""
     loaded = load_benchmark(root, benchmark)
-    return loaded, loaded.task(task)
+    found = loaded.task(task)
+    problems = fixtures.benchmark_problems(root, benchmark)
+    if problems:
+        raise TaskError(
+            f"benchmark {benchmark!r} declares fixtures its repos do not back:\n"
+            + "\n".join(f"  {problem}" for problem in problems)
+        )
+    return loaded, found

@@ -48,7 +48,7 @@ def test_a_fixture_with_no_provides_is_reported(guard: Any, tmp_path: Path) -> N
         "      tool: node\n"
         "      args: ['auth/seed.mjs']\n",
     )
-    problems = guard._check_app(app)
+    problems = guard.check_app(app)
     assert len(problems) == 1
     assert "`provides:`" in problems[0]
 
@@ -60,7 +60,7 @@ def test_a_plan_calling_an_undeclared_fixture_is_reported(guard: Any, tmp_path: 
         "qa:\n  fixtures: {}\n",
         plan=PLAN + '\nqa.fixture("seeded_accounts")\n',
     )
-    problems = guard._check_app(app)
+    problems = guard.check_app(app)
     assert len(problems) == 1
     assert "qa.fixture('seeded_accounts')" in problems[0]
     assert "(none declared)" in problems[0]
@@ -77,7 +77,7 @@ def test_a_plan_calling_a_declared_fixture_is_clean(guard: Any, tmp_path: Path) 
         "      provides: three identities in the auth emulator\n",
         plan=PLAN + '\nqa.fixture("seeded_accounts")\n',
     )
-    assert guard._check_app(app) == []
+    assert guard.check_app(app) == []
 
 
 def test_a_story_naming_a_fixture_nobody_declared_is_reported(guard: Any, tmp_path: Path) -> None:
@@ -87,7 +87,7 @@ def test_a_story_naming_a_fixture_nobody_declared_is_reported(guard: Any, tmp_pa
         json.dumps({"qa_stack": {"fixtures": ["seeded_accounts"]}}), encoding="utf-8"
     )
 
-    problems = guard._check_app(app)
+    problems = guard.check_app(app)
 
     assert len(problems) == 1
     assert "declares fixture 'seeded_accounts'" in problems[0]
@@ -106,7 +106,7 @@ def test_prose_in_a_story_fixture_list_is_not_held_to_a_declaration(
         encoding="utf-8",
     )
 
-    assert guard._check_app(app) == []
+    assert guard.check_app(app) == []
 
 
 def test_a_computed_fixture_name_is_not_read_as_a_fragment(guard: Any, tmp_path: Path) -> None:
@@ -116,11 +116,34 @@ def test_a_computed_fixture_name_is_not_read_as_a_fragment(guard: Any, tmp_path:
         "qa:\n  fixtures: {}\n",
         plan=PLAN + '\nqa.fixture("seeded_" + "accounts")\n',
     )
-    assert guard._check_app(app) == []
+    assert guard.check_app(app) == []
 
 
 def test_a_tree_with_no_specs_is_not_an_app_this_guard_judges(guard: Any, tmp_path: Path) -> None:
     root = tmp_path / "acme"
     root.mkdir()
     (root / "agents.yml").write_text("qa:\n  fixtures: {}\n", encoding="utf-8")
-    assert guard._check_app(root) == []
+    assert guard.check_app(root) == []
+
+
+def test_an_absent_corpus_is_skipped_cleanly(
+    guard: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(guard.paths, "root", lambda: tmp_path / "no-corpus")
+
+    assert guard.main() == 0
+
+    captured = capsys.readouterr()
+    assert "no benchmark corpus" in captured.out
+    assert captured.err == ""
+
+
+def test_a_present_but_empty_corpus_fails(
+    guard: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "gold").mkdir()
+    monkeypatch.setattr(guard.paths, "root", lambda: tmp_path)
+
+    assert guard.main() == 1
+
+    assert "no benchmark repos" in capsys.readouterr().err

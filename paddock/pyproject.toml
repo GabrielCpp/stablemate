@@ -30,6 +30,7 @@ dependencies = [
   # The task API drives workhorse, reads the planning graph through ostler and parses
   # the front matter and answer keys the apps carry.
   "workhorse-agent>=6,<7",
+  "workhorse-workflows>=5,<6",
   "ostler>=6,<7",
   "pyyaml>=6.0",
 ]
@@ -48,6 +49,7 @@ paddock = "paddock.cli:main"
 [tool.uv.sources]
 workhorse-agent = { workspace = true }
 ostler = { workspace = true }
+workhorse-workflows = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

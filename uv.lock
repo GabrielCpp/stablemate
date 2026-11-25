@@ -1172,6 +1172,7 @@ dependencies = [
     { name = "tomli-w" },
     { name = "tomlkit" },
     { name = "workhorse-agent" },
+    { name = "workhorse-workflows" },
 ]
 
 [package.optional-dependencies]
@@ -1191,6 +1192,7 @@ requires-dist = [
     { name = "tomli-w", specifier = ">=1.0" },
     { name = "tomlkit", specifier = ">=0.13" },
     { name = "workhorse-agent", editable = "workhorse" },
+    { name = "workhorse-workflows", editable = "workflows" },
 ]
 provides-extras = ["test"]
 
