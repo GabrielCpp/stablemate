@@ -148,7 +148,6 @@ stops a run's process group with os.killpg, sending SIGTERM and then SIGKILL. Ex
 "ostler/ostler/markdown.py" = 639
 "ostler/ostler/model.py" = 717
 "ostler/ostler/qa/drivers.py" = 1098
-"ostler/ostler/qa/harness/ostler_qa.py" = 2240
 "ostler/ostler/qa/harness/ostler_qa_browser.py" = 960
 "ostler/ostler/qa/harness/ostler_qa_elements.py" = 446
 "ostler/ostler/qa/harness/ostler_qa_hierarchy.py" = 791

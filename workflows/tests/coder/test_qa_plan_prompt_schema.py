@@ -50,7 +50,7 @@ def test_the_example_imports_only_names_the_harness_exports():
 
 def _qa_attributes() -> set[str]:
     """Everything a scenario may reach through `qa`: the class's own methods and properties, plus the instance attributes `__init__` binds — `qa.http` and `qa.diagnostics` exist only as assignments, so `dir(Qa)` alone would call them invented."""
-    return stored_attributes(harness.Qa) | set(dir(harness.Qa))
+    return set().union(*(stored_attributes(layer) for layer in harness.Qa.__mro__ if layer is not object)) | set(dir(harness.Qa))
 
 
 def test_the_example_only_calls_qa_attributes_that_exist():
