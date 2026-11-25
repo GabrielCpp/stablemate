@@ -1,0 +1,57 @@
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+
+import pytest
+
+from stablemate_core import proc
+
+
+def test_a_non_positive_pid_is_neither_alive_nor_started() -> None:
+    assert not proc.pid_alive(0)
+    assert not proc.pid_alive(-3)
+    assert proc.pid_start_token(0) == ""
+    assert proc.pid_start_token(-3) == ""
+
+
+def test_this_process_is_alive_with_a_stable_start_token() -> None:
+    token = proc.pid_start_token(os.getpid())
+    assert proc.pid_alive(os.getpid())
+    assert token
+    assert proc.pid_start_token(os.getpid()) == token
+
+
+def test_a_finished_child_is_neither_alive_nor_started() -> None:
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    child.wait()
+    assert not proc.pid_alive(child.pid)
+    assert proc.pid_start_token(child.pid) == ""
+
+
+@pytest.mark.skipif(not hasattr(os, "waitid"), reason="waitid is POSIX only")
+def test_a_zombie_child_is_not_alive() -> None:
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    try:
+        while proc.pid_alive(child.pid):
+            os.waitid(os.P_PID, child.pid, os.WEXITED | os.WNOWAIT)
+        assert not proc.pid_alive(child.pid)
+    finally:
+        child.wait()
+
+
+@pytest.mark.parametrize("platform", ["darwin", "freebsd14"])
+def test_the_ps_path_answers_without_proc(monkeypatch: pytest.MonkeyPatch, platform: str) -> None:
+    monkeypatch.setattr(proc, "_platform", lambda: platform)
+    monkeypatch.setattr(proc, "_linux_stat", lambda pid: pytest.fail("read /proc"))
+    assert proc.pid_alive(os.getpid())
+    assert proc.pid_start_token(os.getpid())
+
+
+def test_the_ps_path_reports_a_finished_child_gone(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(proc, "_platform", lambda: "darwin")
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    child.wait()
+    assert not proc.pid_alive(child.pid)
+    assert proc.pid_start_token(child.pid) == ""
