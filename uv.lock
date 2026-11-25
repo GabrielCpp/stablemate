@@ -329,7 +329,7 @@ wheels = [
 
 [[package]]
 name = "farrier"
-version = "6.1.0"
+version = "7.0.0"
 source = { editable = "farrier" }
 dependencies = [
     { name = "jinja2" },
@@ -1101,7 +1101,7 @@ wheels = [
 
 [[package]]
 name = "ostler"
-version = "6.1.0"
+version = "7.0.0"
 source = { editable = "ostler" }
 dependencies = [
     { name = "jinja2" },
@@ -1888,7 +1888,7 @@ wheels = [
 
 [[package]]
 name = "stablemate"
-version = "0.2.4"
+version = "0.2.5"
 source = { editable = "stablemate" }
 dependencies = [
     { name = "farrier" },
@@ -1944,7 +1944,7 @@ provides-extras = ["test"]
 
 [[package]]
 name = "stablemate-groom"
-version = "2.1.1"
+version = "2.2.0"
 source = { editable = "groom" }
 dependencies = [
     { name = "jinja2" },
@@ -1984,7 +1984,7 @@ provides-extras = ["test"]
 
 [[package]]
 name = "stablemate-saddlebag"
-version = "3.1.0"
+version = "4.0.0"
 source = { editable = "saddlebag" }
 dependencies = [
     { name = "hvac" },
@@ -2342,7 +2342,7 @@ wheels = [
 
 [[package]]
 name = "workhorse-agent"
-version = "6.1.0"
+version = "7.0.0"
 source = { editable = "workhorse" }
 dependencies = [
     { name = "jinja2" },
@@ -2380,7 +2380,7 @@ provides-extras = ["test", "otel"]
 
 [[package]]
 name = "workhorse-workflows"
-version = "5.0.1"
+version = "5.1.0"
 source = { editable = "workflows" }
 dependencies = [
     { name = "gitpython" },

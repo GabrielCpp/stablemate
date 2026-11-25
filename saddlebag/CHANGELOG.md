@@ -1,5 +1,27 @@
 # Changelog
 
+## [4.0.0](https://github.com/GabrielCpp/stablemate/compare/saddlebag-v3.1.0...saddlebag-v4.0.0) (2026-11-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* **workhorse:** workhorse no longer runs turns through cline. A profile or dispatch that names it is refused.
+
+### Features
+
+* **core:** add the harness registry and tie each harness table to it ([5659cdf](https://github.com/GabrielCpp/stablemate/commit/5659cdf6812b3bf37db18321866e40f5c01c93ed))
+* **farrier:** add antigravity as a render-only harness ([96cff2c](https://github.com/GabrielCpp/stablemate/commit/96cff2c4974bb1c353f4e266825161a842b3dd56))
+* **farrier:** render a shared skill folder once per harness group ([bd90259](https://github.com/GabrielCpp/stablemate/commit/bd902591a43f77604e272a007575fcc7e0efd9c5))
+* **workhorse:** add pi as a harness and backend ([73ee80c](https://github.com/GabrielCpp/stablemate/commit/73ee80c9aa2e1dc1d7f7bd864d919a6c1a8af20d))
+* **workhorse:** derive backends from the registry, load opencode dirs ([be5476d](https://github.com/GabrielCpp/stablemate/commit/be5476dc851bfc5ab39bebe4eaf36b14ddf8b6bc))
+* **workhorse:** retire the cline backend ([12f2df4](https://github.com/GabrielCpp/stablemate/commit/12f2df4040c5ff777778bfc4fb5cfa0b5fb80f85))
+
+
+### Code Refactoring
+
+* **core:** split value coercers and QA tables out of the schema ([4958775](https://github.com/GabrielCpp/stablemate/commit/49587753f991deeaa53371ac93ff6bed1d829982))
+* **farrier:** derive harness lists and paths from the registry ([5649bed](https://github.com/GabrielCpp/stablemate/commit/5649bedd0f505c58b0e67ad619108ba02de8d20c))
+
 ## [3.1.0](https://github.com/GabrielCpp/stablemate/compare/saddlebag-v3.0.0...saddlebag-v3.1.0) (2026-11-25)
 
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## [5.1.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-workflows-v5.0.1...workhorse-workflows-v5.1.0) (2026-11-25)
+
+
+### Features
+
+* **farrier:** add antigravity as a render-only harness ([96cff2c](https://github.com/GabrielCpp/stablemate/commit/96cff2c4974bb1c353f4e266825161a842b3dd56))
+* **workhorse:** add pi as a harness and backend ([73ee80c](https://github.com/GabrielCpp/stablemate/commit/73ee80c9aa2e1dc1d7f7bd864d919a6c1a8af20d))
+* **workhorse:** derive backends from the registry, load opencode dirs ([be5476d](https://github.com/GabrielCpp/stablemate/commit/be5476dc851bfc5ab39bebe4eaf36b14ddf8b6bc))
+
+
+### Bug Fixes
+
+* **workflows:** allow workhorse-agent 7.x ([cbdf313](https://github.com/GabrielCpp/stablemate/commit/cbdf313dc02707a85493928315b57b2478650968))
+* **workflows:** allow workhorse-agent 7.x, ostler 7.x ([a878173](https://github.com/GabrielCpp/stablemate/commit/a87817336da1c6fda488fb57020a10b19886df2d))
+
+
+### Code Refactoring
+
+* **farrier:** derive harness lists and paths from the registry ([5649bed](https://github.com/GabrielCpp/stablemate/commit/5649bedd0f505c58b0e67ad619108ba02de8d20c))
+* **workflows:** split the scripted dev agent out of test_flow ([8fa0456](https://github.com/GabrielCpp/stablemate/commit/8fa045646b52ccc1000ba60d752a7e9a5a5ab786))
+* **workflows:** split the yaml merge out of genesis nodes ([343acbf](https://github.com/GabrielCpp/stablemate/commit/343acbf49f897aa8b2c992f7171a8217a35cd299))
+
 ## [5.0.1](https://github.com/GabrielCpp/stablemate/compare/workhorse-workflows-v5.0.0...workhorse-workflows-v5.0.1) (2026-11-25)
 
 
