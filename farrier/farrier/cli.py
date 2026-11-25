@@ -324,6 +324,10 @@ def _dispatch_config(args: argparse.Namespace) -> int:
         print(args.config_help(), end="")
         return 0
 
+    if args.config_action == "path":
+        print(config_path())
+        return 0
+
     if args.config_action == "get":
         try:
             home_key_type(args.key)
@@ -663,6 +667,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     config_p.set_defaults(config_help=config_p.format_help)
     config_sub = config_p.add_subparsers(dest="config_action")
+    config_sub.add_parser("path", help="Print where the home config lives on this machine: $STABLEMATE_CONFIG, else the platform's config folder")
     get_p = config_sub.add_parser(
         "get",
         help="Print the value one key takes on this machine, its default when the file does not set it",
@@ -683,12 +688,8 @@ def _build_parser() -> argparse.ArgumentParser:
         help="A string key takes VALUE verbatim (default_cli=codex); any other key "
         "takes a TOML value (profiles.claude.powers.high.timeout_scale=1.5)",
     )
-    set_lib = config_sub.add_parser(
-        "set-library", help="Record the library directory in the home config"
-    )
-    set_lib.add_argument(
-        "path", type=Path, help="Path to the library (the agents/ tree)"
-    )
+    set_lib = config_sub.add_parser("set-library", help="Record the library directory in the home config")
+    set_lib.add_argument("path", type=Path, help="Path to the library (the agents/ tree)")
     set_sm = config_sub.add_parser(
         "set-stablemate", help="Record the stablemate checkout path in the home config"
     )
@@ -697,9 +698,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "set-base",
         help="Record a base library path that outranks the one farrier ships",
     )
-    set_base.add_argument(
-        "path", type=Path, help="Path to the base library content directory"
-    )
+    set_base.add_argument("path", type=Path, help="Path to the base library content directory")
     set_wt = config_sub.add_parser(
         "set-worktree",
         help="Record the directory new git worktrees are cut into (machine-local disk "

@@ -106,3 +106,12 @@ def test_bare_config_prints_every_action(config: Path):
 
     for action in ("get", "set", "show", "reference"):
         assert f"    {action} " in text
+
+
+def test_path_prints_the_file_the_config_commands_read(config: Path, monkeypatch: pytest.MonkeyPatch):
+    assert _run(config, "path") == f"{config}\n"
+    monkeypatch.setenv("STABLEMATE_CONFIG", str(config))
+    out = io.StringIO()
+    with redirect_stdout(out):
+        cli.main(["config", "path"])
+    assert out.getvalue() == f"{config}\n"
