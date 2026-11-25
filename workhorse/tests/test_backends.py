@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 from _fakes import FakeClock
 from workhorse._vendor.stablemate_core import config
+from workhorse._vendor.stablemate_core.harness import names
 from workhorse.config_run import AgentResilience, RunConfig
 from workhorse.context import WorkflowContext
 from workhorse import sessions
@@ -145,7 +146,7 @@ def test_get_backend_caches_instance():
 
 
 def test_null_backend_is_not_selectable():
-    """"No CLI" is what a run *has* when nobody chose one, not a CLI one can choose."""
+    """ "No CLI" is what a run *has* when nobody chose one, not a CLI one can choose."""
     try:
         get_backend("none")
         raise AssertionError("expected ValueError — the null backend is not selectable")
@@ -171,8 +172,10 @@ def test_agentless_run_fails_its_first_agent_node_with_a_sentence(tmp_path: Path
     assert isinstance(runner.backend, NullBackend)
 
     run_dir = tmp_path
-    with patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)), \
-         redirect_stdout(io.StringIO()):
+    with (
+        patch.object(ladder, "render", lambda tmpl, ctx, wdir: str(tmpl)),
+        redirect_stdout(io.StringIO()),
+    ):
         try:
             runner.run(node, WorkflowContext(initial={}), run_dir, None)
         except failure.BackendInvocationError as exc:
@@ -211,9 +214,13 @@ def _confined_cmd_and_output(backend_class, agent):
 def test_copilot_warns_that_a_confined_profile_runs_unboxed():
     """Neither CLI has a box to apply, so the turn runs as the unconfined one and says so."""
     for backend_class, cli in ((CopilotBackend, "copilot"),):
-        confined = AgentProfile(name="docs", tools={"*": False}, confined=True, commands=("ostler",))
+        confined = AgentProfile(
+            name="docs", tools={"*": False}, confined=True, commands=("ostler",)
+        )
         cmd, output = _confined_cmd_and_output(backend_class, confined)
-        free_cmd, free_output = _confined_cmd_and_output(backend_class, AgentProfile(name="docs"))
+        free_cmd, free_output = _confined_cmd_and_output(
+            backend_class, AgentProfile(name="docs")
+        )
         assert output.count(f"[n] ⚠ {cli} {CONFINED_WARNING}") == 1
         assert CONFINED_WARNING not in free_output
         assert cmd == free_cmd
@@ -236,9 +243,7 @@ def _fake_stream(canned):
 def test_codex_effort_sets_reasoning_override(tmp_path: Path):
     """`effort` maps to a `-c model_reasoning_effort="<level>"` config override."""
     sidp = tmp_path / ".session_id"
-    fake, captured = _fake_stream(
-        turn.TurnState(result_text="OK", session_id="t")
-    )
+    fake, captured = _fake_stream(turn.TurnState(result_text="OK", session_id="t"))
     prior = os.environ.pop("CODEX_PROFILE", None)
     try:
         _run_turn(CodexBackend(fake), "P", "n", sidp, model="@gpt-5.5", effort="high")
@@ -253,12 +258,12 @@ def test_codex_effort_passes_xhigh_and_max_through(tmp_path: Path):
     """Codex accepts "xhigh" and "max", so a tier set to either runs at that level and not at "high"."""
     sidp = tmp_path / ".session_id"
     for level in ("xhigh", "max"):
-        fake, captured = _fake_stream(
-            turn.TurnState(result_text="OK", session_id="t")
-        )
+        fake, captured = _fake_stream(turn.TurnState(result_text="OK", session_id="t"))
         prior = os.environ.pop("CODEX_PROFILE", None)
         try:
-            _run_turn(CodexBackend(fake), "P", "n", sidp, model="@gpt-5.5", effort=level)
+            _run_turn(
+                CodexBackend(fake), "P", "n", sidp, model="@gpt-5.5", effort=level
+            )
         finally:
             if prior is not None:
                 os.environ["CODEX_PROFILE"] = prior
@@ -268,9 +273,7 @@ def test_codex_effort_passes_xhigh_and_max_through(tmp_path: Path):
 
 def test_codex_no_effort_omits_override(tmp_path: Path):
     sidp = tmp_path / ".session_id"
-    fake, captured = _fake_stream(
-        turn.TurnState(result_text="OK", session_id="t")
-    )
+    fake, captured = _fake_stream(turn.TurnState(result_text="OK", session_id="t"))
     prior = os.environ.pop("CODEX_PROFILE", None)
     try:
         _run_turn(CodexBackend(fake), "P", "n", sidp, model="@gpt-5.5")
@@ -327,7 +330,9 @@ def test_claude_no_effort_omits_flag():
 
 def test_claude_caps_a_turn_at_its_profile_steps():
     """A profile's `steps` bounded opencode turns and nothing on claude, so a claude turn could lap its checks without end."""
-    capped = _capture_claude_cmd(model="opus", agent=AgentProfile(name="writer", steps=12))
+    capped = _capture_claude_cmd(
+        model="opus", agent=AgentProfile(name="writer", steps=12)
+    )
     free = _capture_claude_cmd(model="opus", agent=AgentProfile(name="writer"))
     assert capped[capped.index("--max-turns") + 1] == "12"
     assert "--max-turns" not in free
@@ -337,8 +342,14 @@ def test_claude_denies_every_tool_whose_work_outlives_the_turn():
     """A node's turn is one bounded, reaped CLI session; a dev turn ran its builders as a background workflow, and the session's end took the half-built work with it."""
     cmd = _capture_claude_cmd(model="opus")
     start = cmd.index("--disallowedTools") + 1
-    denied = cmd[start:start + 5]
-    assert denied == ["Workflow", "Monitor", "ScheduleWakeup", "CronCreate", "RemoteTrigger"]
+    denied = cmd[start : start + 5]
+    assert denied == [
+        "Workflow",
+        "Monitor",
+        "ScheduleWakeup",
+        "CronCreate",
+        "RemoteTrigger",
+    ]
     assert "Agent" not in cmd
 
 
@@ -350,21 +361,31 @@ def test_claude_runs_subagents_and_commands_in_the_foreground():
 
 def test_claude_turns_every_tool_off_for_a_profile_that_allows_none():
     """A profile that switches `*` off asked for a turn with no tools, and the claude CLI ran it with all of them until the backend read the profile."""
-    cmd = _capture_claude_cmd(model="opus", agent=AgentProfile(name="writer", tools={"*": False}))
+    cmd = _capture_claude_cmd(
+        model="opus", agent=AgentProfile(name="writer", tools={"*": False})
+    )
     assert cmd[cmd.index("--tools") + 1] == ""
     assert "--strict-mcp-config" in cmd
 
 
 def test_claude_keeps_the_tools_a_profile_names_when_the_rest_are_off():
-    cmd = _capture_claude_cmd(model="opus", agent=AgentProfile(name="reader", tools={"*": False, "Read": True}))
+    cmd = _capture_claude_cmd(
+        model="opus",
+        agent=AgentProfile(name="reader", tools={"*": False, "Read": True}),
+    )
     assert cmd[cmd.index("--tools") + 1] == "Read"
 
 
 def test_claude_denies_the_tools_a_profile_switches_off():
-    cmd = _capture_claude_cmd(model="opus", agent=AgentProfile(name="no-shell", tools={"Bash": False}))
+    cmd = _capture_claude_cmd(
+        model="opus", agent=AgentProfile(name="no-shell", tools={"Bash": False})
+    )
     assert "--tools" not in cmd and "--strict-mcp-config" not in cmd
     assert cmd.count("--disallowedTools") == 2
-    assert cmd[cmd.index("--disallowedTools", cmd.index("--disallowedTools") + 1) + 1] == "Bash"
+    assert (
+        cmd[cmd.index("--disallowedTools", cmd.index("--disallowedTools") + 1) + 1]
+        == "Bash"
+    )
 
 
 def _capture_claude_policy(**run_turn_kwargs) -> Policy:
@@ -374,7 +395,9 @@ def _capture_claude_policy(**run_turn_kwargs) -> Policy:
     def fake_popen(cmd, *a, **k):
         settings = json.loads(cmd[cmd.index("--settings") + 1])
         hook = settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
-        captured["policy"] = Policy.from_json(Path(shlex.split(hook)[-1]).read_text(encoding="utf-8"))
+        captured["policy"] = Policy.from_json(
+            Path(shlex.split(hook)[-1]).read_text(encoding="utf-8")
+        )
         raise RuntimeError("stop")
 
     with patch("subprocess.Popen", fake_popen):
@@ -388,7 +411,9 @@ def _capture_claude_policy(**run_turn_kwargs) -> Policy:
 def test_claude_runs_a_confined_profile_behind_the_guard_hook_with_the_whole_environment():
     """Every setting source still loads, so a confined turn is held by a hook layered on top instead of by dropping the operator's settings."""
     cmd = _capture_claude_cmd(
-        model="opus", agent=AgentProfile(name="docs", tools={"*": False}, confined=True), cwd="/work/app/docs"
+        model="opus",
+        agent=AgentProfile(name="docs", tools={"*": False}, confined=True),
+        cwd="/work/app/docs",
     )
     assert "--dangerously-skip-permissions" in cmd
     assert "--setting-sources" not in cmd
@@ -402,13 +427,20 @@ def test_claude_runs_a_confined_profile_behind_the_guard_hook_with_the_whole_env
 
 
 def test_claude_runs_an_unconfined_profile_without_the_guard():
-    cmd = _capture_claude_cmd(model="opus", agent=AgentProfile(name="docs"), cwd="/work/app/docs")
+    cmd = _capture_claude_cmd(
+        model="opus", agent=AgentProfile(name="docs"), cwd="/work/app/docs"
+    )
     assert "--settings" not in cmd
     assert "--setting-sources" not in cmd
 
 
 def test_claude_adds_bash_to_the_tools_of_a_confined_profile_that_names_commands():
-    agent = AgentProfile(name="docs", tools={"*": False}, confined=True, commands=("ostler", "python -m check job.json"))
+    agent = AgentProfile(
+        name="docs",
+        tools={"*": False},
+        confined=True,
+        commands=("ostler", "python -m check job.json"),
+    )
     cmd = _capture_claude_cmd(model="opus", agent=agent, cwd="/work/app/docs")
     assert cmd[cmd.index("--tools") + 1].endswith(",Bash")
     assert "--allowedTools" not in cmd
@@ -420,20 +452,35 @@ def test_claude_hands_its_guard_the_cwd_the_commands_and_the_operator_config_dir
         base = Path(tmp).resolve()
         home = base / "home"
         (home / ".claude" / "skills" / "x").mkdir(parents=True)
-        (home / ".claude" / "skills" / "x" / "SKILL.md").write_text("---\nname: x\n---\n", encoding="utf-8")
+        (home / ".claude" / "skills" / "x" / "SKILL.md").write_text(
+            "---\nname: x\n---\n", encoding="utf-8"
+        )
         root = base / "repo"
         (root / ".git").mkdir(parents=True)
         (root / "docs").mkdir()
         (root / ".claude" / "skills").mkdir(parents=True)
         extra = base / "extra"
         extra.mkdir()
-        agent = AgentProfile(name="docs", tools={"*": False}, confined=True, commands=("ostler",))
-        env = {key: value for key, value in os.environ.items() if key != "CLAUDE_CONFIG_DIR"}
+        agent = AgentProfile(
+            name="docs", tools={"*": False}, confined=True, commands=("ostler",)
+        )
+        env = {
+            key: value
+            for key, value in os.environ.items()
+            if key != "CLAUDE_CONFIG_DIR"
+        }
         with patch.dict(os.environ, {**env, "HOME": str(home)}, clear=True):
-            policy = _capture_claude_policy(agent=agent, cwd=str(root / "docs"), add_dirs=[str(extra)])
+            policy = _capture_claude_policy(
+                agent=agent, cwd=str(root / "docs"), add_dirs=[str(extra)]
+            )
     assert policy.cwd == root / "docs"
     assert policy.commands == ("ostler",)
-    assert set(policy.read_roots) == {root / "docs", extra, root / ".claude" / "skills", home / ".claude"}
+    assert set(policy.read_roots) == {
+        root / "docs",
+        extra,
+        root / ".claude" / "skills",
+        home / ".claude",
+    }
     assert policy.may_read(home / ".claude" / "skills" / "x" / "SKILL.md")
 
 
@@ -444,7 +491,9 @@ def test_claude_adds_only_the_real_added_dirs_to_the_cli():
         (root / ".claude" / "skills").mkdir(parents=True)
         agent = AgentProfile(name="docs", tools={"*": False}, confined=True)
         cmd = _capture_claude_cmd(agent=agent, cwd=str(root), add_dirs=["/elsewhere"])
-    assert [cmd[i + 1] for i, arg in enumerate(cmd) if arg == "--add-dir"] == ["/elsewhere"]
+    assert [cmd[i + 1] for i, arg in enumerate(cmd) if arg == "--add-dir"] == [
+        "/elsewhere"
+    ]
 
 
 def test_claude_keeps_a_large_prompt_on_stdin():
@@ -491,9 +540,7 @@ def test_claude_waits_on_a_slow_command_for_its_profile_limit():
 def test_copilot_effort_maps_to_native_flag(tmp_path: Path):
     """Copilot has a native `--effort <level>` flag; the prompt is passed verbatim."""
     sidp = tmp_path / ".session_id"
-    fake, captured = _fake_stream(
-        turn.TurnState(result_text="OK", session_id="s")
-    )
+    fake, captured = _fake_stream(turn.TurnState(result_text="OK", session_id="s"))
     _run_turn(CopilotBackend(fake), "BASE PROMPT", "n", sidp, effort="high")
     cmd = captured["cmd"]
     assert cmd[cmd.index("--effort") + 1] == "high"
@@ -546,15 +593,16 @@ def test_codex_keeps_a_large_prompt_on_stdin():
 def test_codex_profile_from_env(tmp_path: Path):
     """CODEX_PROFILE is the run-level *fallback*: when a node names no profile, it injects a top-level `--profile <name>` (before `exec`); a leading-'@' model still maps to `-m`, overriding the profile's pinned model."""
     sidp = tmp_path / ".session_id"
-    fake, captured = _fake_stream(
-        turn.TurnState(result_text="OK", session_id="t1")
-    )
+    fake, captured = _fake_stream(turn.TurnState(result_text="OK", session_id="t1"))
 
     prior = os.environ.get("CODEX_PROFILE")
     os.environ["CODEX_PROFILE"] = "openrouter"
     try:
         _run_turn(
-            CodexBackend(fake), "PROMPT", "n", sidp,
+            CodexBackend(fake),
+            "PROMPT",
+            "n",
+            sidp,
             model="@deepseek/deepseek-chat-v3.1",
         )
     finally:
@@ -566,9 +614,7 @@ def test_codex_profile_from_env(tmp_path: Path):
     cmd = captured["cmd"]
     assert cmd[:4] == ["codex", "--profile", "openrouter", "exec"]
     assert cmd[cmd.index("-m") + 1] == "deepseek/deepseek-chat-v3.1"
-    fake2, captured2 = _fake_stream(
-        turn.TurnState(result_text="OK2", session_id="t1")
-    )
+    fake2, captured2 = _fake_stream(turn.TurnState(result_text="OK2", session_id="t1"))
     os.environ["CODEX_PROFILE"] = "openrouter"
     try:
         _run_turn(CodexBackend(fake2), "P2", "n", sidp)
@@ -592,18 +638,14 @@ def test_codex_per_node_profile_overrides_env(tmp_path: Path):
     os.environ["CODEX_PROFILE"] = "openrouter"
     try:
         sidp = tmp_path / ".s"
-        fake, captured = _fake_stream(
-            turn.TurnState(result_text="X", session_id="s")
-        )
+        fake, captured = _fake_stream(turn.TurnState(result_text="X", session_id="s"))
         _run_turn(CodexBackend(fake), "P", "n", sidp, model="local@qwen2.5-coder:32b")
         cmd = captured["cmd"]
         assert cmd[:4] == ["codex", "--profile", "local", "exec"]
         assert cmd[cmd.index("-m") + 1] == "qwen2.5-coder:32b"
 
         sidp2 = tmp_path / ".s2"
-        fake2, captured2 = _fake_stream(
-            turn.TurnState(result_text="X", session_id="s")
-        )
+        fake2, captured2 = _fake_stream(turn.TurnState(result_text="X", session_id="s"))
         _run_turn(CodexBackend(fake2), "P", "n", sidp2, model="local")
         assert captured2["cmd"][:4] == ["codex", "--profile", "local", "exec"]
         assert "-m" not in captured2["cmd"]
@@ -617,9 +659,7 @@ def test_codex_per_node_profile_overrides_env(tmp_path: Path):
 def test_codex_profile_at_slug_model_string(tmp_path: Path):
     """A `<profile>@<slug>` codex model string drives the CLI as `codex --profile mimo exec ..."""
     sidp = tmp_path / ".session_id"
-    fake, captured = _fake_stream(
-        turn.TurnState(result_text="OK", session_id="t")
-    )
+    fake, captured = _fake_stream(turn.TurnState(result_text="OK", session_id="t"))
     prior = os.environ.pop("CODEX_PROFILE", None)
     try:
         _run_turn(CodexBackend(fake), "P", "n", sidp, model="mimo@mimo-pro")
@@ -699,9 +739,7 @@ def test_copilot_on_event_extracts_text_and_session():
     copilot._on_event(
         {"type": "assistant.message", "data": {"content": "hello"}}, state, "n"
     )
-    copilot._on_event(
-        {"type": "result", "sessionId": "s9", "exitCode": 0}, state, "n"
-    )
+    copilot._on_event({"type": "result", "sessionId": "s9", "exitCode": 0}, state, "n")
     assert state.result_text == "hello"
     assert state.session_id == "s9"
 
@@ -829,7 +867,7 @@ def test_classify_turn_without_session_writes_no_manifest(tmp_path: Path):
 def test_finalize_turn_non_recoverable_names_each_backend():
     """A non-zero exit whose output is NOT a retryable marker is non-recoverable (transient=False, not overflow), and the message names the ACTUAL backend — the one shared classifier (failure.classify_turn) gives every CLI a uniform, backend-named error instead of a hardcoded 'Claude'."""
     diag = "Unexpected server error. Check server logs for details."
-    for name in ("opencode", "codex", "copilot", "claude"):
+    for name in names():
         try:
             turn.finalize_turn(
                 name,
@@ -856,13 +894,18 @@ def test_agentnode_power_is_optional():
 
 def test_agentnode_power_is_an_opaque_tier_name():
     """`power` is the operator's vocabulary, so the engine must not police the name."""
+
     def node(power: str) -> dict[str, str]:
-        return {"type": "agent", "id": "n", "prompt": "p", "power": power, "next": "done"}
+        return {
+            "type": "agent",
+            "id": "n",
+            "prompt": "p",
+            "power": power,
+            "next": "done",
+        }
 
     for tier in ("low", "medium", "high", "max", "ultra", "verdict", "cheap-bulk"):
         assert AgentNode.model_validate(node(tier)).power == tier
-
-
 
 
 def test_opencode_run_turn_fresh_then_resume(tmp_path: Path):
@@ -871,8 +914,12 @@ def test_opencode_run_turn_fresh_then_resume(tmp_path: Path):
         turn.TurnState(result_text="PONG", session_id="ses_1")
     )
     out = _run_turn(
-        OpenCodeBackend(fake), "PROMPT", "n", sidp,
-        model="openrouter/xiaomi/mimo-v2.5", effort="high",
+        OpenCodeBackend(fake),
+        "PROMPT",
+        "n",
+        sidp,
+        model="openrouter/xiaomi/mimo-v2.5",
+        effort="high",
     )
     assert out == "PONG"
     cmd = captured["cmd"]
@@ -895,7 +942,9 @@ def test_opencode_run_turn_fresh_then_resume(tmp_path: Path):
     fake2, captured2 = _fake_stream(
         turn.TurnState(result_text="P2", session_id="ses_1")
     )
-    _run_turn(OpenCodeBackend(fake2), "P2", "n", sidp, model="openrouter/xiaomi/mimo-v2.5")
+    _run_turn(
+        OpenCodeBackend(fake2), "P2", "n", sidp, model="openrouter/xiaomi/mimo-v2.5"
+    )
     assert captured2["cmd"][captured2["cmd"].index("--session") + 1] == "ses_1"
 
 
@@ -919,14 +968,10 @@ def test_opencode_effort_variant_mapping_and_omit(tmp_path: Path):
     sidp = tmp_path / ".s"
     cases = {"low": "minimal", "high": "high", "xhigh": "max", "max": "max"}
     for effort, variant in cases.items():
-        fake, captured = _fake_stream(
-            turn.TurnState(result_text="X", session_id="s")
-        )
+        fake, captured = _fake_stream(turn.TurnState(result_text="X", session_id="s"))
         _run_turn(OpenCodeBackend(fake), "P", "n", sidp, model="m", effort=effort)
         assert captured["cmd"][captured["cmd"].index("--variant") + 1] == variant
-    fake, captured = _fake_stream(
-        turn.TurnState(result_text="X", session_id="s")
-    )
+    fake, captured = _fake_stream(turn.TurnState(result_text="X", session_id="s"))
     _run_turn(OpenCodeBackend(fake), "P", "n", sidp, model="m", effort="medium")
     assert "--variant" not in captured["cmd"]
 
@@ -934,9 +979,7 @@ def test_opencode_effort_variant_mapping_and_omit(tmp_path: Path):
 def test_opencode_effort_outside_the_levels_names_the_variant(tmp_path: Path):
     sidp = tmp_path / ".s"
     for effort in ("none", "thinking"):
-        fake, captured = _fake_stream(
-            turn.TurnState(result_text="X", session_id="s")
-        )
+        fake, captured = _fake_stream(turn.TurnState(result_text="X", session_id="s"))
         _run_turn(OpenCodeBackend(fake), "P", "n", sidp, model="m", effort=effort)
         assert captured["cmd"][captured["cmd"].index("--variant") + 1] == effort
 
@@ -944,9 +987,7 @@ def test_opencode_effort_outside_the_levels_names_the_variant(tmp_path: Path):
 def test_opencode_pins_small_model_to_turn_model():
     """A turn with a model pins opencode's title/summary helper (`small_model`) to it via OPENCODE_CONFIG_CONTENT — the helper has no CLI flag, and without the pin it inherits whatever provider the machine's opencode config drifts to (an OpenRouter credit wall on the title call once slept a run for 6 days)."""
     with _config(""):
-        fake, captured = _fake_stream(
-            turn.TurnState(result_text="X", session_id="s")
-        )
+        fake, captured = _fake_stream(turn.TurnState(result_text="X", session_id="s"))
         _run_turn(OpenCodeBackend(fake), "P", "n", None, model="openai/gpt-5.6-sol")
     assert json.loads(captured["env_extra"]["OPENCODE_CONFIG_CONTENT"]) == {
         "small_model": "openai/gpt-5.6-sol"
@@ -956,13 +997,9 @@ def test_opencode_pins_small_model_to_turn_model():
 def test_opencode_no_model_no_small_model_pin():
     """With no model on the turn there is nothing to pin to — the CLI's own config decides both the turn model and the helper, consistently."""
     with _config(""):
-        fake, captured = _fake_stream(
-            turn.TurnState(result_text="X", session_id="s")
-        )
+        fake, captured = _fake_stream(turn.TurnState(result_text="X", session_id="s"))
         _run_turn(OpenCodeBackend(fake), "P", "n", None)
-    assert captured["env_extra"] == {
-        "OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX": "131072"
-    }
+    assert captured["env_extra"] == {"OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX": "131072"}
 
 
 def test_opencode_operator_config_content_wins_verbatim():
@@ -973,9 +1010,7 @@ def test_opencode_operator_config_content_wins_verbatim():
         ' OPENCODE_DISABLE_AUTOCOMPACT = "1" }\n'
     )
     with _config(cfg):
-        fake, captured = _fake_stream(
-            turn.TurnState(result_text="X", session_id="s")
-        )
+        fake, captured = _fake_stream(turn.TurnState(result_text="X", session_id="s"))
         _run_turn(OpenCodeBackend(fake), "P", "n", None, model="openai/gpt-5.6-sol")
     assert captured["env_extra"] == {
         "OPENCODE_CONFIG_CONTENT": '{"small_model":"openai/gpt-5.5"}',
@@ -987,9 +1022,7 @@ def test_opencode_operator_config_content_wins_verbatim():
 def test_opencode_pin_composes_with_other_harness_env():
     """Harness env keys that are not OPENCODE_CONFIG_CONTENT don't suppress the pin — the pin joins them."""
     with _config('[harness.opencode]\nenv = { OPENCODE_DISABLE_AUTOCOMPACT = "1" }\n'):
-        fake, captured = _fake_stream(
-            turn.TurnState(result_text="X", session_id="s")
-        )
+        fake, captured = _fake_stream(turn.TurnState(result_text="X", session_id="s"))
         _run_turn(OpenCodeBackend(fake), "P", "n", None, model="openai/gpt-5.6-terra")
     env = captured["env_extra"]
     assert env["OPENCODE_DISABLE_AUTOCOMPACT"] == "1"
@@ -1001,9 +1034,7 @@ def test_opencode_pin_composes_with_other_harness_env():
 def test_opencode_lifts_the_32k_output_cap_to_the_models_own_limit():
     """opencode caps every completion at 32k output tokens, thinking included, unless OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX says otherwise."""
     with _config(""):
-        fake, captured = _fake_stream(
-            turn.TurnState(result_text="X", session_id="s")
-        )
+        fake, captured = _fake_stream(turn.TurnState(result_text="X", session_id="s"))
         _run_turn(OpenCodeBackend(fake), "P", "n", None, model="minimax/MiniMax-M3")
     assert captured["env_extra"]["OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX"] == "131072"
 
@@ -1012,9 +1043,7 @@ def test_opencode_operator_output_cap_wins():
     """An operator who names the cap in [harness.opencode].env has decided; the adapter's default steps aside rather than overriding it."""
     cfg = '[harness.opencode]\nenv = { OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX = "40000" }\n'
     with _config(cfg):
-        fake, captured = _fake_stream(
-            turn.TurnState(result_text="X", session_id="s")
-        )
+        fake, captured = _fake_stream(turn.TurnState(result_text="X", session_id="s"))
         _run_turn(OpenCodeBackend(fake), "P", "n", None, model="minimax/MiniMax-M3")
     assert captured["env_extra"]["OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX"] == "40000"
 
@@ -1074,8 +1103,6 @@ def test_opencode_text_parts_do_not_leak_between_turns():
     assert second.result_text == "second"
 
 
-
-
 def test_codex_reset_at_skips_non_openai_models_without_network():
     """The reset probe is Codex-only: an OpenRouter (or empty) model returns None with no network call (those caps go through the daily-key-limit path)."""
     assert opencode._codex_reset_at("openrouter/xiaomi/mimo-v2.5") is None
@@ -1100,7 +1127,10 @@ def test_opencode_cap_attaches_codex_reset_at():
     with patch.object(opencode, "_codex_reset_at", lambda model, *a, **k: reset):
         try:
             _run_turn(
-                OpenCodeBackend(fake), "P", "review_implementation", None,
+                OpenCodeBackend(fake),
+                "P",
+                "review_implementation",
+                None,
                 model="openai/gpt-5.5",
             )
             raise AssertionError("expected a cap BackendInvocationError")
@@ -1108,9 +1138,7 @@ def test_opencode_cap_attaches_codex_reset_at():
             assert exc.reset_at == reset, (
                 "precise Codex reset must ride through to the runner"
             )
-            assert "cap reached" in str(
-                exc
-            ) and "No output from" not in str(exc)
+            assert "cap reached" in str(exc) and "No output from" not in str(exc)
 
 
 def test_opencode_non_cap_does_not_probe_codex():
@@ -1133,15 +1161,17 @@ def _drive_stream_jsonl(lines, on_event):
 
     def fake_stream(cmd, node_id, timeout, on_line, **kwargs):
         for raw in lines:
-            if on_line(
-                raw
-            ):
+            if on_line(raw):
                 return True, 0
         return False, 0
 
     with patch.object(process, "stream_subprocess", fake_stream):
         return jsonl.stream_jsonl(
-            ["opencode"], "review_implementation", 3600, None, on_event,
+            ["opencode"],
+            "review_implementation",
+            3600,
+            None,
+            on_event,
             resilience=RESILIENCE,
         )
 
@@ -1154,7 +1184,8 @@ def test_a_line_that_parses_but_is_not_an_object_is_text():
         seen.append(event)
 
     state = _drive_stream_jsonl(
-        ['{"type":"step"}\n', '42\n', '"loading"\n', '[1, 2]\n', 'null\n'], on_event,
+        ['{"type":"step"}\n', "42\n", '"loading"\n', "[1, 2]\n", "null\n"],
+        on_event,
     )
     assert seen == [{"type": "step"}]
     assert state.diagnostics[-4:] == ["42", '"loading"', "[1, 2]", "null"]
@@ -1176,7 +1207,9 @@ def test_opencode_cap_log_line_aborts_stream_early():
         ],
         on_event,
     )
-    assert state.timed_out is True, "cap abort must flag timed_out so the turn finalizes"
+    assert state.timed_out is True, (
+        "cap abort must flag timed_out so the turn finalizes"
+    )
     assert "usage limit" in state.diagnostics_text.lower()
     assert consumed["n"] == 1, "stream must stop at the cap line — later events unread"
     try:
@@ -1191,9 +1224,7 @@ def test_opencode_cap_log_line_aborts_stream_early():
         )
         raise AssertionError("expected a cap BackendInvocationError")
     except failure.BackendInvocationError as exc:
-        assert "cap reached" in str(exc) and "No output from" not in str(
-            exc
-        )
+        assert "cap reached" in str(exc) and "No output from" not in str(exc)
 
 
 def test_opencode_cap_structured_error_event_aborts_stream_early():
@@ -1333,7 +1364,6 @@ def test_finalize_turn_hands_the_classifier_the_counts_it_stamped():
         raise AssertionError("expected BackendInvocationError")
 
 
-
 def _expect_cut(call):
     try:
         call()
@@ -1371,7 +1401,9 @@ def test_claude_records_the_session_id_the_moment_the_stream_names_it(tmp_path: 
 
         seen = []
         resume = _claude_stream(
-            [{"type": "result", "result": "OK", "subtype": "success"}], cut="", seen=seen
+            [{"type": "result", "result": "OK", "subtype": "success"}],
+            cut="",
+            seen=seen,
         )
         with patch.object(claude._process, "stream_subprocess", resume):
             assert _run_turn(ClaudeBackend(), "P", "n", sidp) == "OK"
@@ -1398,10 +1430,18 @@ def _jsonl_cut(event, *, cut="silence", seen=None):
 
 def test_jsonl_backends_record_the_session_id_before_a_cut(tmp_path: Path):
     cases = [
-        (CodexBackend, {"type": "thread.started", "thread_id": "tid-early"}, "tid-early",
-         lambda cmd: cmd[:3] == ["codex", "exec", "resume"] and "tid-early" in cmd),
-        (OpenCodeBackend, {"type": "step_start", "sessionID": "ses_early"}, "ses_early",
-         lambda cmd: cmd[cmd.index("--session") + 1] == "ses_early"),
+        (
+            CodexBackend,
+            {"type": "thread.started", "thread_id": "tid-early"},
+            "tid-early",
+            lambda cmd: cmd[:3] == ["codex", "exec", "resume"] and "tid-early" in cmd,
+        ),
+        (
+            OpenCodeBackend,
+            {"type": "step_start", "sessionID": "ses_early"},
+            "ses_early",
+            lambda cmd: cmd[cmd.index("--session") + 1] == "ses_early",
+        ),
     ]
     for backend_cls, event, sid, resumed in cases:
         for cut in ("silence", "exception"):
@@ -1419,23 +1459,32 @@ def test_jsonl_backends_record_the_session_id_before_a_cut(tmp_path: Path):
 def test_copilot_records_its_session_id_from_the_result_event(tmp_path: Path):
     sidp = tmp_path / ".session_id"
     backend = CopilotBackend(
-        _jsonl_cut({"type": "result", "sessionId": "cp-1", "exitCode": 0}, cut="silence")
+        _jsonl_cut(
+            {"type": "result", "sessionId": "cp-1", "exitCode": 0}, cut="silence"
+        )
     )
     _expect_cut(lambda: _run_turn(backend, "P", "n", sidp))
     assert sidp.read_text() == "cp-1"
 
 
-def test_a_turn_cut_after_naming_its_session_resumes_it_on_the_ladders_retry(tmp_path: Path):
+def test_a_turn_cut_after_naming_its_session_resumes_it_on_the_ladders_retry(
+    tmp_path: Path,
+):
     sidp = tmp_path / ".sessions" / "lead"
     seen = []
-    laps = iter([
-        _claude_stream(
-            [{"type": "system", "subtype": "init", "session_id": "sess-1"}], seen=seen
-        ),
-        _claude_stream(
-            [{"type": "result", "result": "OK", "subtype": "success"}], cut="", seen=seen
-        ),
-    ])
+    laps = iter(
+        [
+            _claude_stream(
+                [{"type": "system", "subtype": "init", "session_id": "sess-1"}],
+                seen=seen,
+            ),
+            _claude_stream(
+                [{"type": "result", "result": "OK", "subtype": "success"}],
+                cut="",
+                seen=seen,
+            ),
+        ]
+    )
 
     def fake_stream(*args, **kwargs):
         return next(laps)(*args, **kwargs)
