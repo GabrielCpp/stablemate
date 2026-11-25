@@ -27,7 +27,7 @@ Write a policy when **all** of these hold:
 Most policies are **rules** — the standing constraints the procedures run under. A
 *procedure* belongs in a skill, and the policy keeps a one-paragraph pointer to it.
 `commit-and-push` is the worked example. Its policy carries the `commit-msg` hook and a
-link to the `repo/commit` skill. The full procedure loads only in the turn that
+link to the `method/commit` skill. The full procedure loads only in the turn that
 commits, so every other turn pays for the pointer alone. A repo that aggregates the
 policy selects that skill too.
 

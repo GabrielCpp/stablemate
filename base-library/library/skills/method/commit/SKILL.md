@@ -1,6 +1,6 @@
 ---
 name: commit
-description: "Load before you stage, commit or push anything in this repo. The procedure every finished change lands under: look at the tree first, one concern per commit, the gate before the commit, staging by explicit path and never `-A`, a Conventional Commits subject release-please can read with the scope vocabulary and the story-id footer, and the commit kept local on the current branch."
+description: "Load before you stage, commit or push anything. The procedure every finished change lands under: look at the tree first, one concern per commit, the gate before the commit, staging by explicit path and never `-A`, a Conventional Commits subject release-please can read with the scope vocabulary and the story-id footer, and the commit kept local on the current branch."
 tags: [git, process]
 ---
 

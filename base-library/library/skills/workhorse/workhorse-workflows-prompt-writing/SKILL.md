@@ -82,7 +82,7 @@ source of truth that drifts:
 
 - **Commit protocol.** The target repo installs the `commit-and-push` policy
   (`library/policies/repo/commit-and-push/POLICY.md`, aggregated into its generated agent
-  instructions via `localInstructions` in `agents.yml`) and the `repo/commit` skill it
+  instructions via `localInstructions` in `agents.yml`) and the `method/commit` skill it
   links to, so every agent in that repo is already asked to commit finished work by
   explicit path with a conventional subject.
   Turn-specific trailers (`Epic:`/`Story:`) are the flow's job to apply
