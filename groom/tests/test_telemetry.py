@@ -717,7 +717,7 @@ def test_prune_deletes_in_chunks_and_still_drains_everything():
         store.insert_metrics(
             [{"run_id": "r", "name": "workhorse.turn.idle_s", "ts": now - 60, "value": 99}]
         )
-        with patch.object(store, "_PRUNE_CHUNK", 3):
+        with patch("groom.store.retention._PRUNE_CHUNK", 3):
             removed = store.prune(retention_days=14, now=now)
         assert removed == 10
         kept = store._connection().execute("SELECT ts FROM metrics").fetchall()

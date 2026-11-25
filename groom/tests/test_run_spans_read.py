@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from groom import activity, history, records, store
+from groom.store import profile as store_profile
 from tests.test_row_figures import _DB
 from tests.test_row_figures import _span as _base
 
@@ -104,7 +105,7 @@ def test_every_reader_answers_as_it_did_on_the_full_read(monkeypatch: pytest.Mon
         _seed()
         lean = readers()
         with monkeypatch.context() as patch:
-            patch.setattr(store, "_run_spans", _full_spans)
+            patch.setattr(store_profile, "_run_spans", _full_spans)
             full = readers()
     assert lean[0] is not None
     assert lean == full
