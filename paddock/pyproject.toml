@@ -29,9 +29,9 @@ dependencies = [
   "tomlkit>=0.13",
   # The task API drives workhorse, reads the planning graph through ostler and parses
   # the front matter and answer keys the apps carry.
-  "workhorse-agent>=6,<7",
+  "workhorse-agent>=7,<8",
   "workhorse-workflows>=5,<6",
-  "ostler>=6,<7",
+  "ostler>=7,<8",
   "pyyaml>=6.0",
 ]
 
