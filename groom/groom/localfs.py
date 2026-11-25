@@ -10,6 +10,7 @@ from pathlib import Path
 from groom import gitdiff
 from groom.docker_io import _SKIP_DIRS, DOCKER_TIMEOUT, TreeRead
 from groom.relpath import safe_relpath
+from workhorse._vendor.stablemate_core.proc import pid_alive as _pid_alive
 
 _SKIP = set(_SKIP_DIRS)
 
@@ -42,21 +43,7 @@ def run_terminal(run_dir: str, /) -> str:
 
 def pid_alive(pid: int) -> bool:
     """Whether a process with this pid exists on groom's host."""
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return True
-    try:
-        stat = Path(f"/proc/{pid}/stat").read_text()
-    except OSError:
-        return True
-    return stat.rpartition(")")[2].split()[0] != "Z"
+    return _pid_alive(pid)
 
 
 def read_tree(base: str, /, repo_dir: str = "") -> TreeRead:
