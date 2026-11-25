@@ -18,7 +18,7 @@ make test       # ~2 minutes; should be green before you change anything
 `make install` rather than `make sync`, because git ships no hook configuration: a fresh
 clone runs nothing, so the commit guards are silently off until something installs them
 — and the commit that needed stopping is usually the first one. The wiring is farrier's:
-`make hooks` runs `farrier hooks`, which reads `hooks: manager: githooks` from
+`make hooks` runs `farrier hooks install`, which reads `hooks: manager: githooks` from
 `agents.yml`, splices its own fenced region into `.githooks/pre-commit` and points
 `core.hooksPath` at that directory. The guards themselves are the standalone scripts
 there, runnable by hand when you are working out why a commit was blocked.

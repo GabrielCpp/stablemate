@@ -43,7 +43,7 @@ hooks: ## Install the git hooks (private names, Conventional Commits, generated 
 	#
 	# `farrier hooks` is the wiring alone: no render, no library resolution, so it
 	# still works on a clone that has no private overlay to resolve packs from.
-	uv run farrier hooks --repo $(CURDIR)
+	uv run farrier hooks install --repo $(CURDIR)
 	@echo "hooks installed:"
 	@echo "  private-names         blocks private overlay names. They come from"
 	@echo "                        \$$STABLEMATE_PRIVATE_NAMES or \$$GIT_DIR/private-names"

@@ -25,8 +25,7 @@ A run acts without asking for permission, because it starts `claude` with
 throwaway checkout.
 
 ```bash
-uv tool install workhorse-workflows     # or: pipx install workhorse-workflows
-uv tool install farrier
+uv tool install stablemate              # or: pipx install stablemate
 workhorse-loop-runner run --dry-run     # the install check; needs no agent CLI
 ```
 
@@ -96,39 +95,7 @@ flowchart LR
 Same model, three different rooms: the independence is in the *inputs*, not the judge.
 And a leg that cannot produce its evidence is a stop, not a shrug — a QA give-up parks
 the run for an operator instead of stamping it passed. The C leg is exactly as strong as
-the book behind it, which is the next section.
-
-## Where the work is: the book behind QA
-
-The workflows generate, run and record QA today. What bounds their reach is the contract
-they run against: a promise the book never made is a defect QA cannot see, and a check
-that only observes a clean exit lets through the very failure the prose around it was
-written to prevent. Writing that book from source, and keeping it true of a codebase that
-keeps changing under it, is the open problem this repo is working on. Three things exist
-for it, and none of them is finished:
-
-- **Detection.** `ostler book check` reports a `source=` pointer that names code that does not exist,
-  and `ostler book run` reports where the book and the app disagree. A clean report is
-  the floor, not the proof: structural validity, an accurate description and a check that
-  can tell success from failure are three different properties, and check sees one.
-- **Repair that cannot excuse itself.** coder's Docs phase clears
-  findings in checkpointed passes, and a finding that will not clear is adjudicated —
-  book error, code defect or intent conflict — rather than retried forever or waived: a
-  stalled book parks on an operator gate, and the waiver register is gone. Any QA step
-  that may have touched code or grounding taints the story, so Docs must pass again
-  before it commits. A repair has to keep the promise and sharpen the observation, not
-  merely make the finding go away.
-- **Measurement.** [paddock](paddock/) runs the book-builder and QA on frozen seed
-  repositories, with seeded defects and clean controls, so a change to a prompt or a
-  skill is judged by what it catches rather than by how it reads; groom's telemetry and
-  transcripts say what the agent actually read, changed and checked. The target is more
-  verification per agent turn, not more turns.
-
-A repository that still holds its book moves it to the artifacts folder with
-[the moving guide](docs/guide/moving-a-book-to-the-artifacts-folder.md).
-
-[The artifacts folder](docs/guide/artifacts-folder.md) draws every folder agents write to, the command
-that prints each path, and how a repository reaches its product.
+the book behind it, which [Where the work is](#where-the-work-is-the-book-behind-qa) covers.
 
 ## Why an engine, and not a bash loop
 
@@ -167,29 +134,47 @@ was last checked.
 
 | What | How | Checked |
 | --- | --- | --- |
-| The workflows `author`, `coder` and `research`, each as a `workhorse-<name>` command, with the engine and the docs checker inside | `uv tool install workhorse-workflows` (2.0.0) | 2026-10-03 |
-| The skill library renderer, `farrier` | `uv tool install farrier` (3.0.0) | 2026-10-03 |
+| One install line for every command below | `uv tool install stablemate` or `pipx install stablemate` (0.2.3) | 2026-11-24 |
+| The workflows `loop-runner`, `author`, `coder`, `research`, `okf-book` and `review-debt`, each as a `workhorse-<name>` command, with the engine and the docs checker inside | `uv tool install workhorse-workflows` (5.0.0) | 2026-11-24 |
+| `workhorse-new NAME --check CMD`: wraps one check from your repo in a workflow that loops the agent until the check passes. [Guide](workflows/docs/first-win.md) | Ships in `workhorse-workflows` (5.0.0) | 2026-11-24 |
+| The skill library renderer, `farrier` | `uv tool install farrier` (6.0.0) | 2026-11-24 |
+| The dashboard, [groom](groom/): answers a run's questions from the browser and pages you when a run stalls | `uv tool install stablemate-groom` (2.1.0) | 2026-11-24 |
 
 **In progress**
 
 | What | State | Checked |
 | --- | --- | --- |
-| The dashboard, [groom](groom/): answers a run's questions from the browser and pages you when a run stalls | Runs from a checkout. It will publish as `stablemate-groom`, because the name `groom` on PyPI belongs to another project. | 2026-10-03 |
-| One install line for every command: `uv tool install stablemate` or `pipx install stablemate` | Not on PyPI yet | 2026-10-03 |
-| `workhorse-new NAME --check CMD`: wraps one check from your repo in a workflow that loops the agent until the check passes. [Guide](workflows/docs/first-win.md) | Next `workhorse-workflows` release | 2026-10-03 |
-| `workhorse-loop-runner`, the install check above | Next `workhorse-workflows` release | 2026-10-03 |
 | A site with a replay of a real multi-day run | Waits for launch | 2026-10-03 |
 
 The dashboard, once installed:
 
 ![groom's dashboard: a blocked coder run asking the operator to pick a storage backend, with the answer typed and ready to send](docs/assets/groom/operator-answers-blocked-gate-answer-typed.png)
 
-The direction: you hand work to the agent subscription you already pay for, and you get
-back a pull request that passed the gates a colleague's would. Those gates are tests
-written against the story, a review from a context that never saw the implementation, QA
-against the feature's own documentation, and a question to you when the run cannot
-decide. The standards the gates load are your own, installed once across every agent CLI
-you use.
+## Where the work is: the book behind QA
+
+The workflows generate, run and record QA today. What bounds their reach is the contract
+they run against: a promise the book never made is a defect QA cannot see, and a check
+that only observes a clean exit lets through the very failure the prose around it was
+written to prevent. Writing that book from source, and keeping it true of a codebase that
+keeps changing under it, is the open problem this repo is working on. Three things exist
+for it, and none of them is finished:
+
+- **Detection.** `ostler book check` reports a `source=` pointer that names code that does not exist,
+  and `ostler book run` reports where the book and the app disagree. A clean report is
+  the floor, not the proof: structural validity, an accurate description and a check that
+  can tell success from failure are three different properties, and check sees one.
+- **Repair that cannot excuse itself.** coder's Docs phase clears
+  findings in checkpointed passes, and a finding that will not clear is adjudicated —
+  book error, code defect or intent conflict — rather than retried forever or waived: a
+  stalled book parks on an operator gate, and the waiver register is gone. Any QA step
+  that may have touched code or grounding taints the story, so Docs must pass again
+  before it commits. A repair has to keep the promise and sharpen the observation, not
+  merely make the finding go away.
+- **Measurement.** [paddock](paddock/) runs the book-builder and QA on frozen seed
+  repositories, with seeded defects and clean controls, so a change to a prompt or a
+  skill is judged by what it catches rather than by how it reads; groom's telemetry and
+  transcripts say what the agent actually read, changed and checked. The target is more
+  verification per agent turn, not more turns.
 
 ## What's in the box
 
@@ -199,13 +184,13 @@ packages that work alongside an agent prompt library:
 | Package | PyPI | Role |
 | --- | --- | --- |
 | [`workhorse/`](workhorse/) | [`workhorse-agent`](https://pypi.org/project/workhorse-agent/) | Fail-soft engine (a library, not a command) that drives an agent CLI — Claude, Codex, Copilot, Cline or OpenCode — through a checkpointed Python state machine, unattended for days. |
-| [`workflows/`](workflows/) | [`workhorse-workflows`](https://pypi.org/project/workhorse-workflows/) | The workflows themselves — `loop-runner`, `author`, `coder`, `research` — as Python, each declaring its own `workhorse-<name>` command. |
+| [`workflows/`](workflows/) | [`workhorse-workflows`](https://pypi.org/project/workhorse-workflows/) | The workflows themselves as Python: `loop-runner`, `author`, `coder`, `research`, `okf-book` and `review-debt`, each declaring its own `workhorse-<name>` command. `workhorse-new` scaffolds a new one. |
 | [`farrier/`](farrier/) | [`farrier`](https://pypi.org/project/farrier/) | Renders an agent-neutral prompt library into a repository's Codex/Claude/Copilot adapters and launcher. |
 | [`ostler/`](ostler/) | [`ostler`](https://pypi.org/project/ostler/) | Tends a repo's `docs/` knowledge graph through its CLI and the in-process facade workflows use. |
-| [`groom/`](groom/) | `stablemate-groom` (unpublished) | Local dashboard + OTLP collector for running workflows: answers operator gates from the browser and pages you when a run stalls. Optional. |
-| [`saddlebag/`](saddlebag/) | `stablemate-saddlebag` (unpublished) | Vault-backed daemon that fills secrets into a browser or a command without printing them, so an agent never holds one. Optional. |
+| [`groom/`](groom/) | [`stablemate-groom`](https://pypi.org/project/stablemate-groom/) | Local dashboard + OTLP collector for running workflows: answers operator gates from the browser and pages you when a run stalls. Optional. |
+| [`saddlebag/`](saddlebag/) | [`stablemate-saddlebag`](https://pypi.org/project/stablemate-saddlebag/) | Vault-backed daemon that fills secrets into a browser or a command without printing them, so an agent never holds one. Optional. |
 | [`paddock/`](paddock/) | `paddock` (unpublished) | Benchmark harness for reproducible workflow trials and task-owned scoring. |
-| [`core/`](core/) | — (vendored, never published) | Shared plumbing the tools must agree on: the home config, base-library discovery, the base-library cache. `make vendor` copies it into `workhorse`, `farrier` and `ostler`, which ship it inside their own wheels; there is nothing to install. |
+| [`core/`](core/) | — (vendored, never published) | Shared plumbing the tools must agree on: the home config, base-library discovery, the base-library cache. `make vendor` links it into `workhorse`, `farrier`, `ostler`, `saddlebag` and `paddock`, which ship it inside their own wheels; there is nothing to install. |
 
 The shared content lives outside the Python packages:
 
@@ -232,9 +217,10 @@ and a tool fetches it on demand (see
 [What the install resolves against](#what-the-install-resolves-against)).
 
 Everything a workflow needs travels with the workflow package. `workhorse-workflows`
-declares the engine and the tools its workflows import — `workhorse-agent`, `ostler` — as
-ordinary dependencies, so one install lands the lot and puts all five `workhorse-<name>`
-commands on your `PATH`:
+declares the engine and the tools its workflows import as ordinary dependencies:
+`workhorse-agent`, `ostler` and `stablemate-saddlebag`. One install lands the lot and puts
+all seven `workhorse-<name>` commands on your `PATH`. `uv tool install stablemate` installs
+those, farrier and groom at once. Install the parts on their own with:
 
 ```bash
 uv tool install workhorse-workflows     # or: pipx install workhorse-workflows
@@ -243,20 +229,11 @@ workhorse-loop-runner run --dry-run     # the install check; needs no agent CLI
 ```
 
 That last line is the whole install check — see [Your first run](#your-first-run). The
-other workflows are `author`, `coder` and `research`, and they want a
-repository and an agent CLI.
+other workflows are `author`, `coder`, `research`, `okf-book` and `review-debt`, and they
+want a repository and an agent CLI.
 
-`farrier` is a second `uv tool install` rather than a `--with farrier` on the first,
-because a tool install only exposes the entry points of the package you *named*: `--with`
-would put farrier in that venv and leave its command unreachable. `ostler` needs no line
-of its own — it arrives inside the workflows venv, which is the only place it has to be.
-Install it separately (`uv tool install ostler`) only if you want to run it by hand.
-
-That "inside the workflows venv" part is not incidental. Workflow code runs **in
-workhorse's own interpreter** and imports its tools in-process, so `ostler` on your `PATH`
-from some other venv is not enough — it has to be importable *there*. Declaring it a
-dependency of `workhorse-workflows` is what makes the venv that runs a workflow the same
-venv that has it. See [What the install resolves against](#what-the-install-resolves-against).
+Install `ostler` on its own (`uv tool install ostler`) only to run it by hand. The
+workflows import their own copy in-process.
 
 **Working on stablemate itself** wants a checkout instead — one venv with every member
 installed from source, and the git hooks this repo depends on:
@@ -267,23 +244,27 @@ make install                                 # the workspace venv + the git hook
 uv run workhorse-loop-runner run --dry-run
 ```
 
-`groom` and `saddlebag` are optional add-ons, and no base workflow requires either.
-Neither is on PyPI yet, so both run from a checkout. `groom` will publish as
-`stablemate-groom` and `saddlebag` as `stablemate-saddlebag` (see [Status](#status)).
+`groom` is an optional add-on, and no base workflow requires it. It publishes as
+`stablemate-groom`, because the name `groom` on PyPI belongs to another project.
+`saddlebag` arrives with the workflows, because a workflow reads its GitHub token through
+it. It publishes as `stablemate-saddlebag`.
 
-`stablemate-core` is on neither list because it is not a distribution at all: `workhorse`
-and `farrier` each carry a copy of it, so an install resolves from the index alone with
+`stablemate-core` is on neither list because it is not a distribution at all: `workhorse`,
+`farrier`, `ostler`, `saddlebag` and `paddock` each carry a copy of it, so an install resolves from the index alone with
 nothing built locally first.
+
+A repository that still holds its book moves it to the artifacts folder with
+[the moving guide](docs/guide/moving-a-book-to-the-artifacts-folder.md).
+
+[The artifacts folder](docs/guide/artifacts-folder.md) draws every folder agents write to, the command
+that prints each path, and how a repository reaches its product.
 
 ### What the install resolves against
 
-**The base library is content, not a package.** Tools look for it in four places — an
-explicit `$STABLEMATE_BASE_DIR`, a persisted `<tool> config set-base <path>`, a configured
-`stablemate_dir` checkout, and last the shared cache at `~/.cache/stablemate/library` — so
-a fetched copy can never shadow a checkout you are editing. `farrier install` is the one
-command that populates or updates that cache; nothing else refreshes it on a timer, because
-a library moving under a week-long run could resume it into a different library than it
-started with.
+**The base library is content, not a package.** Tools find it on disk. farrier ships a copy
+inside its wheel, and `farrier install` mirrors that copy into a shared cache for the other
+tools. Point every tool at a checkout you are editing with `$STABLEMATE_BASE_DIR` or
+`farrier config set-base <path>`.
 
 **A workflow's tools travel with the workflow.** They are ordinary
 `[project.dependencies]` on `workhorse-workflows`, not a second manifest — which is why the
@@ -291,16 +272,13 @@ install above names the workflows rather than the engine. Workflow code runs in 
 own interpreter and imports its tools in-process, so `ostler` on your `PATH` from some other
 venv is not enough; it has to be importable *there*.
 
-**Every tool reads one config file**, `~/.config/stablemate/config.toml` (override with
-`$STABLEMATE_CONFIG`), carrying a `config_version` that keeps independently-versioned tools
-honest with each other: a tool refuses to write a config newer than it understands, migrates
-an older one forward on first write, and never fails to read a file because it is newer.
-To see which options the machine config and a repository's `agents.yml` accept, run
-`farrier config reference`. [docs/guide/configuration.md](docs/guide/configuration.md) says
-where each file lives and how to read the output.
+**Every tool reads one config file**, `~/.config/stablemate/config.toml`. `$STABLEMATE_CONFIG`
+overrides the path. `farrier config reference` lists the options the machine config and a
+repository's `agents.yml` accept. [docs/guide/configuration.md](docs/guide/configuration.md)
+says where each file lives and how to read the output.
 
-The four routes in full, the fetch and failure behaviour, and the config-version rules are
-in [docs/INSTALL.md](docs/INSTALL.md).
+[docs/INSTALL.md](docs/INSTALL.md) gives the five routes to the base library in order, the
+cache rules and the config-version rules.
 
 ## Your first run
 
@@ -373,23 +351,18 @@ resume, sub-flows, operator gates, and telemetry labels.
 make install                         # once per clone: venv + git hooks + test browsers
 make sync                            # just the venv, when that is all that changed
 make test                            # lint + every suite, the benchmark tests included
-make build                           # wheels + sdists for ostler, workhorse, farrier, workflows
+make build                           # wheels + sdists for every published package
 make -C farrier check                # inspect a built wheel's contents
 make -C <pkg> test                   # one package (core, workhorse, workflows, ostler, farrier, groom, saddlebag, paddock)
 ```
 
-`make install` is `sync` plus `browsers` (the Playwright Chromium some suites drive —
-expect a one-time download) plus `hooks`, because git carries no hook configuration: a
-fresh clone points `core.hooksPath` nowhere, so the private-name guard, the
-Conventional Commits check and the generated-file gate are all silently off until
-something installs them. `make hooks` is `farrier hooks`, which reads the `hooks:`
-block in `agents.yml` and wires `.githooks/` in.
+`make install` runs `sync`, `browsers` and `hooks`. `browsers` downloads the Playwright
+Chromium some suites drive. `hooks` wires `.githooks/` in, because a fresh clone has no
+hooks and its guards stay off until then. [CONTRIBUTING.md](CONTRIBUTING.md) says what each
+hook checks.
 
-`make sync` runs `uv sync --all-packages` so every member is installed. (Plain
-`uv sync` targets the workspace root, which is an intentionally non-packaged
-anchor — it has a `[project]` table but no `[build-system]`, so uv never builds
-or installs the root itself.) Use `uv run --package <name>` to run within a
-specific member.
+`make sync` runs `uv sync --all-packages`. A bare `uv sync` installs only the workspace
+root. Use `uv run --package <name>` to run within one member.
 
 `make test` is the aggregate: lint, then every member's suite — paddock's benchmark
 tests included, because a benchmark whose scoring is wrong is worse than none. The
@@ -403,14 +376,11 @@ published from a laptop. See each package's README for details, and
 
 ## Releasing
 
-A release is **proposed in a pull request and shipped by merging it**. Two things follow
-from that, and both are the point: the version is reviewable before it exists —
+A release is **proposed in a pull request and shipped by merging it**.
 [release-please](https://github.com/googleapis/release-please) reads the
-[Conventional-Commit](https://www.conventionalcommits.org) history since each package's
-last tag and opens one PR carrying the computed bumps and the generated changelogs — and
-there is no PyPI token anywhere, because the upload runs under
-[Trusted Publishing](https://docs.pypi.org/trusted-publishers/) on a short-lived OIDC
-token.
+[Conventional Commit](https://www.conventionalcommits.org) history and opens one PR with the
+computed bumps and changelogs. The upload runs under
+[Trusted Publishing](https://docs.pypi.org/trusted-publishers/), so no PyPI token exists.
 
 ```bash
 make release        # dispatch the workflow; a release PR appears in ~30s
@@ -418,14 +388,10 @@ gh pr list --label 'autorelease: pending'
 # …review it, then merge it. Merging is what publishes.
 ```
 
-`make release` builds nothing and uploads nothing. The workflow does not run on ordinary
-pushes to `main`, so a release happens when you ask for one and never by accident. The one
-rule that bites: a commit type outside `feat:` / `fix:` / `perf:` / `refactor:` bumps
-nothing at all, so an unparseable subject releases to nobody. If `make release` returns an
-empty PR, that is why.
-
-What merging does, the upload order and the isolated smoke test in front of it, the full
-type→bump table, and the one-time PyPI setup are in [docs/RELEASING.md](docs/RELEASING.md).
+Only `feat:`, `feature:`, `fix:`, `perf:`, `refactor:` and `revert:` commits bump a version.
+If `make release` returns an empty PR, no commit since the last tag had one of those types.
+[docs/RELEASING.md](docs/RELEASING.md) holds the upload order, the smoke test, the full
+type to bump table and the one-time PyPI setup.
 
 ## Contributing
 

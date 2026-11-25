@@ -1,7 +1,7 @@
 # Where the pieces come from — the base library, a workflow's tools, the config file
 
 The install itself is three commands, and they are in [README.md](../README.md#installing).
-This document is what those commands resolve against: the four routes a tool takes to find
+This document is what those commands resolve against: the five routes a tool takes to find
 the base library and which one wins, why a workflow's tools are dependencies of the workflow
 distribution rather than a manifest of their own, and the one config file every tool shares.
 
