@@ -1,23 +1,28 @@
 """Home records that live as one named entry inside a file another program also writes."""
+
 from __future__ import annotations
 
 import json
 import os
 import tempfile
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
 import tomlkit
 
 from farrier._vendor.stablemate_core.schema import HomeConfig, Selection
+from farrier.home_mcp import (
+    MCP_DIALECTS,
+    OPENCODE_CONFIG,
+    load_tool_server,
+    tool_server_names,
+)
 from farrier.layers import available_names, find_in_layers, searched_layers
-from farrier.sources import load_pack, read_yaml
 from farrier.user_library import user_library_tables
 
 LEDGER = ".agents/.farrier-home.json"
-SERVER_KEYS = {"command", "args", "env"}
 GUARD_CONTAINER = "hooks.PreToolUse"
 DONE_CONTAINER = "hooks.Stop"
 HOOK_CONTAINERS = {GUARD_CONTAINER: "PreToolUse", DONE_CONTAINER: "Stop"}
@@ -30,18 +35,7 @@ SETTINGS_FILES = {
     "pi": ".pi/agent/settings.json",
 }
 SETTINGS_OWNED_ELSEWHERE = {"hooks": "library/hooks guards"}
-OPENCODE_CONFIG = ".config/opencode/opencode.json"
 OVERRIDES = {OPENCODE_CONFIG: ".config/opencode/opencode.jsonc"}
-
-
-@dataclass(frozen=True)
-class ToolServer:
-    """One MCP server as the library declares it, in no harness's spelling."""
-
-    name: str
-    command: str
-    args: list[str] = field(default_factory=list)
-    env: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -111,7 +105,9 @@ class JsonEntryFile:
         if container not in HOOK_CONTAINERS:
             self._document.setdefault(container, {})[name] = value
             return
-        groups = self._document.setdefault("hooks", {}).setdefault(HOOK_CONTAINERS[container], [])
+        groups = self._document.setdefault("hooks", {}).setdefault(
+            HOOK_CONTAINERS[container], []
+        )
         held = self.entries(container).get(name)
         if held is None:
             groups.append(value)
@@ -210,7 +206,9 @@ def read_entry_file(path: Path) -> EntryFile:
     try:
         return ENTRY_FORMATS[path.suffix](text)
     except (ValueError, IndexError) as exc:
-        raise SystemExit(f"error: cannot parse {path}: {exc}. Nothing was written.") from exc
+        raise SystemExit(
+            f"error: cannot parse {path}: {exc}. Nothing was written."
+        ) from exc
 
 
 def replace_file(path: Path, text: str) -> None:
@@ -225,89 +223,13 @@ def replace_file(path: Path, text: str) -> None:
     os.replace(temporary, target)
 
 
-def claude_server(server: ToolServer) -> dict[str, Any]:
-    return {"type": "stdio", "command": server.command, "args": server.args, "env": server.env}
-
-
-def codex_server(server: ToolServer) -> dict[str, Any]:
-    spelled: dict[str, Any] = {"command": server.command, "args": server.args}
-    if server.env:
-        spelled["env"] = server.env
-    return spelled
-
-
-def copilot_server(server: ToolServer) -> dict[str, Any]:
-    spelled: dict[str, Any] = {"type": "local", "command": server.command, "args": server.args}
-    if server.env:
-        spelled["env"] = server.env
-    spelled["tools"] = ["*"]
-    return spelled
-
-
-def opencode_server(server: ToolServer) -> dict[str, Any]:
-    spelled: dict[str, Any] = {"type": "local", "command": [server.command, *server.args]}
-    if server.env:
-        spelled["environment"] = server.env
-    return spelled
-
-
-@dataclass(frozen=True)
-class McpDialect:
-    """Where one harness reads its home MCP servers, and how it spells one."""
-
-    rel: str
-    container: str
-    spell: Callable[[ToolServer], dict[str, Any]]
-
-
-MCP_DIALECTS = {
-    "claude": McpDialect(".claude.json", "mcpServers", claude_server),
-    "codex": McpDialect(".codex/config.toml", "mcp_servers", codex_server),
-    "copilot": McpDialect(".copilot/mcp-config.json", "mcpServers", copilot_server),
-    "opencode": McpDialect(OPENCODE_CONFIG, "mcp", opencode_server),
-    "antigravity": McpDialect(".gemini/config/mcp_config.json", "mcpServers", codex_server),
-    "pi": McpDialect(".pi/agent/mcp.json", "mcpServers", claude_server),
-}
-
-
-def load_tool_server(name: str) -> ToolServer:
-    """The server record ``library/mcp/<name>.yml`` from the highest layer holding it."""
-    hit = find_in_layers("library", "mcp", f"{name}.yml")
-    if hit is None:
-        available = ", ".join(available_names("library", "mcp", suffix=".yml")) or "none"
-        raise SystemExit(
-            f"error: unknown MCP server {name!r}. Available: {available}.\n"
-            f"Searched these library layers:\n{searched_layers()}"
-        )
-    _layer, path = hit
-    data = read_yaml(path)
-    unknown = sorted(set(data) - SERVER_KEYS)
-    if unknown:
-        raise SystemExit(f"error: {path} has unknown keys: {', '.join(unknown)}.")
-    command = data.get("command")
-    if not isinstance(command, str) or not command:
-        raise SystemExit(f"error: {path} needs a `command`.")
-    return ToolServer(
-        name,
-        command,
-        [str(arg) for arg in data.get("args") or []],
-        {str(key): str(value) for key, value in (data.get("env") or {}).items()},
-    )
-
-
-def tool_server_names(table: Selection) -> set[str]:
-    """The servers one harness table selects, directly or through its packs."""
-    names = set(table.mcp)
-    for pack in table.packs:
-        names.update(load_pack(str(pack))["mcp"])
-    return names
-
-
 def load_settings(name: str) -> dict[str, Any]:
     """The settings object ``library/settings/<name>.json`` from the highest layer holding it."""
     hit = find_in_layers("library", "settings", f"{name}.json")
     if hit is None:
-        available = ", ".join(available_names("library", "settings", suffix=".json")) or "none"
+        available = (
+            ", ".join(available_names("library", "settings", suffix=".json")) or "none"
+        )
         raise SystemExit(
             f"error: unknown settings file {name!r}. Available: {available}.\n"
             f"Searched these library layers:\n{searched_layers()}"
@@ -321,7 +243,9 @@ def load_settings(name: str) -> dict[str, Any]:
         raise SystemExit(f"error: {path} must hold one JSON object.")
     for key, owner in SETTINGS_OWNED_ELSEWHERE.items():
         if key in data:
-            raise SystemExit(f"error: {path} sets `{key}`, which farrier writes from {owner}.")
+            raise SystemExit(
+                f"error: {path} sets `{key}`, which farrier writes from {owner}."
+            )
     return data
 
 
@@ -359,7 +283,12 @@ def user_entries(home: HomeConfig) -> list[Entry]:
         dialect = MCP_DIALECTS[harness]
         for name in sorted(names):
             entries.append(
-                Entry(dialect.rel, dialect.container, name, dialect.spell(load_tool_server(name)))
+                Entry(
+                    dialect.rel,
+                    dialect.container,
+                    name,
+                    dialect.spell(load_tool_server(name)),
+                )
             )
     return entries
 
@@ -375,7 +304,9 @@ def read_ledger(home: Path) -> Ledger:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except ValueError as exc:
-        raise SystemExit(f"error: cannot parse {path}: {exc}. Nothing was written.") from exc
+        raise SystemExit(
+            f"error: cannot parse {path}: {exc}. Nothing was written."
+        ) from exc
 
 
 def write_ledger(home: Path, ledger: Ledger) -> None:
@@ -386,7 +317,10 @@ def write_ledger(home: Path, ledger: Ledger) -> None:
 
 def ledger_with(ledger: Ledger, owned: list[Entry]) -> Ledger:
     """*ledger* with every entry of *owned* added."""
-    merged = {rel: {key: list(names) for key, names in kept.items()} for rel, kept in ledger.items()}
+    merged = {
+        rel: {key: list(names) for key, names in kept.items()}
+        for rel, kept in ledger.items()
+    }
     for entry in owned:
         names = merged.setdefault(entry.rel, {}).setdefault(entry.container, [])
         if entry.name not in names:
@@ -412,16 +346,28 @@ def entry_drift(home: Path, intended: list[Entry], ledger: Ledger) -> list[Entry
     for entry in intended:
         overridden = OVERRIDES.get(entry.rel)
         if overridden is not None:
-            beside = read_entry_file(home / overridden).entries(entry.container).get(entry.name)
+            beside = (
+                read_entry_file(home / overridden)
+                .entries(entry.container)
+                .get(entry.name)
+            )
             if beside is not None and significant(beside) != significant(entry.value):
-                drift.append(EntryDrift("foreign", overridden, entry.container, entry.name))
-        held = read_entry_file(home / entry.rel).entries(entry.container).get(entry.name)
+                drift.append(
+                    EntryDrift("foreign", overridden, entry.container, entry.name)
+                )
+        held = (
+            read_entry_file(home / entry.rel).entries(entry.container).get(entry.name)
+        )
         if held is None:
             kind = "missing"
         elif significant(held) == significant(entry.value):
             continue
         else:
-            kind = "changed" if in_ledger(ledger, entry.rel, entry.container, entry.name) else "foreign"
+            kind = (
+                "changed"
+                if in_ledger(ledger, entry.rel, entry.container, entry.name)
+                else "foreign"
+            )
         drift.append(EntryDrift(kind, entry.rel, entry.container, entry.name))
     for rel, containers in ledger.items():
         for container, names in containers.items():
@@ -439,18 +385,24 @@ def check_entries(home: Path, intended: list[Entry], regenerate: str) -> int:
         return 0
     for item in drift:
         print(item.label())
-    print(f"Run `{regenerate}` to bring these in line. A foreign entry is yours to remove first.")
+    print(
+        f"Run `{regenerate}` to bring these in line. A foreign entry is yours to remove first."
+    )
     return 1
 
 
 def refuse_foreign_entries(home: Path, intended: list[Entry]) -> None:
     """Stop before any write when a value farrier did not install holds an entry it intends."""
     foreign = [
-        item for item in entry_drift(home, intended, read_ledger(home)) if item.kind == "foreign"
+        item
+        for item in entry_drift(home, intended, read_ledger(home))
+        if item.kind == "foreign"
     ]
     if not foreign:
         return
-    listing = "\n".join(f"  {item.rel} {item.container}.{item.name}" for item in foreign)
+    listing = "\n".join(
+        f"  {item.rel} {item.container}.{item.name}" for item in foreign
+    )
     raise SystemExit(
         f"farrier will not overwrite entries it did not install. {len(foreign)} entry(ies) "
         f"hold a different value:\n{listing}\n"
@@ -479,7 +431,11 @@ def install_entries(home: Path, intended: list[Entry]) -> int:
             if item.kind == "extra":
                 document.drop(item.container, item.name)
             else:
-                document.put(item.container, item.name, by_key[(rel, item.container, item.name)].value)
+                document.put(
+                    item.container,
+                    item.name,
+                    by_key[(rel, item.container, item.name)].value,
+                )
         replace_file(home / rel, document.text())
     write_ledger(home, ledger_with({}, owned))
     return len(drift)

@@ -82,8 +82,8 @@ from farrier.home_entries import (
     refuse_foreign_entries,
     user_entries,
 )
+from farrier.managed_scopes import USER_MANAGED, repo_managed_with_claude_pointers
 from farrier.outputs import (
-    USER_MANAGED,
     check_outputs,
     check_selection,
     commit_checks,
@@ -92,7 +92,6 @@ from farrier.outputs import (
     policy_hooks,
     render_expected,
     render_user_expected,
-    repo_managed_with_claude_pointers,
     selected_hooks,
     selected_policies,
     write_text,

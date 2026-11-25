@@ -67,8 +67,9 @@ from farrier.managed_blocks import (
     ensure_gitignore_entry,
     ensure_makefile_include,
 )
+from farrier.banners import asset_banner, local_instruction_banner, skill_metadata_block
+from farrier.managed_scopes import MANAGED_DIRS
 from farrier.outputs import (
-    MANAGED_DIRS,
     check_outputs,
     expected_text,
     install_outputs,
@@ -81,10 +82,7 @@ from farrier.outputs import (
 from farrier.renderer import (
     Rendered,
     Renderer,
-    asset_banner,
-    local_instruction_banner,
     read_asset_text,
-    skill_metadata_block,
 )
 from farrier.scaffolds import (
     SCAFFOLD_TREE_FILE_KEYS,

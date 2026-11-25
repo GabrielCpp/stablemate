@@ -11,7 +11,7 @@ import yaml
 from farrier._vendor.stablemate_core.profiles import PowerMapping, resolve_delegates
 from farrier._vendor.stablemate_core.schema import HomeConfig, Selection
 from farrier.frontmatter import frontmatter_mapping, split_front_matter
-from farrier.home_entries import ToolServer, claude_server, copilot_server, load_tool_server
+from farrier.home_mcp import ToolServer, claude_server, copilot_server, load_tool_server
 from farrier.layers import available_names, find_in_layers, searched_layers
 from farrier.renderer import Rendered
 from farrier.sources import load_pack
