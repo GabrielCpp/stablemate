@@ -14,3 +14,54 @@ never a token and never a checkpointed --param"""
 hands the clone-check script its cache directory through STABLEMATE_CACHE_DIR, the only way the \
 script takes one, on top of a copy of the inherited environment its git calls need. The value is \
 a cache path, never a secret"""
+
+[check-portability]
+tier1 = [
+  "core/stablemate_core",
+  "farrier/farrier",
+  "saddlebag/saddlebag",
+  "ostler/ostler",
+  "workhorse/workhorse",
+  "workflows/src/workhorse_workflows",
+  "groom/groom",
+]
+
+[check-portability.allow]
+"core/stablemate_core/proc.py" = """
+reads /proc/<pid>/stat behind a sys.platform == linux guard as the Linux fast path for process state and start time, while macOS, BSD and Windows use ps and kernel32. The /proc path is never taken on another host."""
+
+"workflows/src/workhorse_workflows/kit/tools.py" = """
+holds the one POSIX branch of the process-group helper, which starts a child with start_new_session and kills its group with os.killpg and SIGKILL, while the Windows branch uses CREATE_NEW_PROCESS_GROUP and process.kill. Exit condition: replace with Windows Job Objects once a Windows CI runner exercises process supervision."""
+
+"workhorse/workhorse/job.py" = """
+supervises a detached job as a POSIX process-group leader through start_new_session, os.killpg and SIGKILL, reads its cgroup from /proc and picks the delegated cgroup for os.getuid. Exit condition: replace with Windows Job Objects once a Windows CI runner exercises process supervision."""
+
+"workhorse/workhorse/cli/offline.py" = """
+starts the resumed run in a new POSIX session through start_new_session so it outlives the control command. Exit condition: replace with Windows Job Objects once a Windows CI runner exercises process supervision."""
+
+"workhorse/workhorse/runner/process.py" = """
+runs each agent CLI as a POSIX process-group leader through start_new_session and stops it with os.killpg, os.getpgid and SIGKILL. Exit condition: replace with Windows Job Objects once a Windows CI runner exercises process supervision."""
+
+"ostler/ostler/book/stack.py" = """
+boots the book stack in its own POSIX session through start_new_session and reaps the group with os.killpg and SIGKILL. Exit condition: replace with Windows Job Objects once a Windows CI runner exercises process supervision."""
+
+"ostler/ostler/qa/drivers.py" = """
+starts each driver process in its own POSIX session through start_new_session and stops the group with os.getpgid, os.killpg and SIGKILL. Exit condition: replace with Windows Job Objects once a Windows CI runner exercises process supervision."""
+
+"ostler/ostler/qa/harness/ostler_qa_shared_browser.py" = """
+starts the shared browser in its own POSIX session through start_new_session so teardown signals only that group. Exit condition: replace with Windows Job Objects once a Windows CI runner exercises process supervision."""
+
+"ostler/ostler/qa/session.py" = """
+starts QA session processes in their own POSIX sessions through start_new_session and stops each group with os.killpg and SIGKILL. Exit condition: replace with Windows Job Objects once a Windows CI runner exercises process supervision."""
+
+"ostler/ostler/qa/stack.py" = """
+boots the QA stack as a POSIX process-group leader through start_new_session and reaps recorded groups with os.getpgid, os.killpg and SIGKILL. Exit condition: replace with Windows Job Objects once a Windows CI runner exercises process supervision."""
+
+"groom/groom/attend.py" = """
+starts the attend agent CLI as its own POSIX process group through start_new_session so a stop reaches its children. Exit condition: replace with Windows Job Objects once a Windows CI runner exercises process supervision."""
+
+"groom/groom/dispatch.py" = """
+starts a dispatched run as its own POSIX process group through start_new_session so a stop reaches its children. Exit condition: replace with Windows Job Objects once a Windows CI runner exercises process supervision."""
+
+"groom/groom/procs.py" = """
+stops a run's process group with os.killpg, sending SIGTERM and then SIGKILL. Exit condition: replace with Windows Job Objects once a Windows CI runner exercises process supervision."""
