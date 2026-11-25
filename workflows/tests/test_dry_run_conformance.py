@@ -54,6 +54,8 @@ def seeded_repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init", "-q")
+    _git(repo, "config", "maintenance.auto", "false")
+    _git(repo, "config", "gc.auto", "0")
     (repo / "kept.txt").write_text("the tree a dry run must not touch\n", encoding="utf-8")
     _git(repo, "add", "kept.txt")
     _git(repo, "commit", "-qm", "seed")
