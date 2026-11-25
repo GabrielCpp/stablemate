@@ -1,5 +1,19 @@
 # Changelog
 
+## [5.0.1](https://github.com/GabrielCpp/stablemate/compare/workhorse-workflows-v5.0.0...workhorse-workflows-v5.0.1) (2026-11-25)
+
+
+### Bug Fixes
+
+* **workflows:** keep a timed tool in the run's process group ([88d2ec0](https://github.com/GabrielCpp/stablemate/commit/88d2ec02dde4c756bc3726d8f268c77100f6cd59))
+* **workflows:** route child environments through leased_env ([d7f8ea0](https://github.com/GabrielCpp/stablemate/commit/d7f8ea09aa699c5bff4ace3a860ed14847cf1d94))
+* **workflows:** stop tool timeouts with a process-group kill ([445d709](https://github.com/GabrielCpp/stablemate/commit/445d709278a824aed12c75a7fa35aaca9521fa41))
+
+
+### Code Refactoring
+
+* **ostler:** split the qa harness into sibling modules ([b46b7d4](https://github.com/GabrielCpp/stablemate/commit/b46b7d42fadd9ec3a517c911aa647b1a485f5db3))
+
 ## [5.0.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-workflows-v4.1.0...workhorse-workflows-v5.0.0) (2026-11-24)
 
 

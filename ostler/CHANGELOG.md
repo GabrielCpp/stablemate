@@ -1,5 +1,28 @@
 # Changelog
 
+## [6.1.0](https://github.com/GabrielCpp/stablemate/compare/ostler-v6.0.0...ostler-v6.1.0) (2026-11-25)
+
+
+### Features
+
+* **core:** add a portable pid_alive and pid_start_token ([27131bf](https://github.com/GabrielCpp/stablemate/commit/27131bf10221a51c60eea6a78d978a91aabb0a65))
+
+
+### Bug Fixes
+
+* **core:** find a book when the artifacts dir is a linked worktree ([3c341dd](https://github.com/GabrielCpp/stablemate/commit/3c341dd8944fbe0c31e469256b3acb0cc5650835))
+* **ostler:** merge same-named elements and skip deleted files in stale ([3161066](https://github.com/GabrielCpp/stablemate/commit/31610663807e38b60a2535d0787be97cbf7614a3))
+* **ostler:** name child books and scope book checks to one product ([e2012af](https://github.com/GabrielCpp/stablemate/commit/e2012aff579584472a71a221aca812d960cae236))
+* **ostler:** probe holders and stack owners without /proc ([93d8091](https://github.com/GabrielCpp/stablemate/commit/93d809178256ac64d84eaead2acd9001add1a34d))
+* **ostler:** replay outside steps when finding an input base ([45deda9](https://github.com/GabrielCpp/stablemate/commit/45deda90a330a95d3bc0877536123b5ed63ddf15))
+* **workflows:** keep a timed tool in the run's process group ([88d2ec0](https://github.com/GabrielCpp/stablemate/commit/88d2ec02dde4c756bc3726d8f268c77100f6cd59))
+
+
+### Code Refactoring
+
+* **ostler:** split book http into focused modules ([2a4a081](https://github.com/GabrielCpp/stablemate/commit/2a4a081c61e0001d5ed0e8de25040b068e4c58a7))
+* **ostler:** split the qa harness into sibling modules ([b46b7d4](https://github.com/GabrielCpp/stablemate/commit/b46b7d42fadd9ec3a517c911aa647b1a485f5db3))
+
 ## [6.0.0](https://github.com/GabrielCpp/stablemate/compare/ostler-v5.0.0...ostler-v6.0.0) (2026-11-24)
 
 
