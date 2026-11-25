@@ -235,8 +235,24 @@ version: ## Print every published package's declared version
 	@$(MAKE) -s -C saddlebag version
 	@$(MAKE) -s -C stablemate version
 
+STABLEMATE_BOOKS := farrier ostler workhorse workflows groom.http groom.web paddock saddlebag
+
+.PHONY: check-books
+check-books: ## Check that every stablemate book plays the code at HEAD: no finding, note, unmapped file or stale element
+	@home=$$(uv run --all-packages python -c "from pathlib import Path; from stablemate_core import books; print(books.book_home(Path('$(CURDIR)')))"); \
+	if [ ! -d "$$home/services/stablemate" ]; then echo "skip: no stablemate books in $$home"; exit 0; fi; \
+	status=0; \
+	for book in $(STABLEMATE_BOOKS); do \
+		module=services.stablemate.$$book; \
+		uv run --all-packages ostler book check $$module --app $(CURDIR) | tail -1 | grep -qx "check: 0 findings" || { echo "FAIL: $$module check"; status=1; }; \
+		uv run --all-packages ostler book missing $$module --app $(CURDIR) >/dev/null || { echo "FAIL: $$module has unmapped files"; status=1; }; \
+		uv run --all-packages ostler book stale $$module --app $(CURDIR) >/dev/null || { echo "FAIL: $$module is stale"; status=1; }; \
+	done; \
+	if [ $$status -eq 0 ]; then echo "ok: $(words $(STABLEMATE_BOOKS)) stablemate books play HEAD"; fi; \
+	exit $$status
+
 .PHONY: release
-release: ## Open (or refresh) the release-please PR — merging it is what publishes
+release: check-vendor check-books ## Open (or refresh) the release-please PR — merging it is what publishes
 	# Nothing is built, versioned or uploaded here. This dispatches
 	# .github/workflows/release.yml, which reads the Conventional Commits since each
 	# package's last tag and opens ONE pull request carrying the version bumps and
