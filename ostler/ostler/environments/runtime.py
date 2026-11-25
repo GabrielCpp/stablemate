@@ -18,6 +18,7 @@ from typing import Protocol
 from platformdirs import user_state_dir
 
 from ostler._vendor.stablemate_core import books, config
+from ostler._vendor.stablemate_core.proc import pid_alive, pid_start_token
 from ostler.environments.render import COMPOSE_FILE, SHARED, Copy
 
 HOME_ENV = "OSTLER_ENV_HOME"
@@ -123,13 +124,8 @@ def holder_from_env() -> int | None:
 
 
 def process_started(pid: int) -> str:
-    """When the process *pid* started, in clock ticks since boot, or empty where unreadable."""
-    try:
-        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
-    except OSError:
-        return ""
-    fields = stat.rpartition(")")[2].split()
-    return fields[19] if len(fields) > 19 else ""
+    """A token that names when the process *pid* started, or empty where unreadable."""
+    return pid_start_token(pid)
 
 
 def holder_stamp(pid: int) -> dict[str, object]:
@@ -144,12 +140,8 @@ def holder_alive(holder: object) -> bool:
     pid = holder.get("pid")
     if not isinstance(pid, int) or pid <= 0:
         return True
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
+    if not pid_alive(pid):
         return False
-    except PermissionError:
-        pass
     started = holder.get("started")
     current = process_started(pid)
     return not (started and current and current != started)

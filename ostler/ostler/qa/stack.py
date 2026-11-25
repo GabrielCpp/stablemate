@@ -62,6 +62,7 @@ from typing import Any
 
 from ostler._vendor.stablemate_core import base_cache
 from ostler._vendor.stablemate_core.clock import SYSTEM_CLOCK, Clock
+from ostler._vendor.stablemate_core.proc import pid_start_token
 from ostler.qa import addresses
 
 #: Manifest commands are **shell** recipes, not argv lists. The contract already asks for
@@ -1004,18 +1005,13 @@ def _record_path(app_cwd: str) -> Path:
 
 
 def _proc_starttime(pid: int) -> str:
-    """The kernel start time of *pid* (field 22 of ``/proc/<pid>/stat``), ``""`` if gone.
+    """The start token of *pid*, ``""`` if gone.
 
-    Split after the last ``)`` first, because field 2 (comm) may itself contain spaces
-    and parentheses. pid + start time together name a process unambiguously: a recycled
-    pid gets a different start time, so a record validated against both can never send
-    a SIGKILL to an innocent stranger that inherited the number.
+    pid + start token together name a process unambiguously: a recycled pid gets a
+    different token, so a record validated against both can never send a SIGKILL to
+    an innocent stranger that inherited the number.
     """
-    try:
-        stat = Path(f"/proc/{pid}/stat").read_text(encoding="ascii", errors="replace")
-        return stat.rpartition(")")[2].split()[19]
-    except (OSError, IndexError):
-        return ""
+    return pid_start_token(pid)
 
 
 def _write_record(app_cwd: str, pid: str, pgid: str, launch: str) -> None:

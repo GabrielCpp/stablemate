@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import signal
 import time
 from email.message import Message
@@ -16,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from _fakes import FakeClock
+from ostler._vendor.stablemate_core import proc
 from ostler.qa import addresses, stack
 
 LOG = logging.getLogger("test-stack")
@@ -1224,6 +1226,16 @@ def test_teardown_stack_falls_back_to_the_recorded_group(monkeypatch, tmp_path) 
     assert out["torn_down"] == "yes"
     assert reaped == [77]
     assert not _record_file(str(tmp_path)).exists()  # the debt is settled
+
+
+@pytest.mark.parametrize("platform", ["linux", "darwin"])
+def test_a_record_for_a_live_process_reads_back_on_any_platform(
+    monkeypatch, tmp_path, platform,
+) -> None:
+    monkeypatch.setattr(proc, "_platform", lambda: platform)
+    stack._write_record(str(tmp_path), str(os.getpid()), "77", "npm run dev")
+    assert _record_file(str(tmp_path)).exists()
+    assert stack._read_live_record(str(tmp_path)) == "77"
 
 
 def test_stale_record_is_distrusted_and_cleared(monkeypatch, tmp_path) -> None:
