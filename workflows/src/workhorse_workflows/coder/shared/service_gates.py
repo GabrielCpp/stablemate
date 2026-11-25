@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import logging
 import os
-import signal
 import subprocess
 import threading
 import time
@@ -15,6 +14,7 @@ from workhorse_workflows.coder.shared.contract import normalize_service_path
 from workhorse_workflows.coder.shared.schemas.dev import GateList, GateOutcome
 from workhorse_workflows.kit import find_repo_root, resolve_workspace
 from workhorse_workflows.kit.manifest import read_manifest
+from workhorse_workflows.kit.tools import kill_group, spawn_grouped
 
 MAX_GATE_OUTPUT = 4000
 
@@ -49,13 +49,12 @@ class _Listener:
 
 def _run_until_silent(command: str, where: Path) -> tuple[int | None, str]:
     """Run *command* until it exits, or kill it after `GATE_SILENCE` seconds without a byte of output; the exit code is None when killed."""
-    process = subprocess.Popen(
+    process = spawn_grouped(
         command,
         cwd=where,
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        start_new_session=True,
     )
     listener = _Listener()
     assert process.stdout is not None
@@ -68,10 +67,7 @@ def _run_until_silent(command: str, where: Path) -> tuple[int | None, str]:
         except subprocess.TimeoutExpired:
             if listener.remaining(GATE_SILENCE) > 0:
                 continue
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+            kill_group(process)
             process.wait()
             break
     reader.join(timeout=5)

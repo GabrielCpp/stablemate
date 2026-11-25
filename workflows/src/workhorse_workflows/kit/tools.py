@@ -5,7 +5,9 @@ import logging
 import os
 import signal
 import subprocess
+import sys
 from pathlib import Path
+from typing import Any
 
 from workhorse_workflows.kit import leased_env
 
@@ -19,7 +21,7 @@ def run_tool(
     env: dict[str, str] | None = None,
     timeout: float | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    """Run an external CLI tool as a subprocess and return the completed process. With a `timeout`, a tool still running at the limit is killed with every process it started before `subprocess.TimeoutExpired` is raised. The tool stays in the caller's process group, so a stop of the run still reaches it."""
+    """Run an external CLI tool as a subprocess and return the completed process. With a `timeout`, a tool still running at the limit is killed with every process it started before `subprocess.TimeoutExpired` is raised. The tool and everything it starts run in a process group of their own."""
     if timeout is None:
         result = subprocess.run(
             argv,
@@ -44,7 +46,7 @@ def run_tool(
 def _run_limited(
     argv: list[str], cwd: str | Path | None, env: dict[str, str] | None, timeout: float
 ) -> subprocess.CompletedProcess[str]:
-    with subprocess.Popen(
+    with spawn_grouped(
         argv,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -55,20 +57,25 @@ def _run_limited(
         try:
             stdout, stderr = process.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
-            for pid in [*_started_by(process.pid), process.pid]:
-                try:
-                    os.kill(pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    continue
+            kill_group(process)
             stdout, stderr = process.communicate()
             raise subprocess.TimeoutExpired(argv, timeout, output=stdout, stderr=stderr) from None
         return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
 
 
-def _started_by(pid: int) -> list[int]:
-    """Every live process below `pid`, deepest first."""
-    listed = subprocess.run(["pgrep", "-P", str(pid)], capture_output=True, text=True, check=False).stdout.split()
-    found: list[int] = []
-    for child in map(int, listed):
-        found += [*_started_by(child), child]
-    return found
+def spawn_grouped(argv: str | list[str], **options: Any) -> subprocess.Popen[Any]:
+    """Start *argv* as the leader of a process group of its own, so `kill_group` reaches all it starts."""
+    if sys.platform == "win32":
+        return subprocess.Popen(argv, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP, **options)
+    return subprocess.Popen(argv, start_new_session=True, **options)
+
+
+def kill_group(process: subprocess.Popen[Any]) -> None:
+    """Kill the group `spawn_grouped` started, or the process alone where Windows has no group kill."""
+    if sys.platform == "win32":
+        process.kill()
+        return
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
