@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from .base import FreeSection, Section, StrayKey, setting, stray_keys
 from .home import (
-    BUILTIN_DEFAULT_CLI,
     AttendTable,
     CliBackend,
     DispatchParam,
@@ -16,28 +15,24 @@ from .home import (
     SaddlebagTable,
     UserLibraryTable,
     WorkspaceEntry,
-    cli_name,
-    positive_finite,
-    text_or_none,
 )
+from .home_values import BUILTIN_DEFAULT_CLI, cli_name, positive_finite, text_or_none
 from .manifest import (
     HARNESSES,
     HOOK_MANAGERS,
     LINK_KEY,
     AgentLink,
     Agents,
-    BookTable,
     HooksTable,
     LocalInstruction,
     Manifest,
     OrganizationTable,
-    QaFixture,
-    QaTable,
     RepoTable,
     ServiceEntry,
     TemplateTable,
     WorkflowTable,
 )
+from .manifest_books import BookTable, QaFixture, QaTable
 from .reference import (
     ReferenceRow,
     reference_rows,
