@@ -43,7 +43,10 @@ def test_x_on_a_running_row_asks_and_yes_posts_the_stop_then_refetches():
             screen = await ui.open_attend(app, pilot, link)
             await press_stop(app, pilot, screen, "j-live")
             await support.until(lambda: isinstance(app.screen, StopConfirm))
-            assert "Stop the attendant on okf-builder? The run comes back to your terminal." in at.screen_text(app.screen)
+            assert (
+                "Stop the attendant on okf-builder? The run comes back to your terminal."
+                in at.screen_text(app.screen)
+            )
             assert link.posts == []
             await pilot.press("y")
             await support.until(lambda: link.posts)
@@ -96,7 +99,12 @@ def test_a_stop_that_finds_the_attendant_gone_says_so_and_refetches():
             await press_stop(app, pilot, screen, "j-live")
             await support.until(lambda: isinstance(app.screen, StopConfirm))
             await pilot.press("y")
-            await support.until(lambda: any(n.message == "That attendant was already gone." for n in app._notifications))
+            await support.until(
+                lambda: any(
+                    n.message == "That attendant was already gone."
+                    for n in app._notifications
+                )
+            )
             await support.until(lambda: link.gets.count(at.SESSIONS) == 2)
 
     tr.run(scenario)
@@ -108,14 +116,18 @@ def test_a_stop_groom_does_not_answer_toasts_the_reason_and_refetches():
     async def scenario() -> None:
         link = support.FakeLink()
         await ui.stock(link)
-        link.post_replies[route(at.SESSIONS, "j-live") + "/stop"] = LinkError("HTTP 500: store is locked")
+        link.post_replies[route(at.SESSIONS, "j-live") + "/stop"] = LinkError(
+            "HTTP 500: store is locked"
+        )
         async with tr.booted(link) as (app, pilot):
             screen = await ui.open_attend(app, pilot, link)
             await press_stop(app, pilot, screen, "j-live")
             await support.until(lambda: isinstance(app.screen, StopConfirm))
             await pilot.press("y")
             await support.until(lambda: app._notifications)
-            assert [n.message for n in app._notifications] == ["groom did not answer the stop: HTTP 500: store is locked"]
+            assert [n.message for n in app._notifications] == [
+                "groom did not answer the stop: HTTP 500: store is locked"
+            ]
             await support.until(lambda: link.gets.count(at.SESSIONS) == 2)
 
     tr.run(scenario)
@@ -162,7 +174,11 @@ def test_a_toggles_nothing_when_already_there_and_s_switches_screens():
     async def scenario() -> None:
         link = support.FakeLink()
         await ui.stock(link)
-        link.get_replies[at.SETTINGS] = {"mode": "headless", "cli": "claude", "sources": {"mode": "config"}}
+        link.get_replies[at.SETTINGS] = {
+            "mode": "headless",
+            "cli": "claude",
+            "sources": {"mode": "config"},
+        }
         async with tr.booted(link) as (app, pilot):
             screen = await ui.open_attend(app, pilot, link)
             await pilot.press("A")
@@ -206,13 +222,23 @@ def test_state_and_run_frames_reach_the_run_list_while_a_screen_is_open():
         async with tr.booted(link) as (app, pilot):
             screen = await ui.open_attend(app, pilot, link)
             state.upsert_workflow(
-                "initech12345", name="coder-initech", workflow_type="coder", repo_name="initech",
-                current_node="plan", run_id="run-new", state=WorkflowState.RUNNING,
+                "initech12345",
+                name="coder-initech",
+                workflow_type="coder",
+                repo_name="initech",
+                current_node="plan",
+                run_id="run-new",
+                state=WorkflowState.RUNNING,
             )
             link.push(support.state_frame())
             state.WORKFLOWS["initech12345"].current_node = "review"
             link.push(support.run_frame("initech12345"))
-            await support.until(lambda: app.main.query_one("#runs", OptionList).option_count == 4)
+            await support.until(
+                lambda: any(
+                    "coder-initech" in row and "review" in row
+                    for row in at.prompts(app.main.query_one("#runs", OptionList))
+                )
+            )
             assert app.screen is screen
             await pilot.press("escape")
             await support.until(lambda: app.screen is app.main)
