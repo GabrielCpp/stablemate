@@ -252,15 +252,14 @@ check-books: ## Check that every stablemate book plays the code at HEAD: no find
 	exit $$status
 
 .PHONY: release
-release: check-vendor check-books ## Open (or refresh) the release-please PR — merging it is what publishes
+release: check-vendor check-books ## Run the release workflow on main without a push
 	# Nothing is built, versioned or uploaded here. This dispatches
 	# .github/workflows/release.yml, which reads the Conventional Commits since each
 	# package's last tag and opens ONE pull request carrying the version bumps and
-	# changelogs. Merging that PR tags, releases, and uploads to PyPI over OIDC —
-	# there is no token on this machine to leak.
+	# changelogs. The workflow gates, merges that PR, tags and uploads to PyPI over
+	# OIDC. There is no token on this machine to leak.
 	gh workflow run release.yml --ref main
-	@echo "dispatched. The release PR appears in ~30s; find it with:"
-	@echo "  gh pr list --label 'autorelease: pending'"
+	@echo "dispatched. Follow it with: gh run list --workflow release.yml"
 
 # >>> farrier: agent launcher include (generated) >>>
 # Surfaces agent-install / agent-check from the generated

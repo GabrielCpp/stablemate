@@ -1,9 +1,9 @@
 # Releasing
 
-A release is proposed in a pull request and shipped by merging it; `make release` only
-dispatches the workflow that opens that PR. The short version is in
-[README.md](../README.md#releasing). This document is the mechanism: what merging actually
-does, the upload order and the isolated smoke test in front of it, which commit types bump
+A push to main releases. The workflow opens or refreshes the release PR, runs the release
+gate on that PR's tree, and merges it itself. `make release` dispatches the same run
+without a push. The short version is in [README.md](../README.md#releasing). This document
+is the mechanism: what the merge does, the upload order and the isolated smoke test in front of it, which commit types bump
 what, and the one-time PyPI and GitHub setup that lives outside the repo.
 
 The upload runs in [`.github/workflows/release.yml`](../.github/workflows/release.yml)
@@ -12,11 +12,13 @@ short-lived OIDC token that PyPI verifies against a publisher registered as *(Ga
 stablemate, `release.yml`, environment `pypi`)*. No long-lived secret exists to leak, in the
 repo or in a dotfile.
 
-## What merging does
+## What the merge does
 
-Merging the release PR re-triggers the same workflow, which then creates the tags
-(`<dist-name>-v<version>`, e.g. `farrier-v1.5.1`) and GitHub releases, runs `make test`
-against the merged tree, builds every candidate, and installs the Workflows wheel against
+The `verify` job runs `make test-release` on the release PR's tree first. A red gate
+leaves the PR open and creates no tag, so the next push retries the same release. On a
+green gate the `merge` job squashes the PR into main, and release-please creates the tags
+(`<dist-name>-v<version>`, e.g. `farrier-v1.5.1`) and GitHub releases. The `publish` job
+then builds every candidate, and installs the Workflows wheel against
 the sibling candidate wheels before uploading anything. That isolated install is
 load-bearing: the workspace lock replaces sibling constraints with editable sources, so a
 local `uv sync` can pass while the published dependency range is impossible to resolve.
@@ -65,7 +67,7 @@ stablemate` reaches it. The second pass can patch a sibling that had no release 
 so the job runs the rewrite a third time to raise the umbrella's floor on it. Nothing pins
 the umbrella, so that pass settles.
 
-The job pushes those commits to main itself. Pull main after `make release` before you
+The job pushes those commits to main itself. Pull main after a release run before you
 commit on top of it. Until the PR merges, main holds pins ahead of their siblings: a sibling's range one major
 ahead, the umbrella's floor at the version the PR releases. `uv lock` and the pin tests
 accept that, because a pin may run ahead of its member but never behind it. The job then refreshes `uv.lock` on the release branch as a `chore:`
@@ -93,7 +95,7 @@ releasing.
 That last row is the change of consequence. Under the old shell scripts a
 non-conventional subject still produced a patch bump, so *any* commit released. Now the
 commit message is what decides whether a package is released at all, and a
-`Restructure the workflows` subject bumps nothing. If `make release` returns an empty PR,
+`Restructure the workflows` subject bumps nothing. If a push releases nothing,
 that is why.
 
 Baselines live in [`.release-please-manifest.json`](../.release-please-manifest.json) and the
@@ -107,7 +109,6 @@ distribution is one entry in each, plus its build/publish steps in the workflow.
    not exist on the index yet gets a **pending** publisher, which its first upload
    converts into the project.
 2. Create the `pypi` [environment](https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment)
-   in the repository settings. Adding yourself as a required reviewer turns the merge into
-   an explicit "approve the upload", which is the cheapest safety net available.
+   in the repository settings, with no required reviewer, so a push uploads unattended.
 3. Settings → Actions → General → **Allow GitHub Actions to create and approve pull
    requests**, or release-please cannot open the PR with the default token.
