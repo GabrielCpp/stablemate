@@ -23,10 +23,14 @@ ALLOWED: dict[str, tuple[str, list[str]]] = {
     "core/tests/test_harness.py": (
         "the registry's own tests pin its order",
         [
-            "claude, codex, copilot",
-            "claude, codex, copilot",
-            "claude, codex, copilot, opencode",
+            "antigravity, claude, codex, copilot",
+            "antigravity, claude, codex, copilot",
+            "antigravity, claude, codex, copilot, opencode",
         ],
+    ),
+    "farrier/tests/test_render_groups.py": (
+        "render group fixtures name the harnesses that share a folder",
+        ["codex, copilot"],
     ),
     "groom/tests/_dispatch_support.py": (
         "a select param fixture with two options",

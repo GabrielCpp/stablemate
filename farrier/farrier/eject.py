@@ -9,7 +9,7 @@ from typing import Any
 
 import yaml
 
-from farrier.agents import REPO_SKILL_DIRS, Agents
+from farrier.agents import Agents
 from farrier.frontmatter import frontmatter_mapping, frontmatter_metadata
 from farrier.manifest import excluded
 from farrier.local_instructions import (
@@ -106,8 +106,8 @@ def _write(path: Path, text: str) -> None:
 def real_skill_folders(repo: Path, agents: Agents) -> dict[str, list[Path]]:
     """Each farrier-generated skill folder name with its real folders in the non-linked harness dirs."""
     found: dict[str, list[Path]] = {}
-    for harness in agents.real_skill_harnesses():
-        directory = repo / REPO_SKILL_DIRS[harness]
+    for relative in agents.real_skill_dirs():
+        directory = repo / relative
         if not directory.is_dir():
             continue
         for entry in sorted(directory.iterdir()):

@@ -52,11 +52,16 @@ def test_the_capabilities_are_every_support_field() -> None:
 
 def test_the_manifest_names_are_the_repo_harnesses_in_registry_order() -> None:
     assert MANIFEST_HARNESSES == tuple(spec.name for spec in harness.repo_harnesses())
-    assert MANIFEST_HARNESSES == ("claude", "codex", "copilot")
+    assert MANIFEST_HARNESSES == ("claude", "codex", "copilot", "antigravity")
 
 
 def test_the_registry_renders_repo_harnesses_in_this_order() -> None:
-    assert [spec.name for spec in harness.repo_harnesses()] == ["claude", "codex", "copilot"]
+    assert [spec.name for spec in harness.repo_harnesses()] == [
+        "claude",
+        "codex",
+        "copilot",
+        "antigravity",
+    ]
 
 
 def test_the_registry_lists_home_harnesses_in_this_order() -> None:
@@ -65,4 +70,13 @@ def test_the_registry_lists_home_harnesses_in_this_order() -> None:
         "codex",
         "copilot",
         "opencode",
+        "antigravity",
     ]
+
+
+def test_antigravity_is_a_farrier_target_the_workhorse_never_offers() -> None:
+    antigravity = harness.spec("antigravity")
+
+    assert antigravity.workhorse is False
+    assert antigravity.workhorse_reason
+    assert "antigravity" not in [spec.name for spec in harness.workhorse_harnesses()]

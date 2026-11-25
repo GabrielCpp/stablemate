@@ -72,6 +72,7 @@ Body markdown — the actual instructions…
 | ------- | ----------------------------------------- |
 | claude  | `.claude/skills/<prefix>-<name>/SKILL.md` |
 | codex   | `.agents/skills/<prefix>-<name>/SKILL.md` |
+| antigravity | `.agents/skills/<prefix>-<name>/SKILL.md` (shared with codex) |
 | copilot | `.github/skills/<prefix>-<name>/SKILL.md` |
 
 `<prefix>` is the repo's install prefix: `repo.name` in `agents.yml` when set,
@@ -211,7 +212,7 @@ harness: `{% if target == "claude" %}…{% endif %}`.
 ## `library/mcp/<name>.yml`: a home's MCP servers
 
 A `[user_library.claude]`, `[user_library.codex]` or `[user_library.opencode]` table lists names in
-`mcp`, or a pack does. Each file holds `command`, and optionally `args` and `env`. Farrier writes the server into
+`mcp`, or a pack does. A `[user_library.antigravity]` table writes `~/.gemini/config/mcp_config.json` and `settings` go to `~/.gemini/antigravity-cli/settings.json`. Each file holds `command`, and optionally `args` and `env`. Farrier writes the server into
 `~/.claude.json`, `~/.codex/config.toml` or `~/.config/opencode/opencode.json` as one entry and leaves the rest of the file alone.
 
 ## `library/hooks/<name>/`: a home's guards
@@ -233,14 +234,14 @@ A `[user_library.claude]`, `[user_library.codex]` or `[user_library.opencode]` t
 The front matter holds `description` and optionally `read_only`, and the text below it is the prompt.
 The record names no model. Farrier reads the model from `[profiles.<harness>.delegates.<name>]` and
 writes `~/.claude/agents/<name>.md`, `~/.codex/agents/<name>.toml` or `~/.config/opencode/agents/<name>.md`.
-`delegates` lists the agents this one may start. On Claude it adds `Agent(<names>)` to the tools,
-so a session run with `claude --agent <name>` can start only those agents. Codex and OpenCode refuse
+An Antigravity table writes `~/.gemini/config/agents/<name>.md`, on the model `inherit` unless the delegate names `flash` or `pro`, and its guards go to `~/.gemini/config/hooks.json`. Its root renders to `~/.gemini/config/AGENTS.md`, never `GEMINI.md`. `delegates` lists the agents this one may start. On Claude it adds `Agent(<names>)` to the tools,
+so a session run with `claude --agent <name>` can start only those agents. Codex, OpenCode and Antigravity refuse
 a record with `delegates`.
 `mcp` lists `library/mcp/<name>.yml` servers that belong to this agent alone. On Claude farrier
 writes each server inline in the agent's `mcpServers` and adds `mcp__<name>__*` to its tools. Claude
 starts the server when the agent starts and stops it when the agent finishes, so the main session
-never loads it. Select the server in no `mcp` table to keep it out of every other session. Codex and
-OpenCode refuse a record with `mcp`.
+never loads it. Select the server in no `mcp` table to keep it out of every other session. Codex,
+OpenCode and Antigravity refuse a record with `mcp`.
 
 ## `packs/<pack>.yml` — bundles
 

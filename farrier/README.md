@@ -3,8 +3,8 @@
 [![PyPI](https://img.shields.io/pypi/v/farrier.svg)](https://pypi.org/project/farrier/)
 
 **farrier** renders an agent-neutral prompt library into a repository — generating
-the skill, prompt and instruction adapters expected by Codex, Claude, and GitHub
-Copilot, plus the launcher scaffolding (`.agents/agents.mk` and friends) that keeps
+the skill, prompt and instruction adapters expected by Codex, Claude, GitHub
+Copilot and Antigravity, plus the launcher scaffolding (`.agents/agents.mk` and friends) that keeps
 those adapters current.
 
 A farrier is the craftsman who fits the right gear onto each horse. This tool
@@ -77,7 +77,10 @@ of `farrier --repo .`. A bare `farrier` with no arguments prints the verb listin
 Install has two scopes, and each one writes only where it is pointed. `--repo PATH`
 renders the repo's `agents.yml` selection under `PATH` and nothing else. `--user` renders
 the `[user_library.<harness>]` tables of the shared config into the harness homes
-(`~/.claude`, and `~/.agents` for Codex and Copilot), reads no repo and writes to none.
+(`~/.claude`, `~/.gemini/config` for Antigravity, and `~/.agents` for Codex and Copilot), reads no repo and writes to none.
+Antigravity is a farrier target only. Workhorse never drives it, because its terms of service rule out automated use.
+At repo scope it shares `.agents/skills` with Codex, and a repo with both on gets the path form of each skill reference.
+Its guards run through a generated bridge, `~/.gemini/config/hooks/farrier-guards.py`, and it takes no prompts at home scope.
 A Claude or Codex table that names a `roots` entry also writes that home's always-on rules,
 `~/.claude/CLAUDE.md` or `~/.codex/AGENTS.md`, from one file in the library.
 A table that names `mcp` servers adds each one to `~/.claude.json` or `~/.codex/config.toml`,

@@ -304,6 +304,12 @@ class UserLibraryTable(Section):
         examples=[{"packs": ["general"]}],
         default_text="absent",
     )
+    antigravity: Selection | None = setting(
+        None,
+        description="The skills, rules, MCP servers, guards and agents installed for Antigravity under `~/.gemini/config`. Prompts are Claude-only at user scope.",
+        examples=[{"packs": ["general"]}],
+        default_text="absent",
+    )
     template: dict[str, Any] = setting(
         factory=dict,
         description="Template values shared by every harness's rendered content. The keys belong to the library whose templates read them, so no tool lists them.",

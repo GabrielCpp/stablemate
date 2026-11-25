@@ -25,10 +25,12 @@ _TEMPLATE = Template("""\
 #   claude  -> .claude/skills/<name>/SKILL.md, .claude/commands/<name>.md
 #   codex   -> .agents/skills/<name>/SKILL.md, .agents/prompts/<name>.prompt.md
 #   copilot -> .github/instructions/, .github/skills/, .github/prompts/
+#   antigravity -> .agents/skills/<name>/SKILL.md, shared with codex (farrier only)
 agents:
   claude: true
   # codex: true
   # copilot: true
+  # antigravity: true
 
 # Named bundles from the library's packs/ directory, without the .yml suffix. A pack
 # selects skills, prompts, roots and scaffold ids, and may include other packs; all

@@ -160,7 +160,12 @@ def test_agents_yml_carries_the_services_block_the_planner_reads(
     assert data["services"] == {
         "api": {"path": "api", "lint": "golangci-lint run", "test": "go test ./..."}
     }, data
-    assert data["agents"] == {"claude": True, "codex": False, "copilot": False}, data
+    assert data["agents"] == {
+        "antigravity": False,
+        "claude": True,
+        "codex": False,
+        "copilot": False,
+    }, data
 
     assert [c[1] for c in farrier.calls] == ["install", "scaffold", "scaffold"], farrier.calls
 

@@ -25,6 +25,7 @@ READ_ONLY_PROMPT = "Read only. Never edit, write, commit, or run anything that c
 STRONGEST_CODEX_EFFORT = {"xhigh": "high", "max": "high"}
 COPILOT_READ_ONLY_TOOLS = ("read", "search", "execute")
 COPILOT_WRITE_TOOLS = ("edit",)
+ANTIGRAVITY_MODELS = ("flash", "pro")
 OPENCODE_VARIANT = {"low": "minimal", "medium": "", "high": "high", "xhigh": "max", "max": "max"}
 
 
@@ -130,6 +131,20 @@ def opencode_agent(agent: HelperAgent, role: PowerMapping) -> str:
     return f"---\n{AGENT_MARK}{front}---\n\n{agent.prompt}\n"
 
 
+def antigravity_agent(agent: HelperAgent, role: PowerMapping) -> str:
+    """The Antigravity agent file, whose model is `inherit` unless the profile names flash or pro."""
+    refuse_delegates_and_servers(agent, "antigravity")
+    tools = READ_ONLY_TOOLS if agent.read_only else READ_ONLY_TOOLS + WRITE_TOOLS
+    head: dict[str, object] = {
+        "name": agent.name,
+        "description": agent.description,
+        "tools": list(tools),
+        "model": role.model if role.model in ANTIGRAVITY_MODELS else "inherit",
+    }
+    front = yaml.safe_dump(head, sort_keys=False, allow_unicode=True, width=10**6)
+    return f"---\n{AGENT_MARK}{front}---\n\n{agent.prompt}\n"
+
+
 @dataclass(frozen=True)
 class AgentDialect:
     """Where one harness reads its helper agents, and how it spells one."""
@@ -144,6 +159,7 @@ AGENT_DIALECTS = {
     "codex": AgentDialect(".codex/agents", ".toml", codex_agent),
     "copilot": AgentDialect(".copilot/agents", ".agent.md", copilot_agent),
     "opencode": AgentDialect(".config/opencode/agents", ".md", opencode_agent),
+    "antigravity": AgentDialect(".gemini/config/agents", ".md", antigravity_agent),
 }
 
 

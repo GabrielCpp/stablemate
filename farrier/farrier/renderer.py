@@ -343,7 +343,7 @@ class Renderer:
                 self.prompt_output_path(library_name(source), target),
             )
             for source in self.prompts
-            if self.scope == "repo" or target == "claude"
+            if self.takes_prompts(target)
         ]
         if self.scope == "repo":
             taken = {entry.name for entry in entries}
@@ -442,6 +442,13 @@ class Renderer:
             )
         return self.repo / repo_layout(target, "skill").skills / generated / "SKILL.md"
 
+    def takes_prompts(self, target: str) -> bool:
+        """Whether *target* has a prompt folder in this scope."""
+        if self.scope == "user":
+            return target == "claude"
+        layout = spec(target).repo
+        return layout is not None and layout.prompts is not None
+
     def prompt_output_path(self, name: str, target: str) -> Path:
         source = self.prompt_source(name)
         generated = public_name(self.prefix, source)
@@ -513,6 +520,7 @@ class Renderer:
         prompts = {
             key: rel(self.prompt_output_path(library_name(source), target))
             for key, source in self.prompt_lookup.items()
+            if self.takes_prompts(target)
         }
         instruction_tags = {
             key: tags
@@ -717,10 +725,16 @@ class Renderer:
         links = links or {}
         outputs: dict[Path, str] = {}
 
+        rendered_folders: set[Path] = set()
+
         def render_skills(target: str) -> None:
             """Every selected skill into *target*, each with its bundled assets."""
             if target in links:
                 return
+            folder = self.skill_dir_path(target)
+            if folder in rendered_folders:
+                return
+            rendered_folders.add(folder)
             for source in self.skills:
                 output_path = self.skill_output_path(library_name(source), target)
                 outputs[output_path] = self.generated_skill(source, target, output_path)
@@ -761,6 +775,9 @@ class Renderer:
                 outputs[output_path] = self.generated_command(
                     source, "codex", output_path
                 )
+
+        if agents.get("antigravity"):
+            render_skills("antigravity")
 
         if agents.get("claude"):
             render_skills("claude")

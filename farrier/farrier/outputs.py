@@ -73,6 +73,7 @@ from farrier.skill_hooks import (
     checks_for,
     hooks_for,
 )
+from farrier.antigravity_bridge import ANTIGRAVITY_BRIDGE, ANTIGRAVITY_GUARDS
 from farrier.home_agents import agent_files, agent_names
 from farrier.home_guards import (
     BRIDGE_FILE,
@@ -169,11 +170,20 @@ USER_MANAGED = Managed(
                 ".copilot/skills",
                 ".copilot/agents",
                 ".config/opencode/agents",
+                ".gemini/config/agents",
+                ".gemini/config/hooks",
             ]
         )
     ),
-    (*USER_ROOT_FILES.values(), BRIDGE_FILE, COPILOT_BRIDGE, COPILOT_GUARDS),
-    (COPILOT_GUARDS,),
+    (
+        *USER_ROOT_FILES.values(),
+        BRIDGE_FILE,
+        COPILOT_BRIDGE,
+        COPILOT_GUARDS,
+        ANTIGRAVITY_BRIDGE,
+        ANTIGRAVITY_GUARDS,
+    ),
+    (COPILOT_GUARDS, ANTIGRAVITY_GUARDS),
     repo_scaffolding=False,
     regenerate="farrier install --user",
 )
@@ -451,10 +461,12 @@ def build_renderer(
 
 def local_instruction_target(agents: Agents) -> str:
     """The harness a localInstructions file renders its templates for."""
-    claude_only = agents.get("claude") and not (
-        agents.get("codex") or agents.get("copilot")
-    )
-    return "claude" if claude_only else "codex"
+    others = agents.get("codex") or agents.get("copilot")
+    if agents.get("claude") and not (others or agents.get("antigravity")):
+        return "claude"
+    if agents.get("antigravity") and not others:
+        return "antigravity"
+    return "codex"
 
 
 def render_expected(

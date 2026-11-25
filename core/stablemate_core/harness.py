@@ -183,7 +183,28 @@ OPENCODE = HarnessSpec(
     transcript=Support(Level.EMULATED, "opencode export"),
 )
 
-HARNESSES: tuple[HarnessSpec, ...] = (CLAUDE, CODEX, COPILOT, OPENCODE)
+ANTIGRAVITY = HarnessSpec(
+    name="antigravity",
+    title="Antigravity",
+    skill_ref="slash",
+    repo=RepoLayout(skills=".agents/skills", prompts=None, prompt_suffix=""),
+    home=HomeLayout(dir=".gemini/config", root_file=".gemini/config/AGENTS.md"),
+    surfaces=frozenset(
+        {
+            Surface.REPO_SKILLS,
+            Surface.HOME_ROOT,
+            Surface.HOME_SKILLS,
+            Surface.GUARDS,
+            Surface.AGENTS,
+            Surface.MCP,
+            Surface.SETTINGS,
+        }
+    ),
+    workhorse=False,
+    workhorse_reason="its terms of service rule out automated use",
+)
+
+HARNESSES: tuple[HarnessSpec, ...] = (CLAUDE, CODEX, COPILOT, OPENCODE, ANTIGRAVITY)
 RETIRED: frozenset[str] = frozenset({"cline"})
 
 

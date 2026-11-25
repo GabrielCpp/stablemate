@@ -6,7 +6,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BeforeValidator, StrictBool, ValidationInfo, field_validator, model_validator
 
-from ..harness import repo_harnesses
+from ..harness import repo_harnesses, spec
 from .base import FreeSection, Section, setting
 from .selection import Exclusion
 
@@ -72,6 +72,12 @@ class Agents(Section):
         examples=[False, {"skills_from": "claude"}],
         type_text="boolean or table with `skills_from`",
     )
+    antigravity: HarnessSwitch = setting(
+        False,
+        description="Render for Antigravity: skills into `.agents/skills`, which it shares with Codex, and roots into `AGENTS.md`. Antigravity has no prompts folder. A table `{ skills_from: <harness> }` enables it and links its skills.",
+        examples=[False, {"skills_from": "claude"}],
+        type_text="boolean or table with `skills_from`",
+    )
 
     @model_validator(mode="after")
     def _links_resolve(self) -> Agents:
@@ -97,6 +103,17 @@ class Agents(Section):
                 raise ValueError(
                     f"{where} names {source!r}, which itself links its skills from "
                     f"{links[source]!r}; link from the harness that holds the real folders"
+                )
+        shared: dict[str, list[str]] = {}
+        for harness in HARNESSES:
+            layout = spec(harness).repo
+            if values[harness] and layout is not None:
+                shared.setdefault(layout.skills, []).append(harness)
+        for folder, sharers in shared.items():
+            if len({links.get(harness) for harness in sharers}) > 1:
+                raise ValueError(
+                    f"agents.{' and agents.'.join(sharers)} share the folder {folder}, "
+                    f"so they must all hold real skills or all link their skills from the same harness"
                 )
         return self
 

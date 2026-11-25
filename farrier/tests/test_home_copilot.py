@@ -1,7 +1,6 @@
 """Copilot's home: rules, MCP servers, settings, helper agents and guards reached through a bridge."""
 
 import json
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -10,7 +9,8 @@ import yaml
 from farrier.home_agents import AGENT_DIALECTS
 from farrier.home_entries import MCP_DIALECTS
 from farrier.home_guards import GUARD_DIALECTS
-from home_install import add_search_server, agent_library, install, isolated_home
+from _guard_bridge_support import add_guard, read_hooks, run_hook
+from home_install import add_search_server, install
 from farrier.renderer import USER_ROOT_FILES
 from farrier._vendor.stablemate_core.harness import home_harnesses
 
@@ -23,46 +23,28 @@ AGENTS = '[user_library.copilot]\nagents = ["lookup", "worker"]\n'
 USER_SETTINGS = '{\n  "theme": "dim",\n  "trustedFolders": ["/work"]\n}\n'
 
 
-@pytest.fixture
-def library(tmp_path: Path) -> Path:
-    return agent_library(tmp_path)
-
-
-@pytest.fixture
-def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    return isolated_home(tmp_path, monkeypatch)
-
-
-def add_guard(library: Path, name: str, script: str, record: str = "watches: [shell, edit]\n") -> None:
-    folder = library / "library" / "hooks" / name
-    folder.mkdir(parents=True)
-    (folder / "hook.yml").write_text(f"command: sh {{dir}}/check.sh\n{record}timeout: 5\n", encoding="utf-8")
-    (folder / "check.sh").write_text(script, encoding="utf-8")
-
-
 def hooks(home: Path) -> dict:
-    return json.loads((home / ".copilot/hooks/farrier-guards.json").read_text(encoding="utf-8"))["hooks"]
+    return read_hooks(home / ".copilot/hooks/farrier-guards.json")
 
 
 def call(home: Path, event: str, payload: dict) -> dict | None:
     """What Copilot reads back from the one hook entry *event* holds, run as Copilot runs it."""
-    entry = hooks(home)[event][0]
-    done = subprocess.run(
-        ["sh", "-c", entry["bash"]],
-        input=json.dumps(payload),
-        capture_output=True,
-        text=True,
-        check=True,
-        timeout=30,
-    )
-    return json.loads(done.stdout) if done.stdout.strip() else None
+    return run_hook(hooks(home)[event][0]["bash"], payload)
 
 
 def tool_call(tool: str, args: dict | str) -> dict:
-    return {"sessionId": "s", "timestamp": 1, "cwd": "/project", "toolName": tool, "toolArgs": args}
+    return {
+        "sessionId": "s",
+        "timestamp": 1,
+        "cwd": "/project",
+        "toolName": tool,
+        "toolArgs": args,
+    }
 
 
-@pytest.mark.parametrize("table", [USER_ROOT_FILES, MCP_DIALECTS, AGENT_DIALECTS, GUARD_DIALECTS])
+@pytest.mark.parametrize(
+    "table", [USER_ROOT_FILES, MCP_DIALECTS, AGENT_DIALECTS, GUARD_DIALECTS]
+)
 def test_every_harness_takes_rules_servers_agents_and_guards(table: dict) -> None:
     assert set(table) == {spec.name for spec in home_harnesses()}
 
@@ -70,26 +52,43 @@ def test_every_harness_takes_rules_servers_agents_and_guards(table: dict) -> Non
 def test_the_rules_land_where_copilot_reads_them(home: Path, library: Path) -> None:
     roots = library / "library" / "roots"
     roots.mkdir()
-    (roots / "rules.md").write_text('---\ndescription: "Rules."\n---\n\nSay hello.\n', encoding="utf-8")
+    (roots / "rules.md").write_text(
+        '---\ndescription: "Rules."\n---\n\nSay hello.\n', encoding="utf-8"
+    )
     assert install(home, library, '[user_library.copilot]\nroots = ["rules"]\n') == 0
-    assert "Say hello." in (home / ".copilot/copilot-instructions.md").read_text(encoding="utf-8")
+    assert "Say hello." in (home / ".copilot/copilot-instructions.md").read_text(
+        encoding="utf-8"
+    )
 
 
-def test_a_server_lands_in_copilots_mcp_file_with_every_tool_allowed(home: Path, library: Path) -> None:
+def test_a_server_lands_in_copilots_mcp_file_with_every_tool_allowed(
+    home: Path, library: Path
+) -> None:
     add_search_server(library)
     config = '[user_library.copilot]\nmcp = ["search"]\n'
     assert install(home, library, config) == 0
-    written = json.loads((home / ".copilot/mcp-config.json").read_text(encoding="utf-8"))
+    written = json.loads(
+        (home / ".copilot/mcp-config.json").read_text(encoding="utf-8")
+    )
     assert written["mcpServers"] == {
-        "search": {"type": "local", "command": "ostler", "args": ["mcp"], "tools": ["*"]}
+        "search": {
+            "type": "local",
+            "command": "ostler",
+            "args": ["mcp"],
+            "tools": ["*"],
+        }
     }
     assert install(home, library, config, "--check") == 0
 
 
-def test_settings_merge_into_copilots_settings_and_the_users_keys_stay(home: Path, library: Path) -> None:
+def test_settings_merge_into_copilots_settings_and_the_users_keys_stay(
+    home: Path, library: Path
+) -> None:
     settings = library / "library" / "settings"
     settings.mkdir(parents=True)
-    (settings / "copilot.json").write_text('{"model": "claude-opus-5.5", "banner": "never"}\n', encoding="utf-8")
+    (settings / "copilot.json").write_text(
+        '{"model": "claude-opus-5.5", "banner": "never"}\n', encoding="utf-8"
+    )
     mine = home / ".copilot/settings.json"
     mine.parent.mkdir(parents=True)
     mine.write_text(USER_SETTINGS, encoding="utf-8")
@@ -104,7 +103,9 @@ def test_settings_merge_into_copilots_settings_and_the_users_keys_stay(home: Pat
     assert install(home, library, config, "--check") == 0
 
 
-def test_each_agent_lands_with_the_copilot_model_and_its_tools(home: Path, library: Path) -> None:
+def test_each_agent_lands_with_the_copilot_model_and_its_tools(
+    home: Path, library: Path
+) -> None:
     assert install(home, library, PROFILES + AGENTS) == 0
     lookup = (home / ".copilot/agents/lookup.agent.md").read_text(encoding="utf-8")
     assert lookup.startswith("---\n# generated by farrier\n")
@@ -117,34 +118,60 @@ def test_each_agent_lands_with_the_copilot_model_and_its_tools(home: Path, libra
     }
     assert lookup.endswith("You answer one question.\n")
     worker = yaml.safe_load(
-        (home / ".copilot/agents/worker.agent.md").read_text(encoding="utf-8").split("---\n")[1]
+        (home / ".copilot/agents/worker.agent.md")
+        .read_text(encoding="utf-8")
+        .split("---\n")[1]
     )
     assert worker["tools"] == ["read", "search", "execute", "edit"]
     assert "reasoningEffort" not in worker
 
 
-def test_an_agent_with_its_own_server_and_delegates_carries_both(home: Path, library: Path) -> None:
+def test_an_agent_with_its_own_server_and_delegates_carries_both(
+    home: Path, library: Path
+) -> None:
     add_search_server(library)
     (library / "library/agents/lead.md").write_text(
-        "---\ndescription: Leads.\ndelegates: [lookup]\nmcp: [search]\n---\n\nYou lead.\n", encoding="utf-8"
+        "---\ndescription: Leads.\ndelegates: [lookup]\nmcp: [search]\n---\n\nYou lead.\n",
+        encoding="utf-8",
     )
-    config = PROFILES + '[profiles.copilot.delegates.lead]\nmodel = "claude-opus-5.5"\n\n'
-    assert install(home, library, config + '[user_library.copilot]\nagents = ["lead"]\n') == 0
-    head = yaml.safe_load((home / ".copilot/agents/lead.agent.md").read_text(encoding="utf-8").split("---\n")[1])
+    config = (
+        PROFILES + '[profiles.copilot.delegates.lead]\nmodel = "claude-opus-5.5"\n\n'
+    )
+    assert (
+        install(home, library, config + '[user_library.copilot]\nagents = ["lead"]\n')
+        == 0
+    )
+    head = yaml.safe_load(
+        (home / ".copilot/agents/lead.agent.md")
+        .read_text(encoding="utf-8")
+        .split("---\n")[1]
+    )
     assert head["tools"] == ["read", "search", "execute", "edit", "agent", "search/*"]
     assert head["mcp-servers"] == {
-        "search": {"type": "local", "command": "ostler", "args": ["mcp"], "tools": ["*"]}
+        "search": {
+            "type": "local",
+            "command": "ostler",
+            "args": ["mcp"],
+            "tools": ["*"],
+        }
     }
 
 
-def test_a_guard_lands_as_a_copilot_hook_matching_copilots_tool_names(home: Path, library: Path) -> None:
+def test_a_guard_lands_as_a_copilot_hook_matching_copilots_tool_names(
+    home: Path, library: Path
+) -> None:
     add_guard(library, "stub", "exit 0\n")
     assert install(home, library, '[user_library.copilot]\nhooks = ["stub"]\n') == 0
     (entry,) = hooks(home)["preToolUse"]
     assert entry["matcher"] == "bash|edit|create|str_replace_editor|apply_patch"
     assert entry["timeoutSec"] == 5
     assert str(home / ".agents/hooks/stub") in entry["bash"]
-    assert json.loads((home / ".copilot/hooks/farrier-guards.json").read_text(encoding="utf-8"))["version"] == 1
+    assert (
+        json.loads(
+            (home / ".copilot/hooks/farrier-guards.json").read_text(encoding="utf-8")
+        )["version"]
+        == 1
+    )
 
 
 @pytest.mark.parametrize(
@@ -177,14 +204,32 @@ def test_the_bridge_reads_each_verdict_as_a_harness_does(
     [
         ("bash", {"command": "ls", "description": "list"}, "Bash", "command", "ls"),
         ("bash", '{"command": "ls"}', "Bash", "command", "ls"),
-        ("edit", {"path": "/a.py", "old_str": "x", "new_str": "y"}, "Edit", "new_string", "y"),
+        (
+            "edit",
+            {"path": "/a.py", "old_str": "x", "new_str": "y"},
+            "Edit",
+            "new_string",
+            "y",
+        ),
         ("create", {"path": "/a.py", "file_text": "z"}, "Write", "content", "z"),
-        ("create", {"file_path": "/a.py", "content": "z"}, "Write", "file_path", "/a.py"),
+        (
+            "create",
+            {"file_path": "/a.py", "content": "z"},
+            "Write",
+            "file_path",
+            "/a.py",
+        ),
         ("apply_patch", "*** Begin Patch", "apply_patch", "command", "*** Begin Patch"),
     ],
 )
 def test_the_bridge_hands_a_guard_the_call_in_claude_shape(
-    home: Path, library: Path, tool: str, args: dict | str, claude_name: str, field: str, value: str
+    home: Path,
+    library: Path,
+    tool: str,
+    args: dict | str,
+    claude_name: str,
+    field: str,
+    value: str,
 ) -> None:
     seen = home.parent / "seen.json"
     add_guard(library, "stub", f"cat > {seen}\n")
@@ -198,25 +243,44 @@ def test_the_bridge_hands_a_guard_the_call_in_claude_shape(
     assert handed["session_id"] == "s"
 
 
-def test_a_guard_that_rewrites_the_shell_call_changes_what_runs(home: Path, library: Path) -> None:
+def test_a_guard_that_rewrites_the_shell_call_changes_what_runs(
+    home: Path, library: Path
+) -> None:
     rewrite = (
-        "cat >/dev/null; printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\","
-        "\"updatedInput\":{\"command\":\"checked && ls\",\"timeout\":9000}}}'\n"
+        'cat >/dev/null; printf \'{"hookSpecificOutput":{"hookEventName":"PreToolUse",'
+        '"updatedInput":{"command":"checked && ls","timeout":9000}}}\'\n'
     )
     add_guard(library, "stub", rewrite, "watches: [shell]\n")
     assert install(home, library, '[user_library.copilot]\nhooks = ["stub"]\n') == 0
-    answer = call(home, "preToolUse", tool_call("bash", {"command": "ls", "description": "list"}))
-    assert answer == {"modifiedArgs": {"command": "checked && ls", "description": "list"}}
+    answer = call(
+        home, "preToolUse", tool_call("bash", {"command": "ls", "description": "list"})
+    )
+    assert answer == {
+        "modifiedArgs": {"command": "checked && ls", "description": "list"}
+    }
 
 
-def test_a_done_guard_runs_when_the_agent_stops_and_can_send_it_back(home: Path, library: Path) -> None:
+def test_a_done_guard_runs_when_the_agent_stops_and_can_send_it_back(
+    home: Path, library: Path
+) -> None:
     seen = home.parent / "seen.json"
-    script = f"cat > {seen}; printf '{{\"decision\":\"block\",\"reason\":\"finish the epic\"}}'\n"
+    script = (
+        f'cat > {seen}; printf \'{{"decision":"block","reason":"finish the epic"}}\'\n'
+    )
     add_guard(library, "epic", script, "when: done\n")
     assert install(home, library, '[user_library.copilot]\nhooks = ["epic"]\n') == 0
     assert "matcher" not in hooks(home)["agentStop"][0]
-    stop = {"sessionId": "s", "cwd": "/project", "transcriptPath": "/t.jsonl", "stopReason": "end_turn", "stop_hook_active": False}
-    assert call(home, "agentStop", stop) == {"decision": "block", "reason": "finish the epic"}
+    stop = {
+        "sessionId": "s",
+        "cwd": "/project",
+        "transcriptPath": "/t.jsonl",
+        "stopReason": "end_turn",
+        "stop_hook_active": False,
+    }
+    assert call(home, "agentStop", stop) == {
+        "decision": "block",
+        "reason": "finish the epic",
+    }
     handed = json.loads(seen.read_text(encoding="utf-8"))
     assert handed == {
         "hook_event_name": "Stop",
@@ -227,7 +291,9 @@ def test_a_done_guard_runs_when_the_agent_stops_and_can_send_it_back(home: Path,
     }
 
 
-def test_a_dropped_guard_takes_the_hook_file_and_the_bridge_with_it(home: Path, library: Path) -> None:
+def test_a_dropped_guard_takes_the_hook_file_and_the_bridge_with_it(
+    home: Path, library: Path
+) -> None:
     add_guard(library, "stub", "exit 0\n")
     assert install(home, library, '[user_library.copilot]\nhooks = ["stub"]\n') == 0
     mine = home / ".copilot/hooks/mine.json"
@@ -247,7 +313,9 @@ def test_check_reports_a_stale_hook_file_and_writes_nothing(
     assert install(home, library, config, "--check") == 0
     capsys.readouterr()
     path = home / ".copilot/hooks/farrier-guards.json"
-    path.write_text(path.read_text(encoding="utf-8").replace('"timeoutSec": 5', '"timeoutSec": 6'), encoding="utf-8")
+    path.write_text(
+        path.read_text(encoding="utf-8").replace('"timeoutSec": 5', '"timeoutSec": 6'),
+        encoding="utf-8",
+    )
     assert install(home, library, config, "--check") == 1
     assert "farrier-guards.json" in capsys.readouterr().out
-

@@ -26,6 +26,7 @@ SETTINGS_FILES = {
     "claude": ".claude/settings.json",
     "codex": ".codex/config.toml",
     "copilot": ".copilot/settings.json",
+    "antigravity": ".gemini/antigravity-cli/settings.json",
 }
 SETTINGS_OWNED_ELSEWHERE = {"hooks": "library/hooks guards"}
 OPENCODE_CONFIG = ".config/opencode/opencode.json"
@@ -263,6 +264,7 @@ MCP_DIALECTS = {
     "codex": McpDialect(".codex/config.toml", "mcp_servers", codex_server),
     "copilot": McpDialect(".copilot/mcp-config.json", "mcpServers", copilot_server),
     "opencode": McpDialect(OPENCODE_CONFIG, "mcp", opencode_server),
+    "antigravity": McpDialect(".gemini/config/mcp_config.json", "mcpServers", codex_server),
 }
 
 

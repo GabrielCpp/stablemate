@@ -42,13 +42,19 @@ class Agents:
 
     def real_skill_dirs(self) -> list[str]:
         """Repo-relative skills directories of :meth:`real_skill_harnesses`."""
-        return [REPO_SKILL_DIRS[harness] for harness in self.real_skill_harnesses()]
+        return list(
+            dict.fromkeys(
+                REPO_SKILL_DIRS[harness] for harness in self.real_skill_harnesses()
+            )
+        )
 
     def link_dirs(self) -> tuple[tuple[str, str], ...]:
         """``(linked skills dir, source skills dir)`` for every link, repo-relative."""
         return tuple(
-            (REPO_SKILL_DIRS[linked], REPO_SKILL_DIRS[source])
-            for linked, source in self.links.items()
+            dict.fromkeys(
+                (REPO_SKILL_DIRS[linked], REPO_SKILL_DIRS[source])
+                for linked, source in self.links.items()
+            )
         )
 
 

@@ -66,7 +66,12 @@ def test_find_walks_up_to_the_nearest_manifest(tmp_path):
 def test_the_agents_list_form_enables_exactly_those_harnesses():
     manifest = parse_manifest_text("agents: [claude]\n", _SRC)
 
-    assert manifest.agents.enabled() == {"codex": False, "claude": True, "copilot": False}
+    assert manifest.agents.enabled() == {
+        "codex": False,
+        "claude": True,
+        "copilot": False,
+        "antigravity": False,
+    }
 
 
 def test_a_skills_from_table_enables_and_links():
