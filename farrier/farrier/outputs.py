@@ -34,6 +34,12 @@ from farrier.managed_blocks import (
     ensure_qa_gitignore,
 )
 from farrier._vendor.stablemate_core.config import config_path, load_home_config
+from farrier._vendor.stablemate_core.harness import (
+    Surface,
+    home_harnesses,
+    repo_harnesses,
+    with_surface,
+)
 from farrier._vendor.stablemate_core.schema import HomeConfig
 from farrier.layers import available_names
 from farrier.manifest import ConfigLike, as_manifest, excluded
@@ -87,24 +93,25 @@ from farrier.sources import (
 )
 from farrier.template_values import collect_template_values
 from farrier.user_library import (
-    HARNESSES,
     user_library_tables,
     user_template_values,
 )
 
 
-MANAGED_DIRS = [
-    ".agents/skills",
-    POLICY_ROOT,
-    ".agents/prompts",
-    ".agents/hooks",
-    ".claude/skills",
-    ".claude/commands",
-    ".github/instructions",
-    ".github/prompts",
-    ".github/skills",
-    ".github/agents",
-]
+_REPO_LAYOUTS = [spec.repo for spec in repo_harnesses() if spec.repo is not None]
+
+MANAGED_DIRS = list(
+    dict.fromkeys(
+        [
+            *(layout.skills for layout in _REPO_LAYOUTS),
+            *(layout.prompts for layout in _REPO_LAYOUTS if layout.prompts),
+            POLICY_ROOT,
+            ".agents/hooks",
+            ".github/instructions",
+            ".github/agents",
+        ]
+    )
+)
 
 MANAGED_FILES = [
     ".github/copilot-instructions.md",
@@ -135,20 +142,31 @@ REPO_MANAGED = Managed(tuple(MANAGED_DIRS), tuple(MANAGED_FILES), tuple(ASSUMED_
 
 HOME_ONLY = {"mcp", "hooks", "agents", "settings"}
 
-READS_OTHER_SKILLS = {"opencode"}
+READS_OTHER_SKILLS = {spec.name for spec in home_harnesses() if spec.skills_reads_others}
 
 USER_MANAGED = Managed(
-    (
-        ".claude/skills",
-        ".claude/commands",
-        ".claude/agents",
-        ".agents/skills",
-        ".agents/hooks",
-        ".codex/skills",
-        ".codex/agents",
-        ".copilot/skills",
-        ".copilot/agents",
-        ".config/opencode/agents",
+    tuple(
+        dict.fromkeys(
+            [
+                *(
+                    f"{spec.home.dir}/skills"
+                    for spec in with_surface(Surface.HOME_SKILLS)
+                    if spec.home is not None
+                ),
+                *(
+                    spec.repo.prompts
+                    for spec in with_surface(Surface.HOME_PROMPTS)
+                    if spec.repo is not None and spec.repo.prompts
+                ),
+                ".claude/agents",
+                ".agents/hooks",
+                ".codex/skills",
+                ".codex/agents",
+                ".copilot/skills",
+                ".copilot/agents",
+                ".config/opencode/agents",
+            ]
+        )
     ),
     (*USER_ROOT_FILES.values(), BRIDGE_FILE, COPILOT_BRIDGE, COPILOT_GUARDS),
     (COPILOT_GUARDS,),
@@ -580,7 +598,7 @@ def render_user_expected(config: HomeConfig, home: Path) -> dict[Path, str]:
         raise SystemExit(
             "error: no user library is configured. Add a "
             "[user_library.<harness>] table naming the skills to install for every "
-            f"project — one of {', '.join(HARNESSES)} — to {config_path()}."
+            f"project — one of {', '.join(spec.name for spec in home_harnesses())} — to {config_path()}."
         )
     values = user_template_values(config)
     all_skills = load_layered_sources("skill", "library", "skills")
@@ -590,7 +608,8 @@ def render_user_expected(config: HomeConfig, home: Path) -> dict[Path, str]:
     roots = user_roots(config)
     outputs: dict[Path, str] = {}
     rendered: set[str] = set()
-    for harness in HARNESSES:
+    for spec in home_harnesses():
+        harness = spec.name
         if harness not in selections:
             continue
         skills, prompts = selections[harness]

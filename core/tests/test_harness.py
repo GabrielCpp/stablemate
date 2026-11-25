@@ -50,12 +50,9 @@ def test_the_capabilities_are_every_support_field() -> None:
     assert fields == set(CAPABILITIES)
 
 
-def test_the_manifest_names_are_the_repo_harnesses() -> None:
-    assert set(MANIFEST_HARNESSES) == {spec.name for spec in harness.repo_harnesses()}
-
-
-def test_the_manifest_checks_codex_first() -> None:
-    assert MANIFEST_HARNESSES == ("codex", "claude", "copilot")
+def test_the_manifest_names_are_the_repo_harnesses_in_registry_order() -> None:
+    assert MANIFEST_HARNESSES == tuple(spec.name for spec in harness.repo_harnesses())
+    assert MANIFEST_HARNESSES == ("claude", "codex", "copilot")
 
 
 def test_the_registry_renders_repo_harnesses_in_this_order() -> None:

@@ -6,10 +6,11 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BeforeValidator, StrictBool, ValidationInfo, field_validator, model_validator
 
+from ..harness import repo_harnesses
 from .base import FreeSection, Section, setting
 from .selection import Exclusion
 
-HARNESSES = ("codex", "claude", "copilot")
+HARNESSES = tuple(spec.name for spec in repo_harnesses())
 
 HOOK_MANAGERS = ("pre-commit", "lefthook", "husky", "githooks", "none")
 

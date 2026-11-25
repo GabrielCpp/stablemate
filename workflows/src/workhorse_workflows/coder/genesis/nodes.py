@@ -17,6 +17,7 @@ from ostler.model import find_root
 from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
 from ruamel.yaml.scalarstring import ScalarString
+from workhorse._vendor.stablemate_core.harness import repo_harnesses
 from workhorse_workflows.kit import commit_all, head_sha, load_json, run_tool
 from workhorse_workflows.kit.manifest import read_manifest
 from workhorse_workflows.coder.shared.contract import declared_service_paths, service_problems
@@ -32,7 +33,7 @@ from workhorse_workflows.coder.shared.schemas.genesis import (
     TargetClassification,
 )
 
-ASSISTANTS = ("claude", "codex", "copilot")
+ASSISTANTS = tuple(spec.name for spec in repo_harnesses())
 
 
 def _git_init(target: Path) -> str:

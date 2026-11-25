@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .harness import HARNESSES
+
 __all__ = [
     "RETIRED_HELPERS",
     "HarnessFolders",
@@ -23,8 +25,8 @@ __all__ = [
     "scan_catalog",
 ]
 
-SLASH_HARNESSES = frozenset({"claude", "copilot"})
-DOLLAR_HARNESSES = frozenset({"codex"})
+SLASH_HARNESSES = frozenset(spec.name for spec in HARNESSES if spec.skill_ref == "slash")
+DOLLAR_HARNESSES = frozenset(spec.name for spec in HARNESSES if spec.skill_ref == "dollar")
 
 RETIRED_HELPERS = {
     "instruction_file": "skill_link or skill_path",

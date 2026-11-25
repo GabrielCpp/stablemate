@@ -6,9 +6,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from farrier._vendor.stablemate_core.harness import repo_harnesses
+
 STAGES = ("pre-commit", "commit-msg")
 
-SKILL_ROOTS = (".claude/skills", ".agents/skills", ".github/skills")
+SKILL_ROOTS = tuple(spec.repo.skills for spec in repo_harnesses() if spec.repo is not None)
 
 
 @dataclass(frozen=True)

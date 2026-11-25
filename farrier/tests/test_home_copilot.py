@@ -12,7 +12,7 @@ from farrier.home_entries import MCP_DIALECTS
 from farrier.home_guards import GUARD_DIALECTS
 from home_install import add_search_server, agent_library, install, isolated_home
 from farrier.renderer import USER_ROOT_FILES
-from farrier.user_library import HARNESSES
+from farrier._vendor.stablemate_core.harness import home_harnesses
 
 PROFILES = (
     '[profiles.copilot]\ncli = "copilot"\n\n'
@@ -64,7 +64,7 @@ def tool_call(tool: str, args: dict | str) -> dict:
 
 @pytest.mark.parametrize("table", [USER_ROOT_FILES, MCP_DIALECTS, AGENT_DIALECTS, GUARD_DIALECTS])
 def test_every_harness_takes_rules_servers_agents_and_guards(table: dict) -> None:
-    assert set(table) == set(HARNESSES)
+    assert set(table) == {spec.name for spec in home_harnesses()}
 
 
 def test_the_rules_land_where_copilot_reads_them(home: Path, library: Path) -> None:

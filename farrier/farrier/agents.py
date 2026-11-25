@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from farrier._vendor.stablemate_core.harness import repo_harnesses
 from farrier._vendor.stablemate_core.schema import HARNESSES, LINK_KEY
 
 from farrier.manifest import ConfigLike, as_manifest
@@ -11,12 +12,10 @@ from farrier.manifest import ConfigLike, as_manifest
 __all__ = ["HARNESSES", "LINK_KEY", "Agents", "parse_agents"]
 
 REPO_SKILL_DIRS = {
-    "copilot": ".github/skills",
-    "codex": ".agents/skills",
-    "claude": ".claude/skills",
+    spec.name: spec.repo.skills for spec in repo_harnesses() if spec.repo is not None
 }
 
-HAND_WRITTEN_ORDER = ("claude", "codex", "copilot")
+HAND_WRITTEN_ORDER = tuple(spec.name for spec in repo_harnesses())
 
 
 @dataclass(frozen=True)

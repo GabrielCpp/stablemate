@@ -10,6 +10,13 @@ from typing import Any
 import yaml
 from jinja2 import Environment, StrictUndefined, UndefinedError
 
+from farrier._vendor.stablemate_core.harness import (
+    RepoLayout,
+    Surface,
+    repo_harnesses,
+    spec,
+    with_surface,
+)
 from farrier._vendor.stablemate_core.skill_refs import (
     RETIRED_HELPERS,
     SkillCatalog,
@@ -203,17 +210,15 @@ def strip_arguments_placeholder(body: str) -> str:
 
 
 USER_HARNESS_DIRS = {
-    "claude": ".claude",
-    "codex": ".agents",
-    "copilot": ".agents",
-    "opencode": ".config/opencode",
+    spec.name: spec.home.dir
+    for spec in with_surface(Surface.HOME_ROOT)
+    if spec.home is not None
 }
 
 USER_ROOT_FILES = {
-    "claude": ".claude/CLAUDE.md",
-    "codex": ".codex/AGENTS.md",
-    "copilot": ".copilot/copilot-instructions.md",
-    "opencode": ".config/opencode/AGENTS.md",
+    spec.name: spec.home.root_file
+    for spec in with_surface(Surface.HOME_ROOT)
+    if spec.home is not None
 }
 
 
@@ -229,6 +234,17 @@ TEMPLATE_TOKENS = (
     "vars.",
     *(f"{name}(" for name in RETIRED_HELPERS),
 )
+
+
+def repo_layout(target: str, what: str) -> RepoLayout:
+    """Where *target* writes in a repo, or a SystemExit naming *what* it cannot render."""
+    try:
+        layout = spec(target).repo
+    except ValueError:
+        layout = None
+    if layout is None:
+        raise SystemExit(f"Unknown {what} render target: {target}")
+    return layout
 
 
 def user_harness_dir(target: str) -> str:
@@ -417,13 +433,7 @@ class Renderer:
             return (
                 self.repo / user_harness_dir(target) / "skills" / generated / "SKILL.md"
             )
-        if target == "copilot":
-            return self.repo / ".github" / "skills" / generated / "SKILL.md"
-        if target == "codex":
-            return self.repo / ".agents" / "skills" / generated / "SKILL.md"
-        if target == "claude":
-            return self.repo / ".claude" / "skills" / generated / "SKILL.md"
-        raise SystemExit(f"Unknown skill render target: {target}")
+        return self.repo / repo_layout(target, "skill").skills / generated / "SKILL.md"
 
     def prompt_output_path(self, name: str, target: str) -> Path:
         source = self.prompt_source(name)
@@ -435,13 +445,10 @@ class Renderer:
                     "Claude-only at user scope."
                 )
             return self.repo / ".claude" / "commands" / f"{generated}.md"
-        if target == "copilot":
-            return self.repo / ".github" / "prompts" / f"{generated}.prompt.md"
-        if target == "codex":
-            return self.repo / ".agents" / "prompts" / f"{generated}.prompt.md"
-        if target == "claude":
-            return self.repo / ".claude" / "commands" / f"{generated}.md"
-        raise SystemExit(f"Unknown prompt render target: {target}")
+        layout = repo_layout(target, "prompt")
+        if layout.prompts is None:
+            raise SystemExit(f"Unknown prompt render target: {target}")
+        return self.repo / layout.prompts / f"{generated}{layout.prompt_suffix}"
 
     def skill_dir_path(self, target: str) -> Path:
         if self.scope == "user":
@@ -756,7 +763,9 @@ class Renderer:
 
         outputs[self.repo / LAUNCHER_AGENTS_MK] = render_agents_mk()
 
-        enabled_assistants = [t for t in ("claude", "codex", "copilot") if agents.get(t)]
+        enabled_assistants = [
+            harness.name for harness in repo_harnesses() if agents.get(harness.name)
+        ]
         manifest_target = enabled_assistants[0] if enabled_assistants else "claude"
         for assistant in enabled_assistants:
             outputs[self.repo / LAUNCHER_CONTEXT_MANIFEST_FMT.format(assistant)] = (

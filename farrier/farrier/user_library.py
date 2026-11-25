@@ -3,16 +3,15 @@ from __future__ import annotations
 
 from typing import Any
 
+from farrier._vendor.stablemate_core.harness import home_harnesses
 from farrier._vendor.stablemate_core.schema import HomeConfig, Selection
-
-HARNESSES = ("claude", "codex", "copilot", "opencode")
 
 USER_LIBRARY_KEY = "user_library"
 TEMPLATE_KEY = "template"
 
 
 def user_library_tables(home: HomeConfig) -> dict[str, Selection]:
-    """The per-harness selections, in :data:`HARNESSES` order, empty ones dropped."""
+    """The per-harness selections, in registry order, empty ones dropped."""
     table = home.user_library
     if table is None:
         return {}
@@ -22,11 +21,12 @@ def user_library_tables(home: HomeConfig) -> dict[str, Selection]:
             "error: unknown user_library table(s): "
             + ", ".join(f"[{USER_LIBRARY_KEY}.{key}]" for key in sorted(unknown))
             + ". Known harnesses: "
-            + ", ".join(HARNESSES)
+            + ", ".join(spec.name for spec in home_harnesses())
             + f"; shared template values go in [{USER_LIBRARY_KEY}.{TEMPLATE_KEY}]."
         )
     tables: dict[str, Selection] = {}
-    for name in HARNESSES:
+    for spec in home_harnesses():
+        name = spec.name
         selection: Selection | None = getattr(table, name)
         if selection is not None and (selection.model_fields_set or selection.model_extra):
             tables[name] = selection

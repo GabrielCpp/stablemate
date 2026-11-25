@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from string import Template
 
+from farrier._vendor.stablemate_core.harness import home_harnesses
 from farrier.naming import repo_prefix
 
 _TEMPLATE = Template("""\
@@ -69,7 +70,7 @@ packs: []
 """)
 
 
-USER_LIBRARY_TABLE = "user_library.claude"
+USER_LIBRARY_TABLE = f"user_library.{home_harnesses()[0].name}"
 USER_LIBRARY_PACKS = ("general", "stablemate")
 USER_LIBRARY_PROPOSAL = (
     f"[{USER_LIBRARY_TABLE}]\n"
