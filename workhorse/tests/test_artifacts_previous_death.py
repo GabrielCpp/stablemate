@@ -7,6 +7,9 @@ import tempfile
 import time
 from pathlib import Path
 
+import pytest
+
+from workhorse._vendor.stablemate_core import proc
 from workhorse.artifacts import ArtifactWriter, _process_alive
 from workhorse.records import RunRecord, parse_run_record
 
@@ -201,3 +204,17 @@ if __name__ == "__main__":
             print(f"FAIL  {fn.__name__}: {type(e).__name__}: {e}")
     print(f"\n{len(fns) - failed}/{len(fns)} passed")
     raise SystemExit(1 if failed else 0)
+
+
+def test_resume_keeps_a_live_run_unstamped_without_proc(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(proc, "_platform", lambda: "darwin")
+    monkeypatch.setattr(proc, "_linux_stat", lambda _pid: pytest.fail("read /proc"))
+    with tempfile.TemporaryDirectory() as tmp:
+        run_dir = Path(tmp) / "runs" / "coder-pd"
+        _seed_dead_run(run_dir, terminal=None, pid=os.getpid())
+        (run_dir / ArtifactWriter.CHECKPOINT_FILE).write_text('{"state": "s"}')
+
+        resumed = ArtifactWriter.resume(run_dir)
+
+        assert (run_dir / ArtifactWriter.CHECKPOINT_FILE).exists()
+        assert _record(resumed.run_dir).previous_process_died_at is None

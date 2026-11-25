@@ -10,6 +10,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from workhorse import gitstate, otel, turnkey
+from workhorse._vendor.stablemate_core.proc import pid_alive
 from workhorse.records import (
     Checkpoint,
     LaunchRecord,
@@ -45,12 +46,7 @@ def _observe_repo() -> RepoObservation | None:
 
 def _process_alive(pid: int) -> bool:
     """Whether ``pid`` is currently a running process on this host."""
-    if pid <= 0:
-        return False
-    try:
-        return Path(f"/proc/{pid}").exists()
-    except OSError:
-        return True
+    return pid_alive(pid)
 
 
 def _clear_stale_run(run_dir: Path) -> None:
