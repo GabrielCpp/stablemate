@@ -55,3 +55,27 @@ def test_the_ps_path_reports_a_finished_child_gone(monkeypatch: pytest.MonkeyPat
     child.wait()
     assert not proc.pid_alive(child.pid)
     assert proc.pid_start_token(child.pid) == ""
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the walk reads ps")
+def test_descendants_list_a_grandchild_before_its_parent() -> None:
+    script = "import subprocess, sys, time; c = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); print(c.pid, flush=True); time.sleep(60)"
+    with subprocess.Popen([sys.executable, "-c", script], stdout=subprocess.PIPE, text=True) as child:
+        try:
+            assert child.stdout is not None
+            grandchild = int(child.stdout.readline())
+            below = proc.pid_descendants(os.getpid())
+            assert grandchild in proc.pid_descendants(child.pid)
+            assert below.index(grandchild) < below.index(child.pid)
+        finally:
+            for pid in [*proc.pid_descendants(child.pid), child.pid]:
+                try:
+                    os.kill(pid, 9)
+                except ProcessLookupError:
+                    pass
+
+
+def test_a_finished_pid_has_no_descendants() -> None:
+    child = subprocess.Popen([sys.executable, "-c", "pass"])
+    child.wait()
+    assert proc.pid_descendants(child.pid) == []

@@ -1,4 +1,4 @@
-"""Whether a process runs on this host and which process a pid names, on Linux, macOS, BSD and Windows."""
+"""Whether a process runs on this host, which process a pid names and which processes it started, on Linux, macOS, BSD and Windows."""
 
 from __future__ import annotations
 
@@ -117,3 +117,27 @@ def pid_start_token(pid: int) -> str:
         fields = _linux_stat(pid)
         return fields[19] if fields and len(fields) > 19 else ""
     return _ps("lstart", pid) or ""
+
+
+def pid_descendants(pid: int) -> list[int]:
+    """Every live process below *pid*, deepest first; empty on Windows, which keeps no parent links worth walking."""
+    if pid <= 0 or _platform() == "win32":
+        return []
+    try:
+        done = subprocess.run(["ps", "-A", "-o", "pid=,ppid="], capture_output=True, text=True, check=False)
+    except OSError:
+        return []
+    children: dict[int, list[int]] = {}
+    for line in done.stdout.splitlines():
+        fields = line.split()
+        if len(fields) == 2 and fields[0].isdigit() and fields[1].isdigit():
+            children.setdefault(int(fields[1]), []).append(int(fields[0]))
+    found: list[int] = []
+
+    def walk(parent: int) -> None:
+        for child in children.get(parent, []):
+            walk(child)
+            found.append(child)
+
+    walk(pid)
+    return found

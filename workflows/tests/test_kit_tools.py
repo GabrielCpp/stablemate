@@ -46,3 +46,10 @@ def test_a_tool_past_its_limit_is_killed_with_the_child_it_started() -> None:
     finally:
         if _alive(child):
             os.kill(child, signal.SIGKILL)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="process groups are POSIX")
+def test_a_timed_tool_stays_in_the_callers_process_group() -> None:
+    done = run_tool([sys.executable, "-c", "import os; print(os.getpgrp())"], timeout=30)
+
+    assert int(done.stdout) == os.getpgrp()

@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from workhorse._vendor.stablemate_core import proc
 from workhorse_workflows.kit import leased_env
 
 
@@ -21,7 +22,7 @@ def run_tool(
     env: dict[str, str] | None = None,
     timeout: float | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    """Run an external CLI tool as a subprocess and return the completed process. With a `timeout`, a tool still running at the limit is killed with every process it started before `subprocess.TimeoutExpired` is raised. The tool and everything it starts run in a process group of their own."""
+    """Run an external CLI tool as a subprocess and return the completed process. With a `timeout`, a tool still running at the limit is killed with every process it started before `subprocess.TimeoutExpired` is raised. The tool stays in the caller's process group, so a stop of the run still reaches it."""
     if timeout is None:
         result = subprocess.run(
             argv,
@@ -46,7 +47,7 @@ def run_tool(
 def _run_limited(
     argv: list[str], cwd: str | Path | None, env: dict[str, str] | None, timeout: float
 ) -> subprocess.CompletedProcess[str]:
-    with spawn_grouped(
+    with subprocess.Popen(
         argv,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -57,10 +58,19 @@ def _run_limited(
         try:
             stdout, stderr = process.communicate(timeout=timeout)
         except subprocess.TimeoutExpired:
-            kill_group(process)
+            _kill_tree(process)
             stdout, stderr = process.communicate()
             raise subprocess.TimeoutExpired(argv, timeout, output=stdout, stderr=stderr) from None
         return subprocess.CompletedProcess(argv, process.returncode, stdout, stderr)
+
+
+def _kill_tree(process: subprocess.Popen[Any]) -> None:
+    for pid in proc.pid_descendants(process.pid):
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            continue
+    process.kill()
 
 
 def spawn_grouped(argv: str | list[str], **options: Any) -> subprocess.Popen[Any]:
