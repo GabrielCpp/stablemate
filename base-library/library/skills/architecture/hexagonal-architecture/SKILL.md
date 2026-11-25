@@ -1,6 +1,6 @@
 ---
 name: hexagonal-architecture
-description: "The universal ports-and-adapters contract for any codebase, language-neutral — the domain depends on nothing; the application depends only on ports it owns; adapters implement those ports and own the infrastructure types. Covers the five obligations, the file layout they imply (port at the package root, adapters beneath, factory apart), why a deferred import is a dependency cycle rather than a style choice, and why an absent collaborator is a null adapter rather than a nullable reference. Load for any service, app, or library with a domain worth protecting; code-structure covers structure inside a ring, and a stack skill (go-architecture, flutter-architecture, kmp-architecture, python-architecture, typescript-architecture) supplies the concrete mechanics. Applies to **/*.go,**/*.dart,**/*.kt,**/*.ts,**/*.py."
+description: "Ports-and-adapters contract for any language: the domain depends on nothing, adapters own infrastructure. Load when adding a service, module, adapter or dependency, or when an import crosses layers or a collaborator may be absent."
 applyTo: "**/*.go,**/*.dart,**/*.kt,**/*.ts,**/*.py"
 tags: [standards]
 ---

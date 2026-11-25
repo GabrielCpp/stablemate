@@ -1,6 +1,6 @@
 ---
 name: workhorse-workflows-author-session
-description: "Authoring a milestone's epics and stories live in a session with its owner, as the interactive alternative to the Author workflow: an epic split in coding order, vertical slices per epic, a stateful mockup per story, story prose a coder run can build unattended, and a fresh reader per epic. Ends in the same artifacts Author writes. Load when the owner wants to author an approved milestone by hand, when asked to split a milestone into epics or stories in conversation, or when a run of the Author workflow would cost more than the owner's attention. For writing the milestone itself, load workhorse-workflows-milestone."
+description: "Authoring a milestone's epics and stories live with its owner instead of running Author. Load when the owner wants to author an approved milestone by hand or split a milestone into epics or stories in conversation."
 tags: [planning, docs]
 ---
 

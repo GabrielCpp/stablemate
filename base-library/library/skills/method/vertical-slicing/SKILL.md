@@ -1,6 +1,6 @@
 ---
 name: vertical-slicing
-description: "Tracer-bullet slicing of work into stories: the first story is a walking skeleton, the thinnest end-to-end path through every layer, observable in the running system. Every later story widens that path, and no story is a horizontal layer. Load when splitting an epic into stories, when ordering the work of a design into slices, or when reviewing a split."
+description: "Tracer-bullet slicing into stories: a walking skeleton first, then each story widens the end-to-end path. Load when splitting an epic into stories, ordering a design's work into slices, or reviewing a split."
 tags: [planning]
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: ostler-repo-docs
-description: "How to write and maintain a repo's prose entry surface — CLAUDE.md (root and nested), README.md, and <package>/docs/*.md: the admission test that decides what earns a slot in every-turn agent context, the root/nested/skill/README/docs placement table, why `@`-imports are not splitting, and the README-outgrew-itself refactor (extract whole sections into <package>/docs/<TOPIC>.md, leave a summary plus an absolute link). Load when creating or editing a CLAUDE.md or README.md, when adding a rule an agent keeps getting wrong, when a file has outgrown its budget, or when a change makes an existing instruction stale. Not for the service book under services/** — that is ostler-book's."
+description: "Writing a repo's CLAUDE.md, README.md and docs/: what earns always-loaded context and where each rule belongs. Load when editing a CLAUDE.md or README, adding a rule agents keep missing, or when a file outgrew its budget."
 tags: [standards, docs]
 ---
 

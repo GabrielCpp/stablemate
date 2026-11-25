@@ -1,6 +1,6 @@
 ---
 name: ostler-cli
-description: "Drive the ostler tool: a repo's planning graph of epics, stories, seeds, the register, short handles and id allocation, templates, the QA run of a hand-written qa_plan.py, local stacks with `ostler env`, and the CLI command interface AND the `from ostler import Ostler` Python API workflow scripts use in-process. Load it to read or change the planning graph, to run or repair a QA plan, to bring up a stack, or to call ostler from a workflow node. The service book under services/ is written with ostler-book."
+description: "Driving ostler: the planning graph of epics and stories, QA plans, local stacks via `ostler env`, and the Python API for workflow nodes. Load to read or change the planning graph, run a QA plan, bring up a stack, or call ostler."
 tags: [cli, python, docs]
 commit_checks:
   - run: scripts/check_staged_files.py

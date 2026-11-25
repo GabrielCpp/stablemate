@@ -1,6 +1,6 @@
 ---
 name: ui-design-system
-description: "How to create (bootstrap) a design system from a reference design — palette, typography, spacing, radii, shadows, and motion captured as named, traceable tokens and wired into the app theme. Applies to **/*theme*.ts,**/*theme*.tsx,**/*theme*.dart,**/*Theme*.kt,**/designsystem/**,**/theme/**,**/design_system.dart,**/root.tsx."
+description: "Bootstrapping a design system from a reference design: palette, type, spacing, radii, shadows and motion as named tokens wired into the theme. Load when creating or extending an app's theme or design tokens."
 applyTo: "**/*theme*.ts,**/*theme*.tsx,**/*theme*.dart,**/*Theme*.kt,**/designsystem/**,**/theme/**,**/design_system.dart,**/root.tsx"
 tags: [standards]
 ---

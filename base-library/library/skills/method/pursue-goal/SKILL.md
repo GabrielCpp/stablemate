@@ -1,6 +1,6 @@
 ---
 name: pursue-goal
-description: "Load when handed a goal to pursue without the operator, when told to make a process better, faster, cheaper or more reliable, to 'reassess until we land on' something, or to show 'where I sit compared to my goal', when a track just closed and the next step is unclear, or when a goal directory is resumed. Pursues a goal that is an aspiration and not a figure, as a loop: the problem and the operator's own use cases kept in their words and reread at every reading, its dimensions inferred and put to the operator in priority order before any run, the record already paid for read first, one cause question from the dominant loss, tracks worked one at a time under a spending ceiling, then the goal judged again on the operator's benchmark across every dimension. For the cause of one effect, load isolating-causes; for a mechanism that does not exist yet, load explore-then-improve; for waste in one that does, load self-improve."
+description: "Load when handed a goal to pursue without the operator, told to make a process better, faster, cheaper or more reliable, asked where I sit against a goal, or resuming a goal directory. Works tracks under a spend cap."
 argument-hint: "[the problem and the use cases, in the operator's words]"
 tags: [process]
 ---

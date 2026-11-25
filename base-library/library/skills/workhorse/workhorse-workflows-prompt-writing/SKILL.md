@@ -1,6 +1,6 @@
 ---
 name: workhorse-workflows-prompt-writing
-description: "Writing the prompt a workhorse turn dispatches — the four mechanics a section may serve (aim, inlined inputs, enforced binding rules, a rendered output contract), one prompt file per aim instead of mode variables, what never belongs in a prompt (commit protocol, skill menus, facts the cwd answers, defenses against upstream-prevented states), and the workflow-engineer audit that decides whether a section lives. Load when writing or reviewing a `prompts/*.md` under a workflow distribution, or when a prompt has grown sections nobody can tie to a check. For the node/state Python, load workhorse-engine; for general writing craft, farrier-skills-writing."
+description: "Writing the prompt a workhorse turn sends: aim, inlined inputs, binding rules, output contract, one file per aim. Load when writing or reviewing a workflow's prompts/*.md, or when a prompt grew sections no check needs."
 applyTo: "**/workhorse_workflows/**/prompts/*.md"
 tags: [standards, docs]
 ---

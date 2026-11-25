@@ -1,6 +1,6 @@
 ---
 name: workhorse-workflows-milestone
-description: "Writing the milestone folder consumed by the Workhorse Author workflow: one durable release contract in `milestone.md` inside the folder `ostler path milestone <slug>` prints, its grill records, mockups and design links, and the ready gate Author enforces. Load when creating or reviewing a milestone, grilling one, or deciding whether a proposed milestone is ready for Author."
+description: "Writing the milestone folder the workhorse Author workflow reads: milestone.md, grill records, mockups and the ready gate. Load when creating, converting, reviewing or grilling a milestone, or judging if one is ready for Author."
 applyTo: "**/products/*/milestones/*/milestone.md"
 tags: [planning, docs]
 ---

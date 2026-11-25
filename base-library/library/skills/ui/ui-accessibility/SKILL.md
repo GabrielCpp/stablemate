@@ -1,6 +1,6 @@
 ---
 name: ui-accessibility
-description: "The universal accessibility contract for any UI, framework-neutral — every interactive element carries a role, an accessible name, and keyboard operability; focus is always deliberate; state is perceivable without sight; contrast meets WCAG AA. Load for any screen/GUI work; a framework skill (react-router-a11y, python-htmx-accessibility, flutter-a11y, react-native-a11y, kmp-a11y) supplies the concrete mechanics. Applies to **/*.tsx,**/*.jsx,**/*.dart,**/*.kt,**/*.html,**/templates/**,**/assets/**/*.js."
+description: "Accessibility contract for any UI: role, accessible name and keyboard use on every control, deliberate focus, state perceivable without sight, WCAG AA contrast. Load for any screen or GUI work."
 applyTo: "**/*.tsx,**/*.jsx,**/*.dart,**/*.kt,**/*.html,**/templates/**,**/assets/**/*.js"
 tags: [standards]
 ---

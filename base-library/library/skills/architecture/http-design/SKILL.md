@@ -1,6 +1,6 @@
 ---
 name: http-design
-description: "The stack-neutral contract for designing an HTTP API — operate on resources, never verbs; no request body in GET or DELETE; how to model actions that are not CRUD (a cache refresh, a send, a retry) as sub-resources instead of RPC verbs; batch requests as an explicit collection operation; ordering, pagination and searching as query-string contracts on collections and sub-collections; status codes that say what happened rather than 200-with-an-error-body. OpenAPI-first where the repo carries a contract file: the spec is edited before the handler. Load when adding or changing any HTTP endpoint; hexagonal-architecture governs where the handler sits (an adapter), this governs the shape of the surface it exposes."
+description: "HTTP API contract: resources not verbs, non-CRUD actions as sub-resources, batch, pagination and search as query contracts, honest status codes, OpenAPI first. Load when adding or changing any HTTP endpoint."
 applyTo: "**/*.go,**/*.py,**/*.ts,**/*.php,**/openapi*.yml,**/openapi*.yaml,**/openapi*.json"
 tags: [standards]
 ---

@@ -1,6 +1,6 @@
 ---
 name: ui-context-ownership
-description: "The ownership contract for UI code, framework-neutral: a response written into a context the user already left, a write session racing a context switch, state read after an await, a lock split across several flags, a component holding or moving a node it does not render, a teardown that throws, a repeated list key, a selection stored as a copied object. Load when writing or reviewing an async handler, a fetch fired by navigation or a selection change, an edit-then-save flow, a dialog that starts a write, a portal or any code that moves a node, an element ref, a cleanup hook, a keyed list, or a selection held in state. The testing-component skill proves these rules in tests. Applies to UI source files."
+description: "UI ownership contract: stale responses, state read after await, split locks, moved nodes, throwing teardowns, list keys. Load when writing or reviewing an async handler, a navigation fetch, an edit-then-save flow or a cleanup hook."
 applyTo: "**/*.tsx,**/*.jsx,**/*.ts,**/*.svelte,**/*.vue,**/*.dart,**/*.kt"
 tags: [standards]
 ---

@@ -1,6 +1,6 @@
 ---
 name: behaviour-model
-description: "Writing the behaviour model of a unit of work before its plan: one file beside the description that names every record the work touches, every action that reaches one, and a state × action matrix whose every cell is a next state with its observable effects, a refusal, a no-op or an impossibility, so the condition no fixture arranges becomes a cell the plan cannot skip. The model is the source of the checks that judge the build, written by an author who did not write the plan, and an empty or unnamed cell is a finding. Load after the questions about a description are settled and before its plan is written, when a build passed its tests and still violated the intent somewhere nobody looked, when deriving the checks or the fixtures that judge a build, or when asked what a thing does in every situation. For the questions themselves, load grill; for the design the model constrains, load decompose."
+description: "Behaviour model of a unit of work: records, actions and a state x action matrix with every cell decided. Load before writing a plan, when deriving checks or fixtures, or when a build passed tests yet broke intent."
 tags: [planning, testing]
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: explore-then-improve
-description: "Finding a mechanism for a goal when no stage of the current process is the problem: a field of framings and candidate mechanisms, each gated on paper against the goal's dimensions and against construction before any build; the survivor built as a prototype, the thinnest end-to-end run that does the job once; the prototype judged against every dimension the caller handed over, its cost per stage measured or assumed; a candidate that dies on paper or in build written to TRIED.md with its reason. Load when a goal has no mechanism yet, when a profile has no dominant problem or its top items sit at their roof, when a prototype has to be built, or when the same stage has been fixed three times and the goal stands. For removing waste from a mechanism that already works, load self-improve."
+description: "Load when a goal has no mechanism yet, a profile has no dominant problem, a prototype must be built, or one stage was fixed three times and the goal stands. Gates candidates on paper, then builds the thinnest one."
 argument-hint: "[the goal, and the dimensions a mechanism must serve]"
 tags: [research, process]
 ---

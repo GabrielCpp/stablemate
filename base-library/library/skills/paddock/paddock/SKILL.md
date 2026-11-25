@@ -1,6 +1,6 @@
 ---
 name: paddock
-description: "paddock: the benchmark harness for measuring your workhorse workflows on your own data. It copies a benchmark's data repo, drives the real CLIs against the copy, scores it when the task brought a ruler, and writes the run down as a result folder. Covers the benchmark root (`paddock_dir`), adding a benchmark, writing its tasks.py with the public task API (`task`, `@step`, `@score`, config override, inputs, the `paddock.tasks` helpers), running a task, reading a result's ledger, score and caveats, comparing runs by their name axes, isolating a book run in the sandbox, and cleaning up after a killed run. Load when asked to benchmark, measure or compare a workflow, add or edit a benchmark or a task, run one, read or compare a result, sandbox a book run, or when a run was killed from outside."
+description: "paddock, the benchmark harness for workhorse workflows on your data. Load when asked to benchmark, measure or compare a workflow, add or run a benchmark task, read a result, sandbox a book run, or clean up a killed run."
 tags: [cli, tests, benchmark]
 ---
 

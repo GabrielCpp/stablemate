@@ -1,6 +1,6 @@
 ---
 name: testing-component
-description: "The component test contract for any UI, framework-neutral: the line between a component test and an end-to-end spec drawn by the defect each one can see, a screen's state matrix proven at component level, a component designed so the test decides the order async answers arrive, held answers in place of delays, and the absence assertion that passes before anything happened. Load when writing or reviewing a component, widget or screen test, when deciding which layer a UI test belongs in, when designing a component that fetches or subscribes, or when a UI test races. Applies to UI test files."
+description: "Component test contract for any UI: what a component test sees versus an e2e spec, state matrices, test-controlled async order. Load when writing or reviewing a component or screen test, or when a UI test races."
 applyTo: "**/*.test.tsx,**/*.test.jsx,**/*_test.dart,**/*Test.kt"
 tags: [standards, tests]
 ---

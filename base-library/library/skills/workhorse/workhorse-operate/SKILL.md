@@ -1,6 +1,6 @@
 ---
 name: workhorse-operate
-description: "Load before you launch a workhorse run, or a benchmark or script that launches one, and whenever a turn is about to wait on a run, asked for or as one step of a larger goal. Also load when asked to watch, monitor, attend, reload, restart, rewind, resume, switch, answer, poke or find a run, including one named from the groom dashboard. Start `groom serve` before a launch, and attend through the groom feed, whose half-hourly digest wakes the session even when the run is quiet (`/feed` in the Monitor tool, `groom feed`, `groom wait`), never by tailing a log or waiting on a process. Then list the runs groom sees, resolve one to its `workflow` and `run_dir`, and `control` it over its socket: `status`, `reload`, `switch-cli`, `switch-profile`, `questions`/`answer`, `inbox read`/`reply`. Repair a stopped one with `stop --wait`, `status --params`, `rewind --to STATE` and `resume [CLI]`. Why a run is stuck is groom-telemetry; writing nodes is workhorse-engine."
+description: "Load before launching a workhorse run or a script that launches one, before waiting on a run, or when asked to watch, reload, restart, rewind, resume, switch, answer or find one. Attends through the groom feed."
 tags: [cli]
 ---
 

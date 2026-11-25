@@ -1,6 +1,6 @@
 ---
 name: farrier-setup
-description: "Farrier setup guide — install, configure library, write agents.yml, scaffold new services with `farrier scaffold`, bind skills to local CLAUDE.md files via localInstructions."
+description: "Farrier setup: install, point at a library, write agents.yml, scaffold a service with `farrier scaffold`, bind skills to local CLAUDE.md files. Load when setting up farrier in a repo or on a machine."
 tags: [codegen]
 ---
 

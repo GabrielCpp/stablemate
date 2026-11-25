@@ -1,6 +1,6 @@
 ---
 name: saddlebag
-description: "saddlebag: where the password, token or TOTP for a test login lives. Load it before you type a password, search seed, fixture or config files for test credentials, ask the user for a login, read a `.env` to sign in, or change a value in a `.env`. Covers `fill`, `type`, `exec`, the `env` verbs, `import`, the `secrets: saddlebag:` source in a stack.yml, the PreToolUse guard and registering a secret. Also load when a command needs a password or token in its environment, when the guard denied a tool call, when a stack.yml names saddlebag, or when a saddlebag command fails."
+description: "saddlebag holds test logins, tokens and TOTP. Load before typing a password, hunting test credentials, asking for a login, reading or changing a `.env`, when a command needs a secret, or when its guard denied a call."
 tags: [cli, tests, qa]
 ---
 

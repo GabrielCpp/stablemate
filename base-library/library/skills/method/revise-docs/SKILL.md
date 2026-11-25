@@ -1,6 +1,6 @@
 ---
 name: revise-docs
-description: "Revising a document written for readers outside the code, such as a README, an install guide or a user-facing page, in two passes: every checkable claim verified against the source of truth, then every detail the reader does not act on inventoried and cut, with a link left where the material lives elsewhere. Load when asked to make a document truthful, to trim or tighten one, to inventory what it states, or before publishing a document that has drifted from what it describes."
+description: "Load when asked to make a README, guide or user-facing page truthful, to trim or tighten it, or before publishing a drifted document. Verifies every claim against the source, then cuts what the reader does not use."
 tags: [docs, review]
 ---
 

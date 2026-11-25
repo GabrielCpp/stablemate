@@ -1,6 +1,6 @@
 ---
 name: brainstorm
-description: "Load when asked 'what are my options', 'what lever can we pull', 'is there a possibility to', 'propose and explain options', 'how could we', or 'I would like to refactor X', when a problem has no plan yet, when the first idea is about to become the plan, or when another skill needs a field of candidates. Grounds in what the repository already holds, diverges by changing the axis instead of refining one idea, then converges to a ranked shortlist of 3 to 6 with each option's main tradeoff. For stress-testing a plan that already exists, load grill."
+description: "Load when asked 'what are my options', 'how could we', 'propose options', or to refactor X, or when a problem has no plan yet. Diverges on the repo's facts and converges to a ranked shortlist with tradeoffs."
 argument-hint: "[the problem, question or space to generate options for]"
 tags: [brainstorm]
 ---

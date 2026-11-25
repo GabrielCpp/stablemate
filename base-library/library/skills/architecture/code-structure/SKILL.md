@@ -1,6 +1,6 @@
 ---
 name: code-structure
-description: "Language-neutral rules for where code lives inside one layer: when functions become an object, when a module splits, where configuration, environment facts and side effects may appear, when a branch chain is a table, and which assumptions must raise. Each rule has a trigger a reader or a grep can detect. Load when choosing between a function and a class, adding a second way to do something the code already does, growing a parameter list or a module, adding a setting or a file path, reading a value another stage fills, extracting code two separately built services share, or reviewing structure. hexagonal-architecture covers the boundaries between layers. Applies to **/*.go,**/*.dart,**/*.kt,**/*.ts,**/*.tsx,**/*.py."
+description: "Where code lives inside one layer. Load when choosing a function or a class, adding a second way to do something, growing a parameter list or module, adding a setting or file path, sharing code between services, or reviewing structure."
 applyTo: "**/*.go,**/*.dart,**/*.kt,**/*.ts,**/*.tsx,**/*.py"
 tags: [standards]
 commit_checks:

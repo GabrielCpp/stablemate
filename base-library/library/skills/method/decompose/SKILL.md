@@ -1,6 +1,6 @@
 ---
 name: decompose
-description: "Load when asked to design or decompose something, to 'suggest how to' build it, told 'we need a mechanism to' or that something 'must be split', when the ideas so far do not address the problem, before a feature, a new step or module, a change that crosses two modules or adds a concept, or a second way to do something the system already does (an alternative algorithm, a mode, a switch between two behaviours, an experiment promoted to production). Divides the problem top-down before any code: the problem in domain terms, a few top-level parts, concepts with what each owns and must never know, each pattern derived from a named force, and only then the map onto the existing system. Extracts the problem first from an as-built spec or a rebuild request. Records its assumptions, writes a design note and stops for approval. For options with no plan yet, load brainstorm. For a repo-wide restructuring, load target-architecture."
+description: "Load when asked to design something, to 'suggest how to' build it, told 'we need a mechanism to', or before a feature, module, cross-module change or second way to do something. Splits the problem top-down into owned concepts."
 argument-hint: "[the problem to decompose]"
 tags: [design, planning]
 ---

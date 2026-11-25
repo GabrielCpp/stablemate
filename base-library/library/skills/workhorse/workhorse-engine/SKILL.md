@@ -1,6 +1,6 @@
 ---
 name: workhorse-engine
-description: "Writing workhorse workflow nodes — the @blueprint.node contract, typed returns, WorkflowFailed routing, the kit git/GitHub/workspace helpers, the in-process ostler facade, and substitution-based testing. Applies to a workflow distribution's Python."
+description: "Writing workhorse workflow nodes: the @blueprint.node contract, typed returns, WorkflowFailed routing, kit helpers, the ostler facade and substitution tests. Load when writing or testing a workflow distribution's Python."
 applyTo: "**/workhorse_workflows/**/*.py, **/nodes/**/*.py, **/flow.py, **/workflow.py"
 tags: [backend, standards, tests]
 ---

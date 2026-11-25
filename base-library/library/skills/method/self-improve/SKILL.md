@@ -1,6 +1,6 @@
 ---
 name: self-improve
-description: "Running a continuous improvement loop beside a process that delivers units, as a loop an agent tends from a feed or as the way a goal's track is worked. Each cycle holds the last unit against its ideal path, one pass per stage with no retry, no hand step and no dead time, profiles the gap by stage and waste kind with each item's reach and roof, ranks the waste by its cost on every unit left, takes one problem under a cap, finds its cause as a construct of the workflow or its producer, sorts it as execution or design, lands the smallest fix at the cause, reads it through the cheapest instrument, and grades it held, missed or released. Load when tending a run from a feed and about to acknowledge a notification, when a unit was just delivered, when asked whether a process wastes or converges, or when a run looks normal because nothing said otherwise. For a question with no mechanism yet, load explore-then-improve."
+description: "Load when tending a run from a feed, when a unit was just delivered, or when asked whether a process wastes or converges. Profiles the last unit against its ideal path and lands the smallest fix at the top waste's cause."
 tags: [review, process]
 ---
 

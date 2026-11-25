@@ -1,6 +1,6 @@
 ---
 name: vet-proposal
-description: "Load when asked 'why do we need X at all', 'do we need this', 'what is your proposal doing for the reader', or told to vet or drop an item, when starting an item you added to a plan yourself, when extending a plan to reach a goal, filtering proposed improvements, deciding what an agent may add on its own, about to reject a proposal by citing something the code already does, about to add a flag, field, key, kind or state to a format, or about to limit a new rule to the kind where its first example sat. Judges whether a change, or a thing that already exists, deserves to: goal-fit and design-fit asked as separate passes, a beneficiary named, a new carrier traced back to the variable it stands for, and a cited constraint priced instead of treated as a veto. Reads the project's constitution if it has one. For whether a fix reaches a defect's origin, load root-cause."
+description: "Load when asked 'do we need X at all', told to vet or drop an item, when starting a plan item you added yourself, filtering improvements, or adding a flag, field, kind or state to a format. Judges goal-fit and design-fit."
 tags: [standards, review]
 ---
 

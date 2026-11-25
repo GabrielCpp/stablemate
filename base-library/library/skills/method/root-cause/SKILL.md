@@ -1,6 +1,6 @@
 ---
 name: root-cause
-description: "Load when told to fix at the root cause and not patch over the symptom ('get to the root cause', 'don't patch over', 'fix the whole and not just this defect', 'it will come back in a new form'), when about to add or extend a waiver, retry, sleep, default, fallback, skip, broader except, null check or IOU, when a loop converges only with an exception list, when reviewing a diff that clears a failure, or when reporting a phase complete with a workaround inside it. Judges whether a fix reaches the defect's origin, with no knowledge of the domain: a why-chain written per fix before the edit, asked again on the prevention until the answer is a core property of the problem, the stop test for that property, the shape tests that reject a story on its form, and what a hatch carries when taken. While the cause itself is still unknown, load isolating-causes first."
+description: "Load when told to fix at the root and not patch the symptom, when about to add a retry, sleep, fallback, skip, waiver or broad except, or when reviewing a fix that clears a failure. Judges whether a fix reaches the origin."
 tags: [standards, review]
 ---
 

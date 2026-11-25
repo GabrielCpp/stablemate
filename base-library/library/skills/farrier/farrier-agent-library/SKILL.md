@@ -1,6 +1,6 @@
 ---
 name: farrier-agent-library
-description: "Agent Library Maintenance & Install. Applies to agents.yml,.agents/**,agents/library/**,agents/packs/**,agents/scaffolds/**."
+description: "Agent library plumbing: library layout, packs, agents.yml selection and reinstalling generated skills. Load when adding or moving a skill, prompt or pack, editing agents.yml, or when a generated copy drifts."
 applyTo: 'agents.yml,.agents/**,agents/library/**,agents/packs/**,agents/scaffolds/**'
 tags: [codegen]
 ---
