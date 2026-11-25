@@ -7,7 +7,7 @@ import pytest
 import yaml
 
 from _guard_bridge_support import add_guard, read_hooks, run_hook
-from home_install import add_search_server, install
+from home_install import add_search_server, add_settings, add_skill_pair, install, seed
 from farrier.antigravity_bridge import ANTIGRAVITY_BRIDGE
 from farrier._vendor.stablemate_core.harness import workhorse_harnesses
 
@@ -39,15 +39,7 @@ def test_the_workhorse_never_offers_antigravity() -> None:
 def test_a_skill_lands_in_the_gemini_config_with_slash_references(
     home: Path, library: Path
 ) -> None:
-    skills = library / "library" / "skills" / "general"
-    skills.mkdir(parents=True)
-    (skills / "review.md").write_text(
-        "---\nname: review\ndescription: Review.\n---\n\nReview.\n", encoding="utf-8"
-    )
-    (skills / "ship.md").write_text(
-        "---\nname: ship\ndescription: Ship.\n---\n\nThen {{ skill_command('review') }}.\n",
-        encoding="utf-8",
-    )
+    add_skill_pair(library)
     config = '[user_library.antigravity]\nskills = ["general/ship", "general/review"]\n'
     assert install(home, library, config) == 0
     shipped = (home / ".gemini/config/skills/ship/SKILL.md").read_text(encoding="utf-8")
@@ -77,9 +69,7 @@ def test_a_server_lands_in_the_mcp_file_and_the_operators_servers_stay(
     home: Path, library: Path
 ) -> None:
     add_search_server(library)
-    mine = home / ".gemini/config/mcp_config.json"
-    mine.parent.mkdir(parents=True)
-    mine.write_text('{"mcpServers": {"mine": {"command": "tool"}}}\n', encoding="utf-8")
+    mine = seed(home / ".gemini/config/mcp_config.json", '{"mcpServers": {"mine": {"command": "tool"}}}\n')
     config = '[user_library.antigravity]\nmcp = ["search"]\n'
     assert install(home, library, config) == 0
     assert json.loads(mine.read_text(encoding="utf-8"))["mcpServers"] == {
@@ -90,12 +80,8 @@ def test_a_server_lands_in_the_mcp_file_and_the_operators_servers_stay(
 
 
 def test_settings_merge_and_the_operators_keys_stay(home: Path, library: Path) -> None:
-    settings = library / "library" / "settings"
-    settings.mkdir(parents=True)
-    (settings / "prefs.json").write_text('{"banner": "never"}\n', encoding="utf-8")
-    mine = home / ".gemini/antigravity-cli/settings.json"
-    mine.parent.mkdir(parents=True)
-    mine.write_text('{"theme": "dim"}\n', encoding="utf-8")
+    add_settings(library, '{"banner": "never"}\n')
+    mine = seed(home / ".gemini/antigravity-cli/settings.json", '{"theme": "dim"}\n')
     config = '[user_library.antigravity]\nsettings = ["prefs"]\n'
     assert install(home, library, config) == 0
     assert json.loads(mine.read_text(encoding="utf-8")) == {
@@ -108,9 +94,7 @@ def test_settings_merge_and_the_operators_keys_stay(home: Path, library: Path) -
 def test_a_settings_entry_with_hooks_is_refused_and_points_at_guards(
     home: Path, library: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    settings = library / "library" / "settings"
-    settings.mkdir(parents=True)
-    (settings / "prefs.json").write_text('{"hooks": {}}\n', encoding="utf-8")
+    add_settings(library, '{"hooks": {}}\n')
     with pytest.raises(SystemExit) as refused:
         install(home, library, '[user_library.antigravity]\nsettings = ["prefs"]\n')
     assert "library/hooks guards" in str(refused.value)

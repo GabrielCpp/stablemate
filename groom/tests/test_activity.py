@@ -49,6 +49,27 @@ def test_a_claude_record_keeps_the_messages_and_pairs_each_tool_with_its_result(
     assert tool["summary"] == "plan.md" and tool["result"] == "ten lines" and tool["failed"] is True
 
 
+def test_a_pi_session_keeps_the_messages_and_pairs_each_tool_with_its_result(tmp_path: Path) -> None:
+    def entry(offset: float, message: dict) -> dict:
+        return {"type": "message", "timestamp": _iso(offset), "message": message}
+
+    path = _write(tmp_path / "t.jsonl", [
+        {"type": "session", "id": "abc", "timestamp": _iso(0)},
+        entry(1, {"role": "user", "content": "do the thing"}),
+        entry(2, {"role": "assistant", "content": [
+            {"type": "thinking", "thinking": "plan first"},
+            {"type": "text", "text": "Reading the plan."},
+            {"type": "toolCall", "id": "a", "name": "read", "arguments": {"path": "plan.md"}},
+        ]}),
+        entry(3, {"role": "toolResult", "toolCallId": "a", "toolName": "read", "content": [{"type": "text", "text": "ten lines"}], "isError": True}),
+    ])
+    entries = transcript_parse.read_files({"transcript.jsonl": path})
+    assert entries is not None
+    kinds = [(item["kind"], item.get("role") or item.get("name")) for item in entries]
+    assert kinds == [("message", "user"), ("message", "assistant"), ("message", "thought"), ("tool", "read")]
+    assert entries[3]["result"] == "ten lines" and entries[3]["failed"] is True
+
+
 CAPTURED = Path(__file__).parent / "fixtures" / "claude_turn_record"
 CAPTURED_SHAPE = [("message", "user"), ("tool", "Read"), ("tool", "Grep"), ("message", "assistant")]
 

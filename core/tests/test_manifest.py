@@ -71,6 +71,7 @@ def test_the_agents_list_form_enables_exactly_those_harnesses():
         "claude": True,
         "copilot": False,
         "antigravity": False,
+        "pi": False,
     }
 
 

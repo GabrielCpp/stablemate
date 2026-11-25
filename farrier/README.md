@@ -108,6 +108,12 @@ Farrier never writes `opencode.jsonc`, and a server it holds under the same name
 value stops the install. OpenCode reads skills from `~/.claude/skills`, so farrier writes none
 for it and a pack's skills are left out.
 
+A `[user_library.pi]` table takes `skills`, `roots`, `mcp`, `hooks` and `settings`. Skills land in
+`~/.agents/skills`, shared with Codex and Copilot, and rules in `~/.pi/agent/AGENTS.md`. Servers go
+to `~/.pi/agent/mcp.json`, settings to `~/.pi/agent/settings.json`, and guards through a generated
+extension, `~/.pi/agent/extensions/farrier-guards.ts`. Pi has no helper agents and no home prompts,
+and a `done` guard must name `pi` in `not_on`.
+
 Pass both, `farrier install --repo . --user`, to refresh the home right after the repo
 from the same library. A repo install never touches the home on its own, so a worktree
 on an older branch cannot overwrite the skills your main checkout installed there.

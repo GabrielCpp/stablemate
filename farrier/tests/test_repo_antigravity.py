@@ -5,40 +5,7 @@ from pathlib import Path
 import pytest
 
 from farrier.agents import parse_agents
-from farrier.install import main
-
-
-def make_library(tmp_path: Path) -> Path:
-    library = tmp_path / "agents"
-    skills = library / "library" / "skills"
-    skills.mkdir(parents=True)
-    (skills / "review.md").write_text(
-        "---\nname: review\ndescription: Review.\n---\n\nReview.\n", encoding="utf-8"
-    )
-    (skills / "ship.md").write_text(
-        "---\nname: ship\ndescription: Ship.\n---\n\nThen {{ skill_command('review') }}.\n",
-        encoding="utf-8",
-    )
-    (library / "library" / "prompts").mkdir(parents=True)
-    (library / "packs").mkdir()
-    return library
-
-
-def install(tmp_path: Path, config: str, *extra: str) -> tuple[int, Path]:
-    library = (
-        make_library(tmp_path)
-        if not (tmp_path / "agents").exists()
-        else tmp_path / "agents"
-    )
-    repo = tmp_path / "acme"
-    repo.mkdir(exist_ok=True)
-    (repo / "agents.yml").write_text(config, encoding="utf-8")
-    code = main(["install", "--repo", str(repo), "--library", str(library), *extra])
-    return code, repo
-
-
-def shipped(repo: Path) -> str:
-    return (repo / ".agents/skills/acme-ship/SKILL.md").read_text(encoding="utf-8")
+from repo_install import install, shipped
 
 
 def test_antigravity_alone_keeps_slash_references(tmp_path: Path) -> None:

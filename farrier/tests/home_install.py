@@ -49,3 +49,27 @@ def add_search_server(library: Path) -> None:
     servers = library / "library" / "mcp"
     servers.mkdir()
     (servers / "search.yml").write_text("command: ostler\nargs: [mcp]\n", encoding="utf-8")
+
+
+def add_skill_pair(library: Path) -> None:
+    skills = library / "library" / "skills" / "general"
+    skills.mkdir(parents=True)
+    (skills / "review.md").write_text(
+        "---\nname: review\ndescription: Review.\n---\n\nReview.\n", encoding="utf-8"
+    )
+    (skills / "ship.md").write_text(
+        "---\nname: ship\ndescription: Ship.\n---\n\nThen {{ skill_command('review') }}.\n",
+        encoding="utf-8",
+    )
+
+
+def add_settings(library: Path, body: str) -> None:
+    settings = library / "library" / "settings"
+    settings.mkdir(parents=True)
+    (settings / "prefs.json").write_text(body, encoding="utf-8")
+
+
+def seed(path: Path, text: str) -> Path:
+    path.parent.mkdir(parents=True)
+    path.write_text(text, encoding="utf-8")
+    return path

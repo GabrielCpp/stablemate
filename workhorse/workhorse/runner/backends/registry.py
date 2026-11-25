@@ -12,12 +12,14 @@ from workhorse.runner.backends.claude import ClaudeBackend
 from workhorse.runner.backends.codex import CodexBackend
 from workhorse.runner.backends.copilot import CopilotBackend
 from workhorse.runner.backends.opencode import OpenCodeBackend
+from workhorse.runner.backends.pi import PiBackend
 
 _REGISTRY: dict[str, type[AgentBackend]] = {
     "claude": ClaudeBackend,
     "codex": CodexBackend,
     "copilot": CopilotBackend,
     "opencode": OpenCodeBackend,
+    "pi": PiBackend,
 }
 
 _CACHE: dict[str, AgentBackend] = {}

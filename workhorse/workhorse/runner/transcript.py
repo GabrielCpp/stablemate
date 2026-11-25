@@ -46,9 +46,18 @@ def _codex_store(session_id: str) -> list[Path]:
     return [p for p in sorted(root.glob(f"*/*/*/rollout-*{session_id}.jsonl")) if p.is_file()]
 
 
+def _pi_store(session_id: str) -> list[Path]:
+    """`<pi config dir>/sessions/--<path>--/<timestamp>_<session>.jsonl`."""
+    from workhorse.runner.backends import _config_dir
+
+    root = _config_dir(".pi/agent") / "sessions"
+    return [p for p in sorted(root.glob(f"*/*_{session_id}.jsonl")) if p.is_file()]
+
+
 _STORES: dict[str, Callable[[str], list[Path]]] = {
     "claude": _claude_store,
     "codex": _codex_store,
+    "pi": _pi_store,
 }
 
 

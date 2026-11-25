@@ -204,7 +204,31 @@ ANTIGRAVITY = HarnessSpec(
     workhorse_reason="its terms of service rule out automated use",
 )
 
-HARNESSES: tuple[HarnessSpec, ...] = (CLAUDE, CODEX, COPILOT, OPENCODE, ANTIGRAVITY)
+PI = HarnessSpec(
+    name="pi",
+    title="Pi",
+    skill_ref="path",
+    repo=RepoLayout(skills=".agents/skills", prompts=".pi/prompts", prompt_suffix=".md"),
+    home=HomeLayout(dir=".agents", root_file=".pi/agent/AGENTS.md"),
+    surfaces=frozenset(
+        {
+            Surface.REPO_SKILLS,
+            Surface.REPO_PROMPTS,
+            Surface.HOME_ROOT,
+            Surface.HOME_SKILLS,
+            Surface.GUARDS,
+            Surface.MCP,
+            Surface.SETTINGS,
+        }
+    ),
+    workhorse=True,
+    config_dirs=(".pi/agent", ".agents/skills"),
+    extra_dirs=Support(Level.EMULATED, "--skill per dir, no confinement to widen"),
+    compaction=Support(Level.NATIVE, "rpc compact"),
+    transcript=Support(Level.NATIVE, "session jsonl"),
+)
+
+HARNESSES: tuple[HarnessSpec, ...] = (CLAUDE, CODEX, COPILOT, OPENCODE, ANTIGRAVITY, PI)
 RETIRED: frozenset[str] = frozenset({"cline"})
 
 

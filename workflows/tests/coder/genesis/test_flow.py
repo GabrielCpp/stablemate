@@ -165,6 +165,7 @@ def test_agents_yml_carries_the_services_block_the_planner_reads(
         "claude": True,
         "codex": False,
         "copilot": False,
+        "pi": False,
     }, data
 
     assert [c[1] for c in farrier.calls] == ["install", "scaffold", "scaffold"], farrier.calls

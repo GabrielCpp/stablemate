@@ -79,6 +79,13 @@ class Agents(Section):
         type_text="boolean or table with `skills_from`",
     )
 
+    pi: HarnessSwitch = setting(
+        False,
+        description="Render for Pi: skills into `.agents/skills`, which it shares with Codex, prompts into `.pi/prompts`, and roots into `AGENTS.md`. A table `{ skills_from: <harness> }` enables it and links its skills.",
+        examples=[False, {"skills_from": "claude"}],
+        type_text="boolean or table with `skills_from`",
+    )
+
     @model_validator(mode="after")
     def _links_resolve(self) -> Agents:
         values: dict[str, bool | AgentLink] = {name: getattr(self, name) for name in HARNESSES}

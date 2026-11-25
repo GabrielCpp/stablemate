@@ -12,7 +12,11 @@ from farrier.home_guards import GUARD_DIALECTS
 from _guard_bridge_support import add_guard, read_hooks, run_hook
 from home_install import add_search_server, install
 from farrier.renderer import USER_ROOT_FILES
-from farrier._vendor.stablemate_core.harness import home_harnesses
+from farrier._vendor.stablemate_core.harness import (
+    Surface,
+    home_harnesses,
+    with_surface,
+)
 
 PROFILES = (
     '[profiles.copilot]\ncli = "copilot"\n\n'
@@ -42,11 +46,15 @@ def tool_call(tool: str, args: dict | str) -> dict:
     }
 
 
-@pytest.mark.parametrize(
-    "table", [USER_ROOT_FILES, MCP_DIALECTS, AGENT_DIALECTS, GUARD_DIALECTS]
-)
-def test_every_harness_takes_rules_servers_agents_and_guards(table: dict) -> None:
+@pytest.mark.parametrize("table", [USER_ROOT_FILES, MCP_DIALECTS, GUARD_DIALECTS])
+def test_every_harness_takes_rules_servers_and_guards(table: dict) -> None:
     assert set(table) == {spec.name for spec in home_harnesses()}
+
+
+def test_every_harness_with_the_agents_surface_takes_helper_agents() -> None:
+    assert set(AGENT_DIALECTS) == {
+        spec.name for spec in with_surface(Surface.AGENTS) if spec.home is not None
+    }
 
 
 def test_the_rules_land_where_copilot_reads_them(home: Path, library: Path) -> None:

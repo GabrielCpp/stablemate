@@ -206,7 +206,7 @@ see above for why a skill in that position is charged twice. That is a selection
 ## `library/roots/<name>.md`: a home's always-on rules
 
 A `[user_library.claude]`, `[user_library.codex]` or `[user_library.opencode]` table takes one root
-in `roots`. It renders to `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md` or `~/.config/opencode/AGENTS.md`. Branch on `target` for wording that differs per
+in `roots`. It renders to `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md` or `~/.config/opencode/AGENTS.md`. A `[user_library.pi]` root renders to `~/.pi/agent/AGENTS.md`. Branch on `target` for wording that differs per
 harness: `{% if target == "claude" %}…{% endif %}`.
 
 ## `library/mcp/<name>.yml`: a home's MCP servers
@@ -221,12 +221,12 @@ A `[user_library.claude]`, `[user_library.codex]` or `[user_library.opencode]` t
 The folder holds `hook.yml` and the guard's scripts. The record holds `command` and `watches`, and
 optionally `timeout`, `status` and `not_on`. Farrier installs the folder into `~/.agents/hooks/<name>`,
 without `tests` or `__pycache__`, and writes one hook group into `~/.claude/settings.json` or
-`~/.codex/hooks.json`. On OpenCode a generated plugin, `~/.config/opencode/plugins/farrier-guards.ts`,
+`~/.codex/hooks.json`. On Pi a generated extension, `~/.pi/agent/extensions/farrier-guards.ts`, calls the command, and Pi servers go to `~/.pi/agent/mcp.json`. On OpenCode a generated plugin, `~/.config/opencode/plugins/farrier-guards.ts`,
 calls the command instead. `{dir}` in `command` stands for the installed folder.
 
 `when` says when the guard runs. `tool`, the default, runs it before each call of a tool it
 `watches`. `done` runs it when the agent ends its turn, as a `Stop` hook, and takes no `watches`.
-OpenCode has no such moment, so a `done` guard must name `opencode` in `not_on`.
+OpenCode and Pi have no such moment, so a `done` guard must name `opencode` and `pi` in `not_on`.
 
 ## `library/agents/<name>.md`: a home's helper agents
 

@@ -78,6 +78,7 @@ from farrier.home_agents import agent_files, agent_names
 from farrier.home_guards import (
     BRIDGE_FILE,
     COPILOT_BRIDGE,
+    PI_BRIDGE_FILE,
     COPILOT_GUARDS,
     guard_files,
     guard_names,
@@ -182,6 +183,7 @@ USER_MANAGED = Managed(
         COPILOT_GUARDS,
         ANTIGRAVITY_BRIDGE,
         ANTIGRAVITY_GUARDS,
+        PI_BRIDGE_FILE,
     ),
     (COPILOT_GUARDS, ANTIGRAVITY_GUARDS),
     repo_scaffolding=False,
@@ -461,7 +463,7 @@ def build_renderer(
 
 def local_instruction_target(agents: Agents) -> str:
     """The harness a localInstructions file renders its templates for."""
-    others = agents.get("codex") or agents.get("copilot")
+    others = agents.get("codex") or agents.get("copilot") or agents.get("pi")
     if agents.get("claude") and not (others or agents.get("antigravity")):
         return "claude"
     if agents.get("antigravity") and not others:

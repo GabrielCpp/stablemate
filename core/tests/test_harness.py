@@ -52,7 +52,7 @@ def test_the_capabilities_are_every_support_field() -> None:
 
 def test_the_manifest_names_are_the_repo_harnesses_in_registry_order() -> None:
     assert MANIFEST_HARNESSES == tuple(spec.name for spec in harness.repo_harnesses())
-    assert MANIFEST_HARNESSES == ("claude", "codex", "copilot", "antigravity")
+    assert MANIFEST_HARNESSES == ("claude", "codex", "copilot", "antigravity", "pi")
 
 
 def test_the_registry_renders_repo_harnesses_in_this_order() -> None:
@@ -61,6 +61,7 @@ def test_the_registry_renders_repo_harnesses_in_this_order() -> None:
         "codex",
         "copilot",
         "antigravity",
+        "pi",
     ]
 
 
@@ -71,6 +72,7 @@ def test_the_registry_lists_home_harnesses_in_this_order() -> None:
         "copilot",
         "opencode",
         "antigravity",
+        "pi",
     ]
 
 
@@ -80,3 +82,22 @@ def test_antigravity_is_a_farrier_target_the_workhorse_never_offers() -> None:
     assert antigravity.workhorse is False
     assert antigravity.workhorse_reason
     assert "antigravity" not in [spec.name for spec in harness.workhorse_harnesses()]
+
+
+def test_pi_shares_the_agents_skill_folder_and_compacts_through_rpc() -> None:
+    pi = harness.spec("pi")
+
+    assert pi.workhorse is True
+    assert pi.skill_ref == "path"
+    assert pi.repo is not None
+    codex = harness.spec("codex")
+    assert codex.repo is not None and codex.home is not None
+    assert pi.repo.skills == codex.repo.skills
+    assert pi.repo.prompts == ".pi/prompts"
+    assert pi.home is not None
+    assert pi.home.dir == codex.home.dir
+    assert pi.home.root_file == ".pi/agent/AGENTS.md"
+    assert Surface.AGENTS not in pi.surfaces
+    assert pi.compaction.level is harness.Level.NATIVE
+    assert pi.subagents.level is harness.Level.NONE
+    assert pi.confinement.level is harness.Level.NONE

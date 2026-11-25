@@ -23,9 +23,9 @@ ALLOWED: dict[str, tuple[str, list[str]]] = {
     "core/tests/test_harness.py": (
         "the registry's own tests pin its order",
         [
-            "antigravity, claude, codex, copilot",
-            "antigravity, claude, codex, copilot",
-            "antigravity, claude, codex, copilot, opencode",
+            "antigravity, claude, codex, copilot, pi",
+            "antigravity, claude, codex, copilot, pi",
+            "antigravity, claude, codex, copilot, opencode, pi",
         ],
     ),
     "farrier/tests/test_render_groups.py": (

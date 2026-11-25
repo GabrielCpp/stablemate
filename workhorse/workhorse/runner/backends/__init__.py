@@ -28,6 +28,8 @@ def _config_dir(directory: str) -> Path:
         return Path(os.environ["CLAUDE_CONFIG_DIR"])
     if directory == ".codex" and os.environ.get("CODEX_HOME"):
         return Path(os.environ["CODEX_HOME"])
+    if directory == ".pi/agent" and os.environ.get("PI_CODING_AGENT_DIR"):
+        return Path(os.environ["PI_CODING_AGENT_DIR"])
     if directory.startswith(".config/") and os.environ.get("XDG_CONFIG_HOME"):
         return Path(os.environ["XDG_CONFIG_HOME"]) / directory.removeprefix(".config/")
     return home / directory

@@ -192,7 +192,7 @@ paddock sandbox run --app WORKSPACE/stage/web-app --app WORKSPACE/stage/api-serv
 
 `build` makes a wheel of every workspace member and installs those wheels in the image.
 No source tree is copied in. It installs the Claude Code and opencode releases this
-machine runs, unless `--claude-code-version` or `--opencode-version` names another.
+machine runs, and the latest pi release (`npm install -g @earendil-works/pi-coding-agent`), unless `--claude-code-version` or `--opencode-version` names another.
 
 `run` mounts these paths and nothing else:
 

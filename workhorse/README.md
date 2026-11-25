@@ -3,7 +3,7 @@
 [![PyPI](https://img.shields.io/pypi/v/workhorse-agent.svg)](https://pypi.org/project/workhorse-agent/)
 
 **A fail-soft runner for agent workflows written as Python state machines — drives
-an agent CLI (Claude, Codex, Copilot or OpenCode) unattended for days.**
+an agent CLI (Claude, Codex, Copilot, OpenCode or Pi) unattended for days.**
 
 A workflow is a Python package: its states are methods that return the next state,
 its nodes are plain functions. `workhorse` drives the machine, renders Jinja2
@@ -57,8 +57,8 @@ install that distribution, and workhorse comes along as one of its dependencies.
 You also need the agent CLI you intend to
 drive on your `PATH` and authenticated — by default the [Claude
 CLI](https://docs.claude.com/en/docs/claude-code) (`claude`), authenticated via a
-Claude subscription or `claude setup-token`. `codex`, `copilot` and
-`opencode` are also supported (see
+Claude subscription or `claude setup-token`. `codex`, `copilot`,
+`opencode` and `pi` are also supported (see
 [Choosing the agent CLI backend](#choosing-the-agent-cli-backend)).
 
 Requires Python ≥ 3.12.
@@ -79,7 +79,7 @@ Key flags (run `workhorse-<name> --help` for the full list):
 |---|---|
 | `--runs-dir <dir>` | Where to write run artifacts (default: `<cwd>/.agents/runs`) |
 | `--run-id <id>` | Name the stable run dir (`<workflow>-<id>`); default: a digest of `--params`, else `default` |
-| `--cli {claude,codex,copilot,opencode}` | Which agent CLI drives the run (or `AGENT_CLI`, else the config's `default_cli`, else `claude`) |
+| `--cli {claude,codex,copilot,opencode,pi}` | Which agent CLI drives the run (or `AGENT_CLI`, else the config's `default_cli`, else `claude`) |
 | `--profile <name>` | Which named `[profiles.<name>]` set of models this run uses (see [Naming a set of models](#naming-a-set-of-models-profiles)) |
 | `--config <path>` | Use this config file instead of the discovered one, for this run and everything it spawns |
 | `--params '<json>'` / `--params-file <path>` | Set the workflow's declared inputs on a fresh start |
@@ -183,8 +183,8 @@ The controller drives one agent CLI per run, behind a backend port
 
 ```bash
 workhorse-<name> run                      # the configured default_cli, else claude
-workhorse-<name> run --cli codex          # or copilot, opencode
-# Equivalently, set the AGENT_CLI={claude,codex,copilot,opencode} env var.
+workhorse-<name> run --cli codex          # or copilot, opencode, pi
+# Equivalently, set the AGENT_CLI={claude,codex,copilot,opencode,pi} env var.
 ```
 
 The unnamed case is configurable, so a machine set up for one CLI does not have to
@@ -201,8 +201,9 @@ default_cli = "opencode"
 | `codex` | `codex exec --json` | CLI default | no — ladder reframes on overflow | ignored |
 | `copilot` | `copilot -p --output-format json` | CLI default | no — ladder reframes on overflow | ignored |
 | `opencode` | `opencode run --format json` | — (node names it) | no — ladder reframes on overflow | ignored |
+| `pi` | `pi --mode json` | — (node names it) | yes (rpc `compact`) | ignored |
 
-Claude, codex and opencode can spawn subagents inside a turn. Copilot cannot.
+Claude, codex and opencode can spawn subagents inside a turn. Copilot and pi cannot.
 A workflow reads the answer as `self.subagents`, and a dry run answers `False` unless the
 test's `RunEnv` sets `subagents`. A workflow that wants one subagent per concern writes
 one prompt for each case and picks by `self.subagents`.

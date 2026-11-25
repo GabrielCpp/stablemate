@@ -2,7 +2,7 @@
 
 workhorse drives **one agent CLI per run** and picks **one model per agent turn**. This
 document covers both halves: choosing the backend (`claude`, `codex`, `copilot`,
-`opencode`), and how a turn's abstract `power` tier resolves — through the config file
+`opencode`, `pi`), and how a turn's abstract `power` tier resolves — through the config file
 workhorse shares with `farrier` — into a concrete model and effort. It also covers the two
 backends that need more than a flag: codex config profiles, and running OpenRouter models
 under `opencode`, where pinning the upstream endpoint is the largest cost lever
@@ -30,7 +30,7 @@ workhorse-<name> run                      # the configured default_cli, else cla
 workhorse-<name> run --cli codex
 workhorse-<name> run --cli copilot
 workhorse-<name> run --cli opencode       # OpenRouter-native
-# Equivalently, set the AGENT_CLI={claude,codex,copilot,opencode} env var.
+# Equivalently, set the AGENT_CLI={claude,codex,copilot,opencode,pi} env var.
 ```
 
 **The unnamed case is yours to set.** `default_cli` in this same config file names the
@@ -71,6 +71,7 @@ CLI's opaque internal retry loop.
 | `codex` | `codex exec --json` | CLI default | no — ladder reframes on overflow |
 | `copilot` | `copilot -p --output-format json` | CLI default | no — ladder reframes on overflow |
 | `opencode` | `opencode run --format json` | — (node names it) | no — ladder reframes on overflow |
+| `pi` | `pi --mode json` | — (node names it) | yes (`pi --mode rpc`, `compact`) |
 
 For running OpenRouter models (e.g. MiMo) on `opencode`, see
 [OpenRouter models](#openrouter-models--opencode) below.

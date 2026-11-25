@@ -6,7 +6,7 @@ RUN apt-get update \
 
 ARG CLAUDE_CODE_VERSION
 ARG OPENCODE_VERSION
-RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" "opencode-ai@${OPENCODE_VERSION}" \
+RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" "opencode-ai@${OPENCODE_VERSION}" "@earendil-works/pi-coding-agent" \
     && npm cache clean --force
 
 COPY wheels /tmp/wheels

@@ -310,6 +310,12 @@ class UserLibraryTable(Section):
         examples=[{"packs": ["general"]}],
         default_text="absent",
     )
+    pi: Selection | None = setting(
+        None,
+        description="The skills, rules, MCP servers, settings and guards installed for Pi. Skills go to `~/.agents/skills`, which Pi reads, and rules to `~/.pi/agent/AGENTS.md`. Prompts are Claude-only at user scope.",
+        examples=[{"packs": ["general"]}],
+        default_text="absent",
+    )
     template: dict[str, Any] = setting(
         factory=dict,
         description="Template values shared by every harness's rendered content. The keys belong to the library whose templates read them, so no tool lists them.",

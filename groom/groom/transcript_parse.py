@@ -279,6 +279,39 @@ def _opencode_export(path: Path, window: Window | None) -> list[dict[str, Any]]:
     return entries
 
 
+def _pi(path: Path, window: Window | None) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    pending: dict[str, dict[str, Any]] = {}
+    for record in _records(path):
+        message = record.get("message")
+        if record.get("type") != "message" or not isinstance(message, dict):
+            continue
+        if not _within(_epoch(record.get("timestamp")), window):
+            continue
+        role = str(message.get("role") or "")
+        content = message.get("content")
+        if role == "toolResult":
+            call = pending.pop(str(message.get("toolCallId") or ""), None)
+            if call is not None:
+                call["result"] = _text_of(content)[:MAX_RESULT_CHARS]
+                call["failed"] = bool(message.get("isError"))
+            continue
+        blocks = [block for block in content if isinstance(block, dict)] if isinstance(content, list) else []
+        text = _text_of(content)
+        if text:
+            entries.append(_message("assistant" if role == "assistant" else "user", text))
+        for block in blocks:
+            if block.get("type") == "thinking" and block.get("thinking"):
+                entries.append(_message("thought", str(block["thinking"])))
+            elif block.get("type") == "toolCall":
+                args = block.get("arguments")
+                call = _tool(str(block.get("name") or "tool"), tool_subject(args), _args_text(args))
+                entries.append(call)
+                if block.get("id"):
+                    pending[str(block["id"])] = call
+    return entries
+
+
 def _first_record(path: Path) -> dict[str, Any]:
     return next(_records(path), {})
 
@@ -287,6 +320,8 @@ def _jsonl(path: Path, window: Window | None) -> list[dict[str, Any]]:
     first = _first_record(path)
     if "payload" in first:
         return _codex(path, window)
+    if first.get("type") == "session":
+        return _pi(path, window)
     if "part" in first or first.get("type") in ("step_start", "text", "tool_use", "reasoning"):
         return _opencode_tee(path, window)
     return _claude(path, window)

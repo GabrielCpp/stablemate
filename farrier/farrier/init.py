@@ -26,11 +26,13 @@ _TEMPLATE = Template("""\
 #   codex   -> .agents/skills/<name>/SKILL.md, .agents/prompts/<name>.prompt.md
 #   copilot -> .github/instructions/, .github/skills/, .github/prompts/
 #   antigravity -> .agents/skills/<name>/SKILL.md, shared with codex (farrier only)
+#   pi      -> .agents/skills/<name>/SKILL.md, .pi/prompts/<name>.md (farrier only)
 agents:
   claude: true
   # codex: true
   # copilot: true
   # antigravity: true
+  # pi: true
 
 # Named bundles from the library's packs/ directory, without the .yml suffix. A pack
 # selects skills, prompts, roots and scaffold ids, and may include other packs; all
@@ -76,7 +78,7 @@ USER_LIBRARY_TABLE = f"user_library.{home_harnesses()[0].name}"
 USER_LIBRARY_PACKS = ("general", "stablemate")
 USER_LIBRARY_PROPOSAL = (
     f"[{USER_LIBRARY_TABLE}]\n"
-    f"packs = [{', '.join(f'\"{pack}\"' for pack in USER_LIBRARY_PACKS)}]\n"
+    f"packs = [{', '.join(f'"{pack}"' for pack in USER_LIBRARY_PACKS)}]\n"
 )
 
 

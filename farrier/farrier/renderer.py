@@ -779,6 +779,12 @@ class Renderer:
         if agents.get("antigravity"):
             render_skills("antigravity")
 
+        if agents.get("pi"):
+            render_skills("pi")
+            for source in self.prompts:
+                output_path = self.prompt_output_path(library_name(source), "pi")
+                outputs[output_path] = self.generated_command(source, "pi", output_path)
+
         if agents.get("claude"):
             render_skills("claude")
             for source in self.prompts:
