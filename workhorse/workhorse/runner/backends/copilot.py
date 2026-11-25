@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -10,7 +12,7 @@ from workhorse.runner import acp
 from workhorse.runner import usage as _usage
 from workhorse.runner.backends import TurnRequest
 from workhorse.runner.backends.jsonl import JsonlBackend
-from workhorse.runner.backends.turn import TurnState
+from workhorse.runner.backends.turn import TurnState, read_session_id
 
 
 def _on_event(event, state: TurnState, node_id):
@@ -30,6 +32,66 @@ def _on_event(event, state: TurnState, node_id):
             state.diagnostics.append(f"copilot exitCode={exit_code}")
     elif "error" in etype:
         state.diagnostics.append(json.dumps(event)[:500])
+
+
+def _count(value: Any) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _record_usage(record: dict[str, Any]) -> _usage.TurnUsage:
+    """One ``session.usage_record`` as canonical usage: the CLI counts cache reads and writes inside ``inputTokens`` and ``reasoningTokens`` inside ``outputTokens``, and its ``cost`` is premium requests, not dollars."""
+    data = (record.get("data") or {}).get("usage") or {}
+    reads = _count(data.get("cacheReadTokens")) or 0
+    writes = _count(data.get("cacheWriteTokens")) or 0
+    total_in = _count(data.get("inputTokens"))
+    return _usage.TurnUsage(
+        input_tokens=None if total_in is None else max(total_in - reads - writes, 0),
+        output_tokens=_count(data.get("outputTokens")),
+        cache_read_input_tokens=_count(data.get("cacheReadTokens")),
+        cache_creation_input_tokens=_count(data.get("cacheWriteTokens")),
+        reasoning_output_tokens=_count(data.get("reasoningTokens")),
+    )
+
+
+def _events_file(session_id: str, home: str | None) -> Path:
+    root = Path(home) if home else Path.home() / ".copilot"
+    return root / "session-state" / session_id / "events.jsonl"
+
+
+def _event_lines(path: Path) -> list[str]:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+
+
+def session_usage(path: Path, skip_lines: int = 0) -> _usage.TurnUsage:
+    """The usage of every model call the session log recorded after its first ``skip_lines`` lines."""
+    total = _usage.TurnUsage()
+    for line in _event_lines(path)[skip_lines:]:
+        if '"session.usage_record"' not in line:
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if record.get("type") == "session.usage_record":
+            total = total.merge(_record_usage(record))
+    return total
+
+
+def _with_session_usage(
+    on_event: Callable[..., None], home: str | None, baseline: int
+) -> Callable[..., None]:
+    """``on_event``, adding this turn's usage from the session log once the ``result`` event names the session."""
+
+    def handle(event, state: TurnState, node_id):
+        on_event(event, state, node_id)
+        if event.get("type") == "result" and state.session_id:
+            path = _events_file(state.session_id, home)
+            state.usage = state.usage.merge(session_usage(path, baseline))
+
+    return handle
 
 
 _TOOL_KINDS = {
@@ -142,4 +204,7 @@ class CopilotBackend(JsonlBackend):
                 cmd += ["--session-id", sid]
             return cmd
 
-        return self.execute_argv(turn, command, _on_event)
+        home = self.harness_env().get("COPILOT_HOME") or os.environ.get("COPILOT_HOME")
+        sid = read_session_id(turn.session_id_path)
+        baseline = len(_event_lines(_events_file(sid, home))) if sid else 0
+        return self.execute_argv(turn, command, _with_session_usage(_on_event, home, baseline))
