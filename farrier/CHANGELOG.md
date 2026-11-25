@@ -1,5 +1,25 @@
 # Changelog
 
+## [6.1.0](https://github.com/GabrielCpp/stablemate/compare/farrier-v6.0.0...farrier-v6.1.0) (2026-11-25)
+
+
+### Features
+
+* **core:** add a portable pid_alive and pid_start_token ([27131bf](https://github.com/GabrielCpp/stablemate/commit/27131bf10221a51c60eea6a78d978a91aabb0a65))
+
+
+### Bug Fixes
+
+* **core:** find a book when the artifacts dir is a linked worktree ([3c341dd](https://github.com/GabrielCpp/stablemate/commit/3c341dd8944fbe0c31e469256b3acb0cc5650835))
+* **farrier:** ignore bytecode caches in owned script directories ([44b973a](https://github.com/GabrielCpp/stablemate/commit/44b973a2a4bc92a73dedcb158043de151346f037))
+* **farrier:** stamp the current base-library digest ([4c36ff5](https://github.com/GabrielCpp/stablemate/commit/4c36ff5c74015fc0b1e0591a364e112893593b68))
+* **workflows:** keep a timed tool in the run's process group ([88d2ec0](https://github.com/GabrielCpp/stablemate/commit/88d2ec02dde4c756bc3726d8f268c77100f6cd59))
+
+
+### Code Refactoring
+
+* **base-library:** move the commit skill into the method family ([358fd2e](https://github.com/GabrielCpp/stablemate/commit/358fd2eb534a1b27871667462d25d722b3362011))
+
 ## [6.0.0](https://github.com/GabrielCpp/stablemate/compare/farrier-v5.0.0...farrier-v6.0.0) (2026-11-24)
 
 

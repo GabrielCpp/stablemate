@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.1.1](https://github.com/GabrielCpp/stablemate/compare/groom-v2.1.0...groom-v2.1.1) (2026-11-25)
+
+
+### Bug Fixes
+
+* **groom:** probe pids through the shared portable helper ([ea4d8eb](https://github.com/GabrielCpp/stablemate/commit/ea4d8eb5097adf3946b72db26bb5cf9184f1fb7b))
+
+
+### Code Refactoring
+
+* **groom:** split app.py into route and background modules ([8b24a14](https://github.com/GabrielCpp/stablemate/commit/8b24a1413420fa78266a3d8f203e4400362b70a3))
+* **groom:** split the store into a package of focused modules ([302eb61](https://github.com/GabrielCpp/stablemate/commit/302eb61e8210ae70095b70964c80f6260697858e))
+
 ## [2.1.0](https://github.com/GabrielCpp/stablemate/compare/groom-v2.0.1...groom-v2.1.0) (2026-11-24)
 
 

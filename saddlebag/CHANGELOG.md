@@ -1,5 +1,18 @@
 # Changelog
 
+## [3.1.0](https://github.com/GabrielCpp/stablemate/compare/saddlebag-v3.0.0...saddlebag-v3.1.0) (2026-11-25)
+
+
+### Features
+
+* **core:** add a portable pid_alive and pid_start_token ([27131bf](https://github.com/GabrielCpp/stablemate/commit/27131bf10221a51c60eea6a78d978a91aabb0a65))
+
+
+### Bug Fixes
+
+* **core:** find a book when the artifacts dir is a linked worktree ([3c341dd](https://github.com/GabrielCpp/stablemate/commit/3c341dd8944fbe0c31e469256b3acb0cc5650835))
+* **workflows:** keep a timed tool in the run's process group ([88d2ec0](https://github.com/GabrielCpp/stablemate/commit/88d2ec02dde4c756bc3726d8f268c77100f6cd59))
+
 ## [3.0.0](https://github.com/GabrielCpp/stablemate/compare/saddlebag-v2.1.0...saddlebag-v3.0.0) (2026-11-24)
 
 

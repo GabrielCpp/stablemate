@@ -1,5 +1,21 @@
 # Changelog
 
+## [6.1.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-agent-v6.0.0...workhorse-agent-v6.1.0) (2026-11-25)
+
+
+### Features
+
+* **core:** add a portable pid_alive and pid_start_token ([27131bf](https://github.com/GabrielCpp/stablemate/commit/27131bf10221a51c60eea6a78d978a91aabb0a65))
+* **workhorse:** record copilot turn tokens ([278bf36](https://github.com/GabrielCpp/stablemate/commit/278bf36acda498d31b3e20d73736985bd06848d3))
+
+
+### Bug Fixes
+
+* **core:** find a book when the artifacts dir is a linked worktree ([3c341dd](https://github.com/GabrielCpp/stablemate/commit/3c341dd8944fbe0c31e469256b3acb0cc5650835))
+* **workflows:** keep a timed tool in the run's process group ([88d2ec0](https://github.com/GabrielCpp/stablemate/commit/88d2ec02dde4c756bc3726d8f268c77100f6cd59))
+* **workhorse:** price a codex turn on its own uncached tokens ([0868648](https://github.com/GabrielCpp/stablemate/commit/0868648be1aef94bce53ddf0608675b99e48ff02))
+* **workhorse:** probe run liveness without /proc ([f176905](https://github.com/GabrielCpp/stablemate/commit/f1769056985df26263db52435ae9ca6259791616))
+
 ## [6.0.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-agent-v5.1.0...workhorse-agent-v6.0.0) (2026-11-24)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.4](https://github.com/GabrielCpp/stablemate/compare/stablemate-v0.2.3...stablemate-v0.2.4) (2026-11-25)
+
+
+### Bug Fixes
+
+* **stablemate:** require the newest release of each tool ([5b6c67a](https://github.com/GabrielCpp/stablemate/commit/5b6c67a0eef9bab47b87c6322879073f93b05d2c))
+
 ## [0.2.3](https://github.com/GabrielCpp/stablemate/compare/stablemate-v0.2.2...stablemate-v0.2.3) (2026-11-24)
 
 
