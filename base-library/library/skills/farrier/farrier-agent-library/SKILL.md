@@ -45,7 +45,7 @@ library once with `farrier config set-library /path/to/agent-library`. Run
 
 ## Editing the library
 
-Follow the reuse-before-create policy in `library/skills/CLAUDE.md` and
+Follow the reuse-before-create policy in `library/skills/AGENTS.md` and
 `library/skills/README.md` — check for a generic skill before writing a new one,
 and add only project-specific deltas to project groups (never duplicate a generic
 skill's rules).

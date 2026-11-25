@@ -84,7 +84,7 @@ workflow tooling reads off the checkout, so the two agree by construction. Set
 
 Packs are for bundles reused by ≥2 repos; a repo's own overlays and one-off
 selections go directly under top-level `skills:` / `prompts:`
-keys (see `agents/packs/CLAUDE.md`). Run `farrier config reference --file manifest` for
+keys (see `packs/AGENTS.md`). Run `farrier config reference --file manifest` for
 every key `agents.yml` accepts, one line each. Run `farrier config reference <key>` for a key's
 full entry, with its type, default, meaning and example. Do not copy a
 key list from another repo's `agents.yml`. The command is the source.
