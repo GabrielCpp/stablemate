@@ -180,7 +180,7 @@ workflow that sends them (R8). They are not a concept of this design.
 - **F5. Helper procedures grow, and several owners and humans share them.** The target
   repos install the stablemate skill pack.
 - **F6. Not every CLI can host a subagent.** Claude and codex define delegates at launch.
-  Copilot and cline do not.
+  Copilot does not.
 - **F7. An agent that can get by alone stops consulting a specialist.** The decoder
   article reports one merge that broke this way.
 - **F8. A new stage runs attended twice before it runs alone.** (claim 8)
@@ -384,8 +384,8 @@ workflow that sends them (R8). They are not a concept of this design.
   result's departures with the consult records.
 - Counsel availability: **New** (revised, R1). The engine resolves delegates per backend
   and profile (`workhorse/workhorse/profile.py:100`) but tells the workflow nothing. A
-  `has_delegate(role)` query on the workflow is **New**. It answers false on copilot and
-  cline (`runner/backends/copilot.py:154`, `cline.py:204`).
+  `has_delegate(role)` query on the workflow is **New**. It answers false on copilot
+  (`runner/backends/copilot.py:154`).
 
 **Helper procedures**
 

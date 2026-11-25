@@ -312,7 +312,7 @@ def epics(self) -> Transition:
 
 ## Subagents — choose the prompt by the CLI
 
-`self.subagents` says whether the run's agent CLI can spawn subagents. It is `True` for claude, codex and opencode, and `False` for cline and copilot. A dry run answers `False` unless the test's `RunEnv` sets `subagents`.
+`self.subagents` says whether the run's agent CLI can spawn subagents. It is `True` for claude, codex and opencode, and `False` for copilot. A dry run answers `False` unless the test's `RunEnv` sets `subagents`.
 
 A turn that wants one subagent per concern keeps two prompt files. The delegated prompt tells the agent to spawn a subagent for each concern and merge their verdicts. The inline prompt judges every concern in one turn. The state picks the file with `self.subagents`, and both return the same output model.
 

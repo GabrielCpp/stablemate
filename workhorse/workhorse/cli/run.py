@@ -90,7 +90,7 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "Overrides the AGENT_CLI env var, which in turn overrides the "
         "shared config's `default_cli` (claude when that is unset too). Selection is "
         "per-run, not per-node. To run on an OpenRouter model, use an OpenRouter-"
-        "native backend (cline/opencode) and give nodes an 'openrouter/<slug>' model. "
+        "native backend (opencode) and give nodes an 'openrouter/<slug>' model. "
         "MUTUALLY EXCLUSIVE with --profile: a profile carries its own `cli` field, "
         "and the two cannot disagree about which CLI runs.",
     )

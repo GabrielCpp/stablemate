@@ -1,11 +1,11 @@
 # Agent CLI backends, models and config
 
 workhorse drives **one agent CLI per run** and picks **one model per agent turn**. This
-document covers both halves: choosing the backend (`claude`, `codex`, `copilot`, `cline`,
+document covers both halves: choosing the backend (`claude`, `codex`, `copilot`,
 `opencode`), and how a turn's abstract `power` tier resolves — through the config file
 workhorse shares with `farrier` — into a concrete model and effort. It also covers the two
 backends that need more than a flag: codex config profiles, and running OpenRouter models
-under `cline` / `opencode`, where pinning the upstream endpoint is the largest cost lever
+under `opencode`, where pinning the upstream endpoint is the largest cost lever
 on a week-long run.
 
 Everything here is optional. A run with no config at all uses `claude` on `sonnet` (the
@@ -29,9 +29,8 @@ a sibling module, `registry.py` maps a name to one). The CLI is chosen **per-run
 workhorse-<name> run                      # the configured default_cli, else claude
 workhorse-<name> run --cli codex
 workhorse-<name> run --cli copilot
-workhorse-<name> run --cli cline          # OpenRouter-native
 workhorse-<name> run --cli opencode       # OpenRouter-native
-# Equivalently, set the AGENT_CLI={claude,codex,copilot,cline,opencode} env var.
+# Equivalently, set the AGENT_CLI={claude,codex,copilot,opencode} env var.
 ```
 
 **The unnamed case is yours to set.** `default_cli` in this same config file names the
@@ -71,11 +70,10 @@ CLI's opaque internal retry loop.
 | `claude` | `claude -p` (stream-json) | `sonnet` | yes (`/compact`) |
 | `codex` | `codex exec --json` | CLI default | no — ladder reframes on overflow |
 | `copilot` | `copilot -p --output-format json` | CLI default | no — ladder reframes on overflow |
-| `cline` | `cline --json` | — (node names it) | no — ladder reframes on overflow |
 | `opencode` | `opencode run --format json` | — (node names it) | no — ladder reframes on overflow |
 
-For running OpenRouter models (e.g. MiMo) on `cline` / `opencode`, see
-[OpenRouter models](#openrouter-models--cline-and-opencode) below.
+For running OpenRouter models (e.g. MiMo) on `opencode`, see
+[OpenRouter models](#openrouter-models--opencode) below.
 
 ### Node power selection
 
@@ -219,7 +217,7 @@ variable in `[cli.opencode].env` and your value wins.
 The worked example is the one above. `opencode` auto-summarizes a long session, and
 each summary rewrites the conversation prefix — so the next turn bills a full-price
 prompt instead of a cache read. On a model whose context window you will never
-approach (the 1M-token OpenRouter endpoints in [OpenRouter models](#openrouter-models--cline-and-opencode)),
+approach (the 1M-token OpenRouter endpoints in [OpenRouter models](#openrouter-models--opencode)),
 that is pure cost with nothing gained. Turning it off is right for *those* runs and
 wrong for a run against a 272k window, which is exactly why it is scoped to the
 harness config rather than set globally in `~/.config/opencode/opencode.jsonc`.
@@ -370,17 +368,17 @@ profile.
 > `wire_api = "responses"`. They are codex-internal, distinct from Workhorse's
 > `power` mapping.
 
-## OpenRouter models — `cline` and `opencode`
+## OpenRouter models — `opencode`
 
 To run a workflow on an OpenRouter model — e.g. the MiMo-V2.5 experiment — drive
-the run with an **OpenRouter-native backend** and map the desired `power` tier to an
-`openrouter/<slug>` model for that backend. Both `cline` and `opencode` speak plain
-chat-completions, so they reach OpenRouter **directly, with no proxy** (unlike
+the run with the **OpenRouter-native backend** and map the desired `power` tier to an
+`openrouter/<slug>` model for that backend. `opencode` speaks plain
+chat-completions, so it reaches OpenRouter **directly, with no proxy** (unlike
 codex's Responses API, which needs one). Export your key once and pick the backend:
 
 ```bash
 export OPENROUTER_API_KEY=sk-or-v1-...
-workhorse-<name> run --cli opencode   # or: --cli cline
+workhorse-<name> run --cli opencode
 ```
 
 Point the power tier at the model in your config, so the same workflow still runs
@@ -391,13 +389,13 @@ natively under `--cli claude`:
 model = "openrouter/xiaomi/mimo-v2.5"
 ```
 
-| Trait | `cline` | `opencode` |
-|---|---|---|
-| Invocation | `cline --json` (agentic loop) | `opencode run --format json` (agentic loop) |
-| Output | NDJSON events | NDJSON events |
-| Session resume | by id (`--id`) | by id (`--session`) |
-| Reasoning effort | `--thinking` (none/low/medium/high/xhigh) | `--variant` (minimal/high/max, or any other effort verbatim, such as a model's own `none`) |
-| Usage reported | tokens, cache split, cost and duration, in one terminal event | tokens and cost, summed across per-step events |
+| Trait | `opencode` |
+|---|---|
+| Invocation | `opencode run --format json` (agentic loop) |
+| Output | NDJSON events |
+| Session resume | by id (`--session`) |
+| Reasoning effort | `--variant` (minimal/high/max, or any other effort verbatim, such as a model's own `none`) |
+| Usage reported | tokens and cost, summed across per-step events |
 
 **Pin the upstream endpoint — it is the largest cost lever, not a tuning detail.**
 An OpenRouter *model* is a fan-out over many upstream *endpoints*, and they differ on
@@ -424,10 +422,6 @@ drift surfaces as an error rather than a bill:
   `{ "order": [...], "allow_fallbacks": false }`, and
   `provider.openrouter.options.setCacheKey: true` to send `prompt_cache_key` so repeat
   turns route back to the node holding the prefix.
-- **cline** reaches OpenRouter through its own provider settings, so the same
-  `provider` routing object belongs there rather than in any workhorse config. Set it
-  in cline's settings before the run; workhorse only names the `openrouter/<slug>`
-  model.
 
 List the current endpoints, prices and windows before choosing — they change:
 

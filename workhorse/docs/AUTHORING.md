@@ -381,7 +381,7 @@ commands with `;`, `&&` and `||`. The hook
 cannot see the directory a shell call runs in, so it refuses a relative path that climbs
 with `..` or starts at `~`.
 
-The copilot and cline backends apply no box. A confined profile still runs the turn with
+The copilot backend applies no box. A confined profile still runs the turn with
 the operator's full environment and full permissions. The backend prints one warning per
 turn: `[<node>] ⚠ <cli> does not enforce a confined profile; the turn runs with the
 operator's full permissions`. It does not refuse the turn.

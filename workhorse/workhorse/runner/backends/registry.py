@@ -8,7 +8,6 @@ from workhorse._vendor.stablemate_core.harness import workhorse_harnesses
 from workhorse._vendor.stablemate_core.profiles import resolve_default_cli
 from workhorse._vendor.stablemate_core.schema import HomeConfig
 from workhorse.runner.backends import AgentBackend
-from workhorse.runner.backends.cline import ClineBackend
 from workhorse.runner.backends.claude import ClaudeBackend
 from workhorse.runner.backends.codex import CodexBackend
 from workhorse.runner.backends.copilot import CopilotBackend
@@ -18,7 +17,6 @@ _REGISTRY: dict[str, type[AgentBackend]] = {
     "claude": ClaudeBackend,
     "codex": CodexBackend,
     "copilot": CopilotBackend,
-    "cline": ClineBackend,
     "opencode": OpenCodeBackend,
 }
 

@@ -18,7 +18,7 @@ them, then says done with a test still failing. It reviews its own work in the c
 that wrote it, and it guesses when it should ask. stablemate turns those rules into
 workflow steps. A step is a check the run has to pass before it moves on, and the agent
 that did the work never signs it off. The run drives the agent CLI you already pay for:
-Claude, Codex, Copilot, Cline or OpenCode.
+Claude, Codex, Copilot or OpenCode.
 
 A run acts without asking for permission, because it starts `claude` with
 `--dangerously-skip-permissions`. Isolating it is your job: a container, a VM or a
@@ -119,7 +119,7 @@ toolchain exists:
   from [groom](groom/)'s browser dashboard (see [Status](#status)).
 
 The composite is the point: **multi-day, unattended runs on subscription-billed agent
-CLIs** — Claude, Codex, Copilot, Cline, OpenCode — with a repo-local planning graph and
+CLIs** — Claude, Codex, Copilot, OpenCode — with a repo-local planning graph and
 asynchronous human gates. That durability is what makes the methodology above
 affordable: three verification legs per story is a lot of agent turns, and they only
 pay for themselves when nobody has to babysit them. Durable is not lenient, though: a
@@ -183,7 +183,7 @@ packages that work alongside an agent prompt library:
 
 | Package | PyPI | Role |
 | --- | --- | --- |
-| [`workhorse/`](workhorse/) | [`workhorse-agent`](https://pypi.org/project/workhorse-agent/) | Fail-soft engine (a library, not a command) that drives an agent CLI — Claude, Codex, Copilot, Cline or OpenCode — through a checkpointed Python state machine, unattended for days. |
+| [`workhorse/`](workhorse/) | [`workhorse-agent`](https://pypi.org/project/workhorse-agent/) | Fail-soft engine (a library, not a command) that drives an agent CLI — Claude, Codex, Copilot or OpenCode — through a checkpointed Python state machine, unattended for days. |
 | [`workflows/`](workflows/) | [`workhorse-workflows`](https://pypi.org/project/workhorse-workflows/) | The workflows themselves as Python: `loop-runner`, `author`, `coder`, `research`, `okf-book` and `review-debt`, each declaring its own `workhorse-<name>` command. `workhorse-new` scaffolds a new one. |
 | [`farrier/`](farrier/) | [`farrier`](https://pypi.org/project/farrier/) | Renders an agent-neutral prompt library into a repository's Codex/Claude/Copilot adapters and launcher. |
 | [`ostler/`](ostler/) | [`ostler`](https://pypi.org/project/ostler/) | Tends a repo's `docs/` knowledge graph through its CLI and the in-process facade workflows use. |
@@ -311,7 +311,7 @@ ls .agents/runs/loop-runner-dry-run/
 `--dry-run` answered the agent-turn seam from the stand-in the workflow declares itself,
 which is what let it finish with nothing installed — so `run/prompt.md` holds a
 placeholder rather than a rendered prompt. Drop the flag and it all happens for real;
-that one needs an agent CLI (`claude` by default; `--cli codex|copilot|cline|opencode`)
+that one needs an agent CLI (`claude` by default; `--cli codex|copilot|opencode`)
 and a plan to hand it:
 
 ```bash

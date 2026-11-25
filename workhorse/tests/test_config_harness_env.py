@@ -12,7 +12,6 @@ from workhorse._vendor.stablemate_core.config import ConfigError, parse_home_con
 from workhorse._vendor.stablemate_core.profiles import resolve_harness_env
 from workhorse.config_run import AgentResilience
 from workhorse.runner import backends, failure, process
-from workhorse.runner.backends.cline import ClineBackend
 from workhorse.runner.backends.claude import ClaudeBackend
 from workhorse.runner.backends.codex import CodexBackend
 from workhorse.runner.backends.copilot import CopilotBackend
@@ -146,13 +145,12 @@ def test_configured_env_reaches_the_spawn():
 
 
 def test_every_backend_forwards_its_own_table():
-    """All five harnesses honor the seam — a backend that resolved but never passed its env would silently ignore the operator's config."""
+    """Every harness honor the seam — a backend that resolved but never passed its env would silently ignore the operator's config."""
     for backend in (
         ClaudeBackend(),
         CodexBackend(),
         CopilotBackend(),
         OpenCodeBackend(),
-        ClineBackend(),
     ):
         marker = {f"{backend.name.upper()}_MARKER": "yes"}
         cfg = _home({"cli": {backend.name: {"env": marker}}})

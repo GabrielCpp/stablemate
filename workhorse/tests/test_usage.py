@@ -81,46 +81,6 @@ def test_claude_result_keeps_its_own_key_names():
     assert got.duration_ms == 8423
 
 
-CLINE_RUN_RESULT = {
-    "type": "run_result",
-    "finishReason": "completed",
-    "iterations": 1,
-    "usage": {
-        "inputTokens": 6337,
-        "outputTokens": 33,
-        "cacheReadTokens": 0,
-        "cacheWriteTokens": 0,
-        "totalCost": 0.00089642,
-    },
-    "aggregateUsage": {"inputTokens": 6337, "outputTokens": 33, "totalCost": 0.00089642},
-    "durationMs": 4542,
-    "text": "OK",
-    "model": {
-        "id": "xiaomi/mimo-v2.5",
-        "provider": "openrouter",
-        "info": {
-            "contextWindow": 1050000,
-            "maxInputTokens": 1050000,
-            "maxTokens": 131072,
-            "pricing": {"input": 0.14, "output": 0.28, "cacheRead": 0.0028, "cacheWrite": 0},
-        },
-    },
-}
-
-
-def test_cline_reports_tokens_cost_and_duration():
-    """Verified against a live turn, not inferred."""
-    got = usage.normalize(CLINE_RUN_RESULT)
-    assert got.token_counts() == {
-        "input_tokens": 6337,
-        "output_tokens": 33,
-        "cache_read_input_tokens": 0,
-        "cache_creation_input_tokens": 0,
-    }, got
-    assert got.total_cost_usd == 0.00089642, got
-    assert got.duration_ms == 4542, got
-
-
 def test_a_price_table_is_not_a_token_count():
     """The regression that made `_as_int` reject fractional floats."""
     pricing_only = {"usage": {"input": 0.14, "output": 0.28, "cacheRead": 0.0028}}

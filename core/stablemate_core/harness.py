@@ -183,18 +183,8 @@ OPENCODE = HarnessSpec(
     transcript=Support(Level.EMULATED, "opencode export"),
 )
 
-CLINE = HarnessSpec(
-    name="cline",
-    title="Cline",
-    skill_ref="path",
-    repo=None,
-    home=None,
-    surfaces=frozenset(),
-    workhorse=True,
-)
-
-HARNESSES: tuple[HarnessSpec, ...] = (CLAUDE, CODEX, COPILOT, OPENCODE, CLINE)
-RETIRED: frozenset[str] = frozenset()
+HARNESSES: tuple[HarnessSpec, ...] = (CLAUDE, CODEX, COPILOT, OPENCODE)
+RETIRED: frozenset[str] = frozenset({"cline"})
 
 
 def names() -> tuple[str, ...]:

@@ -8,8 +8,8 @@ it reads, which commands it runs, what it concluded. The answer exists in the ag
 output, and workhorse reads that output line by line. Nothing carries it to groom while the
 turn runs.
 
-Workhorse drives five CLIs: Claude Code, Codex, Cline, Copilot and OpenCode. Each prints a
-different JSON vocabulary. Groom must render one shape for all five.
+Workhorse drives four CLIs: Claude Code, Codex, Copilot and OpenCode. Each prints a
+different JSON vocabulary. Groom must render one shape for all four.
 
 **Done**, as the operator sees it: they open a live run of any of the five harnesses in groom.
 In the same timeline as the spans and logs, they read the turn's prompt, each agent message,
@@ -109,10 +109,10 @@ Each slice runs end to end in groom.
 3. **Codex.** Its mapper. Codex's `exec --json` names `agent_message`, `reasoning`,
    `command_execution`, `file_change`, `mcp_tool_call`, `web_search` and `todo_list` items,
    with `item.started` and `item.completed`. The backend reads only `agent_message` today.
-4. **OpenCode, Copilot and Cline.** One mapper each. Their backends parse the answer text and
+4. **OpenCode and Copilot.** One mapper each. Their backends parse the answer text and
    usage only, so the vocabulary for tool calls and reasoning is unknown here. Each mapper
-   starts by recording a real turn. Turns of these three already leave a raw
-   `<stem>.tee.jsonl` in the run directory, because none of them has a store workhorse copies.
+   starts by recording a real turn. Turns of these two already leave a raw
+   `<stem>.tee.jsonl` in the run directory, because neither has a store workhorse copies.
    Those files are the fixtures.
 5. **Turn grouping.** The visit attributes on the `agent_turn` span, and the pane nesting each
    transcript under its turn.

@@ -157,7 +157,7 @@ Artifacts are written under `--runs-dir` (default `<cwd>/.agents/runs`). Before
 each agent turn, workhorse writes the rendered `prompt.md` and logs only that path
 so failed or interrupted nodes remain inspectable without dumping variables. A
 prompt above 96 KiB also uses this artifact for delivery: OpenCode and Copilot attach
-it natively, Cline receives a short instruction to read it, and stdin-native Claude
+it natively, and stdin-native Claude
 and Codex continue receiving the complete prompt on stdin. This keeps large prompt
 content out of the subprocess argument vector and below operating-system argv limits.
 Beside it, `turn.json` records what the turn was started with: the backend, profile,

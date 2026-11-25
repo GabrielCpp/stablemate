@@ -63,8 +63,8 @@ class AgentProfile:
     added directories and those. The claude and codex backends write only in the working
     directory, and the opencode backend writes in the added directories too. ``tools``
     still turns tools off. ``commands`` names the only shell commands a confined turn may
-    run, each with any arguments. With none named, the turn has no shell. The copilot and
-    cline backends apply no box, so they warn that a confined turn runs with the
+    run, each with any arguments. With none named, the turn has no shell. The copilot
+    backend applies no box, so it warns that a confined turn runs with the
     operator's full permissions.
 
     ``command_timeout_s`` is the longest one shell command may run before the CLI stops

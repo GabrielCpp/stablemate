@@ -163,8 +163,7 @@ half, a successful `control reload` badged the run with its one and only error.
 ## Turn cost and tokens, normalized across harnesses
 
 Each backend reports a turn's consumption in its own vocabulary — claude's `result`
-event, codex's `turn.completed`, opencode's per-step `step_finish`, cline's terminal
-`run_result` — and until `runner/usage.py` existed only claude's was parsed. That is
+event, codex's `turn.completed`, opencode's per-step `step_finish` — and until `runner/usage.py` existed only claude's was parsed. That is
 not a cosmetic gap: it meant 21% of recorded turns carried no usage at all, all of them
 non-claude, which is precisely the comparison ("does this model class cost less per unit
 of work") the store exists to answer.
@@ -192,7 +191,6 @@ verified against live turns:
 | claude | Anthropic | yes | yes |
 | opencode | OpenRouter | yes | yes — real money |
 | opencode | subscription OAuth | yes | **a literal `0`** |
-| cline | OpenRouter | yes | yes — real money |
 | codex | subscription auth | yes | **none reported** |
 | copilot | — | **none** | **none** — bills in *premium requests* |
 

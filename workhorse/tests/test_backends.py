@@ -22,14 +22,12 @@ from workhorse.runner.backends import (
     AgentBackend,
     AgentProfile,
     claude,
-    cline,
     codex,
     copilot,
     jsonl,
     opencode,
     turn,
 )
-from workhorse.runner.backends.cline import ClineBackend
 from workhorse.runner.backends.claude import ClaudeBackend
 from workhorse.runner.backends.codex import CodexBackend
 from workhorse.runner.backends.copilot import CopilotBackend
@@ -190,7 +188,6 @@ def test_non_claude_backends_registered():
     for name, cls in (
         ("codex", CodexBackend),
         ("copilot", CopilotBackend),
-        ("cline", ClineBackend),
         ("opencode", OpenCodeBackend),
     ):
         b = get_backend(name)
@@ -211,31 +208,15 @@ def _confined_cmd_and_output(backend_class, agent):
     return captured["cmd"], out.getvalue()
 
 
-def test_copilot_and_cline_warn_that_a_confined_profile_runs_unboxed():
+def test_copilot_warns_that_a_confined_profile_runs_unboxed():
     """Neither CLI has a box to apply, so the turn runs as the unconfined one and says so."""
-    for backend_class, cli in ((CopilotBackend, "copilot"), (ClineBackend, "cline")):
+    for backend_class, cli in ((CopilotBackend, "copilot"),):
         confined = AgentProfile(name="docs", tools={"*": False}, confined=True, commands=("ostler",))
         cmd, output = _confined_cmd_and_output(backend_class, confined)
         free_cmd, free_output = _confined_cmd_and_output(backend_class, AgentProfile(name="docs"))
         assert output.count(f"[n] ⚠ {cli} {CONFINED_WARNING}") == 1
         assert CONFINED_WARNING not in free_output
         assert cmd == free_cmd
-
-
-def test_cline_points_a_large_prompt_at_its_artifact_instead_of_putting_it_in_argv(tmp_path: Path):
-    """Cline has no attachment flag, so its bounded message names the complete artifact."""
-    prompt = "large prompt\n" * 12_000
-    prompt_path = tmp_path / "prompt.md"
-    fake, captured = _fake_stream(
-        turn.TurnState(result_text="ANSWER", session_id="task-1")
-    )
-
-    _run_turn(ClineBackend(fake), prompt, "n", None, prompt_path=prompt_path)
-
-    cmd = captured["cmd"]
-    assert prompt not in cmd
-    assert str(prompt_path) in cmd[-1]
-    assert prompt_path.read_text(encoding="utf-8") == prompt
 
 
 def _fake_stream(canned):
@@ -830,7 +811,7 @@ def test_classify_turn_without_session_writes_no_manifest(tmp_path: Path):
     sidp = tmp_path / ".session_id"
     assert (
         failure.classify_turn(
-            "cline",
+            "claude",
             "impl",
             result_text="done",
             diagnostics="",
@@ -1093,109 +1074,6 @@ def test_opencode_text_parts_do_not_leak_between_turns():
     assert second.result_text == "second"
 
 
-
-
-def test_cline_run_turn_fresh_then_resume(tmp_path: Path):
-    sidp = tmp_path / ".session_id"
-    fake, captured = _fake_stream(
-        turn.TurnState(result_text="OK", session_id="conv_1")
-    )
-
-    out = _run_turn(
-        ClineBackend(fake), "PROMPT", "n", sidp,
-        model="openrouter/xiaomi/mimo-v2.5", cwd="/repo",
-    )
-
-    assert out == "OK"
-    cmd = captured["cmd"]
-    assert cmd[0] == "cline" and "--json" in cmd
-    assert cmd[-2:] == ["--", "PROMPT"]
-    assert cmd[cmd.index("--model") + 1] == "openrouter/xiaomi/mimo-v2.5"
-    assert cmd[cmd.index("--auto-approve") + 1] == "true"
-    assert cmd[cmd.index("--cwd") + 1] == "/repo"
-    assert "--id" not in cmd
-    assert sidp.read_text() == "conv_1"
-
-    fake2, captured2 = _fake_stream(turn.TurnState(result_text="A2", session_id="conv_1"))
-    _run_turn(ClineBackend(fake2), "P2", "n", sidp)
-    assert captured2["cmd"][captured2["cmd"].index("--id") + 1] == "conv_1"
-
-
-def test_cline_effort_passes_through_unmapped():
-    """cline's reasoning levels are exactly workhorse's, so nothing is clamped — unlike the harnesses whose ranges are narrower."""
-    for level in ("none", "low", "medium", "high", "xhigh"):
-        fake, captured = _fake_stream(turn.TurnState(result_text="OK"))
-        _run_turn(ClineBackend(fake), "P", "n", None, model="m", effort=level)
-        assert captured["cmd"][captured["cmd"].index("--thinking") + 1] == level
-
-
-def test_cline_unknown_effort_omits_the_flag():
-    """`max` is a workhorse level cline does not have."""
-    fake, captured = _fake_stream(turn.TurnState(result_text="OK"))
-    _run_turn(ClineBackend(fake), "P", "n", None, model="m", effort="max")
-    assert "--thinking" not in captured["cmd"]
-
-
-def test_cline_on_event_reads_the_terminal_result():
-    """Shapes captured from a live turn (CLI 3.0.50, 2026-08-05)."""
-    state = turn.TurnState()
-    cline._on_event(
-        {"type": "hook_event", "taskId": "conv_1785957902817_357vbvb"}, state, "n"
-    )
-    cline._on_event(
-        {
-            "type": "run_result",
-            "finishReason": "completed",
-            "text": "OK",
-            "durationMs": 4542,
-            "usage": {
-                "inputTokens": 6337,
-                "outputTokens": 33,
-                "cacheReadTokens": 0,
-                "cacheWriteTokens": 0,
-                "totalCost": 0.00089642,
-            },
-        },
-        state,
-        "n",
-    )
-    assert state.session_id == "conv_1785957902817_357vbvb"
-    assert state.result_text == "OK"
-    assert state.usage.input_tokens == 6337 and state.usage.output_tokens == 33
-    assert state.usage.total_cost_usd == 0.00089642
-    assert state.usage.duration_ms == 4542
-    assert state.diagnostics == []
-
-
-def test_cline_reports_an_unclean_finish_reason_as_a_diagnostic():
-    """The adapter does not classify — it hands `classify_turn` the words to judge."""
-    state = turn.TurnState()
-    cline._on_event(
-        {"type": "run_result", "text": "", "finishReason": "max_iterations"}, state, "n"
-    )
-    assert any("max_iterations" in d for d in state.diagnostics)
-
-
-def test_cline_per_iteration_usage_is_not_double_counted():
-    """cline emits a per-iteration `usage` event AND a cumulative `run_result`."""
-    state = turn.TurnState()
-    cline._on_event(
-        {
-            "type": "agent_event",
-            "event": {"type": "usage", "inputTokens": 6337, "outputTokens": 33,
-                      "cost": 0.00089642},
-        },
-        state,
-        "n",
-    )
-    assert state.usage.is_empty
-    cline._on_event(
-        {"type": "run_result", "text": "OK",
-         "usage": {"inputTokens": 6337, "outputTokens": 33, "totalCost": 0.00089642}},
-        state,
-        "n",
-    )
-    assert state.usage.input_tokens == 6337
 
 
 def test_codex_reset_at_skips_non_openai_models_without_network():
@@ -1524,8 +1402,6 @@ def test_jsonl_backends_record_the_session_id_before_a_cut(tmp_path: Path):
          lambda cmd: cmd[:3] == ["codex", "exec", "resume"] and "tid-early" in cmd),
         (OpenCodeBackend, {"type": "step_start", "sessionID": "ses_early"}, "ses_early",
          lambda cmd: cmd[cmd.index("--session") + 1] == "ses_early"),
-        (ClineBackend, {"type": "hook_event", "taskId": "task-early"}, "task-early",
-         lambda cmd: cmd[cmd.index("--id") + 1] == "task-early"),
     ]
     for backend_cls, event, sid, resumed in cases:
         for cut in ("silence", "exception"):
@@ -1604,7 +1480,6 @@ def test_each_backend_says_whether_its_cli_takes_subagents():
         "claude": True,
         "codex": True,
         "opencode": True,
-        "cline": False,
         "copilot": False,
     }
     assert {name: get_backend(name).supports_subagents for name in expected} == expected

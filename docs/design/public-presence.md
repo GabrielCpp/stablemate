@@ -542,7 +542,7 @@ The role map, in the user's words:
 | First win | New (R12). The install check is `workhorse-loop-runner run --dry-run`, which proves the install and runs no agent (`README.md:285-300`). |
 | Workflow scaffold | New (R12). L8: the authoring guide says to copy the `loop_runner/` directory and its `[project.scripts]` row (`workhorse/docs/AUTHORING.md:14-21`, `:113-114`) and links the source on GitHub. A user with no clone has that directory only inside a tool environment. New: `workhorse-new NAME --check CMD` in `workhorse-workflows` writes a package with one agent turn, one check node that runs `CMD`, and a transition back to the turn with the check's output until it passes (R21). |
 | Run place | Reshape (R14), revised to removed (R16). The Docker harness is a draft and stays off every public surface. |
-| Agent recipe | Reshape. The README lists `--cli codex\|copilot\|cline\|opencode` in one line. |
+| Agent recipe | Reshape. The README lists `--cli codex\|copilot\|opencode` in one line. |
 | Agent brief | Reshape (R24, revised R26 and R27), through the Standards step. L9: `farrier init` seeded `packs: [general, stablemate]` before R27 moved both packs to the user library. The `stablemate` pack ships the farrier, groom, ostler and workhorse skills and no commands (`base-library/packs/stablemate.yml:11-15`, `:30`). Its description promises five commands and a `babysit-run` that fixes stablemate itself, which is the maintainer's job, not the reader's (`:2`). `grill` and `brainstorm` come from the `general` pack. No page says the reader's agent already knows how to operate the ecosystem. |
 
 **Proof: Reshape.**
