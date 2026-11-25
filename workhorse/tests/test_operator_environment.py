@@ -8,13 +8,12 @@ from unittest.mock import patch
 
 import pytest
 
+from workhorse._vendor.stablemate_core.harness import workhorse_harnesses
 from workhorse.config_run import AgentResilience
 from workhorse.runner import process
 from workhorse.runner.backends import AgentProfile, operator_config_dirs
 from workhorse.runner.backends.claude import ClaudeBackend
 from workhorse.runner.backends.registry import backend_names
-
-COVERED_BACKENDS = {"claude", "codex", "opencode", "copilot", "cline"}
 
 CONFIG_DIRS = {
     "claude": (".claude",),
@@ -25,8 +24,8 @@ CONFIG_DIRS = {
 
 @pytest.mark.parametrize("backend", backend_names())
 def test_a_turn_never_loads_less_of_the_operators_environment_than_its_cli_does(backend: str) -> None:
-    """A new backend fails here until its environment test exists and its name joins the covered set."""
-    assert backend in COVERED_BACKENDS
+    """A new backend fails here until its environment test exists and its spec is in the registry."""
+    assert backend in {harness.name for harness in workhorse_harnesses()}
 
 
 @pytest.mark.parametrize("harness", sorted(CONFIG_DIRS))

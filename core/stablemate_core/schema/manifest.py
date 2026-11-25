@@ -67,7 +67,7 @@ class Agents(Section):
     )
     copilot: HarnessSwitch = setting(
         False,
-        description="Render for GitHub Copilot: skills and prompts under `.github`, roots into `.github/copilot-instructions.md`. A table `{ skills_from: <harness> }` enables it and links its skills.",
+        description="Render for GitHub Copilot: skills into `.github/skills` and prompts into `.github/prompts`, roots into `.github/copilot-instructions.md`. A table `{ skills_from: <harness> }` enables it and links its skills.",
         examples=[False, {"skills_from": "claude"}],
         type_text="boolean or table with `skills_from`",
     )
