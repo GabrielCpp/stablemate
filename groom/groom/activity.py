@@ -535,6 +535,25 @@ def timeline(run_id: str, live: LiveRows | None = None, standing: dict[str, Any]
     return built | {"as_of": time.time()}
 
 
+def _slugs(items: list[dict[str, Any]]) -> set[str]:
+    return {entry.get("slug") or entry.get("turn") or "" for item in items for one in item["passes"] for entry in one["entries"]}
+
+
+def _steps(items: list[dict[str, Any]]) -> int:
+    return sum(entry["count"] for item in items for one in item["passes"] for entry in one["entries"] if entry["kind"] == "steps")
+
+
+def page(run_id: str, live: LiveRows | None = None, standing: dict[str, Any] | None = None, logs: bool = False, items: int = 0, skip: int = 0) -> dict[str, Any]:
+    """The timeline without its oldest ``skip`` work items, cut to the newest ``items`` of the rest when ``items`` is not 0, with the turns placed in the work items it keeps. ``older`` counts the work items left out and ``step_count`` counts the steps of the whole run."""
+    whole = timeline(run_id, live, standing, logs)
+    kept = whole["items"][skip:]
+    kept = kept[-items:] if items else kept
+    left = whole["items"][: len(whole["items"]) - len(kept)]
+    dropped = _slugs(left) - _slugs(kept)
+    rows = [row for row in whole["rows"] if row["slug"] not in dropped] if dropped else whole["rows"]
+    return whole | {"rows": rows, "items": kept, "older": len(left), "step_count": _steps(whole["items"])}
+
+
 def _timeline(run_id: str, live: LiveRows | None, standing: dict[str, Any] | None, logs: bool) -> dict[str, Any]:
     spans = store.run_turn_spans(run_id)
     placed = flows.span_passes(spans)

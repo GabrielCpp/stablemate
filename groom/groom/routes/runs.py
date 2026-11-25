@@ -176,8 +176,10 @@ def _in_archive(run_id: str) -> Callable:
     return read
 
 
-async def _timeline(read: Callable, run_id: str, live: activity.LiveRows, standing: dict | None, logs: int) -> dict:
-    return await read(activity.timeline, run_id, live, standing, bool(logs))
+async def _timeline(read: Callable, run_id: str, live: activity.LiveRows, standing: dict | None, logs: int, items: int, skip: int) -> dict:
+    if items < 0 or skip < 0:
+        raise ClientException(detail="items and skip count work items and cannot be negative")
+    return await read(activity.page, run_id, live, standing, bool(logs), items, skip)
 
 
 async def _records(read: Callable, run_id: str, before: str, limit: int, metrics: int) -> dict:
@@ -211,12 +213,12 @@ async def _turn(read: Callable, run_id: str, slug: str, live: activity.LiveRows,
 
 
 @get("/api/run/{run_id:str}/activity", include_in_schema=False)
-async def run_activity(run_id: Annotated[str, PathParameter()], logs: Annotated[int, QueryParameter()] = 0) -> dict:
-    """One run's agent turns, oldest first, with the one still running read from its live transcript. `logs=1` adds the run's info logs at their place in the timeline."""
-    return await _timeline(pools.QUERY.run, run_id, await _live_turns(run_id), _standing(run_id), logs)
+async def run_activity(run_id: Annotated[str, PathParameter()], logs: Annotated[int, QueryParameter()] = 0, items: Annotated[int, QueryParameter()] = 0, skip: Annotated[int, QueryParameter()] = 0) -> dict:
+    """One run's agent turns, oldest first, with the one still running read from its live transcript. `logs=1` adds the run's info logs at their place in the timeline. `skip=K` leaves out the oldest K work items and `items=N` keeps the newest N of the rest, each with their turns."""
+    return await _timeline(pools.QUERY.run, run_id, await _live_turns(run_id), _standing(run_id), logs, items, skip)
 
 
 @get("/api/archive/{run_id:str}/activity", include_in_schema=False)
-async def archive_activity(run_id: Annotated[str, PathParameter()], logs: Annotated[int, QueryParameter()] = 0) -> dict:
-    """One archived run's turns, read from its frozen file on the archive pool."""
-    return await _timeline(_in_archive(run_id), run_id, {}, None, logs)
+async def archive_activity(run_id: Annotated[str, PathParameter()], logs: Annotated[int, QueryParameter()] = 0, items: Annotated[int, QueryParameter()] = 0, skip: Annotated[int, QueryParameter()] = 0) -> dict:
+    """One archived run's turns, read from its frozen file on the archive pool, cut by `skip` and `items` as the live run's are."""
+    return await _timeline(_in_archive(run_id), run_id, {}, None, logs, items, skip)

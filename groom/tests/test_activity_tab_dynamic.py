@@ -410,7 +410,7 @@ def test_a_timeline_that_cannot_be_read_says_so_never_reads_as_empty_and_a_retry
             else:
                 route.continue_()
 
-        page.route(re.compile(r"/activity$"), handle)
+        page.route(re.compile(r"/activity(\?.*)?$"), handle)
         try:
             _pick(page, run)
             page.get_by_role("tab", name="Activity").click()

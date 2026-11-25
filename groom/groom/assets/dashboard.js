@@ -1446,7 +1446,8 @@ function openMoment(runId, key) {
   const held = store.get().activity;
   if (held.runId === runId && held.status === "ready") {
     store.set({ tab: "activity", activity: { ...held, note: "" } });
-    openRow(key);
+    if (!held.older || held.rows.some((row) => row.slug === key) || findEntry(held.items, key)) openRow(key);
+    else widen(runId, 0).then((done) => done && openRow(key));
     return;
   }
   store.set({ tab: "activity", activity: { ...held, aim: key, note: "" } });
@@ -1554,7 +1555,7 @@ function Overview({ detail }) {
 }
 
 function idleActivity() {
-  return { runId: "", status: "idle", aim: "", rows: [], items: [], folds: {}, selected: "", turn: { slug: "", status: "idle", data: null }, entry: { key: "", status: "idle", data: null }, rev: 0, follow: true, seen: null, hold: null, query: "", item: "", search: idleSearch(), note: "", problems: false, problemCount: null, steps: false, logs: false, logCount: null, raw: idleRaw() };
+  return { runId: "", status: "idle", aim: "", rows: [], items: [], folds: {}, selected: "", turn: { slug: "", status: "idle", data: null }, entry: { key: "", status: "idle", data: null }, rev: 0, follow: true, seen: null, hold: null, query: "", item: "", search: idleSearch(), note: "", problems: false, problemCount: null, steps: false, logs: false, logCount: null, raw: idleRaw(), skip: null, older: 0, stepTotal: null, widening: "idle" };
 }
 
 function idleRaw() {
@@ -1621,12 +1622,23 @@ async function loadTurn(runId, slug, refresh = false) {
   }
 }
 
+const ACTIVITY_PAGE = 20;
+
+const wantsWhole = (activity) => activity.problems || !!normalQuery(activity.query) || !!activity.item;
+
+function activityQuery(activity) {
+  const cut = wantsWhole(activity) ? "" : activity.skip === null ? "items=" + ACTIVITY_PAGE : "skip=" + activity.skip;
+  const query = [cut, activity.logs ? "logs=1" : ""].filter(Boolean).join("&");
+  return query ? "?" + query : "";
+}
+
 async function loadActivity(runId, rev = 0, refresh = false, absorbLogs = false) {
   const seq = ++activitySeq;
   const kept = store.get().activity;
-  if (!refresh) store.set({ activity: { ...idleActivity(), runId, status: "loading", rev, aim: kept.aim, problems: kept.problems, steps: kept.steps, logs: kept.logs } });
+  const skip = kept.runId === runId ? kept.skip : null;
+  if (!refresh) store.set({ activity: { ...idleActivity(), runId, status: "loading", rev, aim: kept.aim, problems: kept.problems, steps: kept.steps, logs: kept.logs, skip } });
   try {
-    const response = await fetch(runApi(runId) + "/activity" + (kept.logs ? "?logs=1" : ""));
+    const response = await fetch(runApi(runId) + "/activity" + activityQuery({ ...kept, skip }));
     if (response.status === 410) {
       if (seq === activitySeq) store.set({ activity: { ...idleActivity(), runId, status: "gone", rev, problems: kept.problems, steps: kept.steps, logs: kept.logs } });
       return;
@@ -1639,8 +1651,14 @@ async function loadActivity(runId, rev = 0, refresh = false, absorbLogs = false)
     const items = data.items || [];
     const chosen = rows.some((row) => row.slug === held.selected) || findEntry(items, held.selected) || held.selected.startsWith(RUNNING_STEP) ? held.selected : "";
     const seen = absorbLogs && held.seen ? new Set([...held.seen, ...timelineKeys(rows, items)].filter((key) => key.startsWith("log:") || held.seen.has(key))) : held.seen;
-    store.set({ activity: { ...held, runId, status: "ready", rows, items, problemCount: data.problems || 0, logCount: data.log_count || 0, selected: chosen, rev, seen } });
+    const older = data.older || 0;
+    store.set({ activity: { ...held, runId, status: "ready", rows, items, problemCount: data.problems || 0, logCount: data.log_count || 0, stepTotal: data.step_count ?? null, older, skip: older, widening: "idle", selected: chosen, rev, seen } });
     const wasRunning = held.rows.some((row) => row.slug === chosen && row.status === "running");
+    if (!refresh && held.aim && older && !rows.some((row) => row.slug === held.aim) && !findEntry(items, held.aim)) {
+      store.set({ activity: { ...store.get().activity, skip: 0 } });
+      loadActivity(runId, rev);
+      return;
+    }
     if (!refresh && held.aim) {
       store.set({ activity: { ...store.get().activity, aim: "" } });
       openRow(held.aim);
@@ -1736,6 +1754,30 @@ function toggleSteps() {
   const held = store.get().activity;
   const folds = Object.fromEntries(Object.entries(held.folds).filter(([key]) => !key.startsWith("steps:")));
   store.set({ activity: { ...held, steps: !held.steps, folds } });
+}
+
+async function widen(runId, skip) {
+  const held = store.get().activity;
+  if (held.widening === "loading") return false;
+  store.set({ activity: { ...held, skip, widening: "loading" } });
+  await loadActivity(runId, held.rev, true);
+  const now = store.get().activity;
+  if (now.widening === "loading") {
+    store.set({ activity: { ...now, widening: "failed" } });
+    return false;
+  }
+  return true;
+}
+
+function showOlder(runId) {
+  const held = store.get().activity;
+  widen(runId, Math.max(0, held.older - ACTIVITY_PAGE));
+}
+
+function wholeIfNeeded(then) {
+  const held = store.get().activity;
+  if (!held.older || !wantsWhole(held)) return then();
+  widen(held.runId, 0).then((done) => done && then());
 }
 
 function toggleLogs(runId) {
@@ -1961,11 +2003,12 @@ function setQuery(runId, text) {
   clearTimeout(searchTimer);
   searchSeq++;
   store.set({ activity: { ...held, query: text, note: "", search: query ? { status: "waiting", query, matches: {} } : idleSearch() } });
-  if (query) searchTimer = setTimeout(() => searchTranscripts(runId, query), SEARCH_WAIT_MS);
+  if (query) searchTimer = setTimeout(() => wholeIfNeeded(() => searchTranscripts(runId, query)), SEARCH_WAIT_MS);
 }
 
 function setItem(value) {
   store.set({ activity: { ...store.get().activity, item: value, note: "" } });
+  wholeIfNeeded(() => {});
 }
 
 function showNewestProblem() {
@@ -1998,13 +2041,13 @@ function setProblems(on) {
   const held = store.get().activity;
   const shown = on ? null : failedEntry(held.items, (entry) => entry.key === held.selected);
   store.set({ activity: { ...held, problems: on, note: "" } });
-  if (on) showNewestProblem();
+  if (on) wholeIfNeeded(showNewestProblem);
   else if (shown) openRow(shown.turn);
 }
 
 function openProblems() {
   store.set({ tab: "activity", activity: { ...store.get().activity, problems: true, note: "" } });
-  showNewestProblem();
+  wholeIfNeeded(showNewestProblem);
 }
 
 function clearFilters() {
@@ -2772,7 +2815,7 @@ function ActivityTab({ detail }) {
       <span class="flabel">Only</span>
       <button type="button" class="fchip prob" aria-pressed=${activity.problems ? "true" : "false"} data-filter="problems" onClick=${() => setProblems(!activity.problems)}>Problems <b>${activity.problemCount || 0}</b></button>
       <span class="flabel">Also show</span>
-      <button type="button" class="fchip steps-toggle" aria-pressed=${activity.steps ? "true" : "false"} data-filter="steps" onClick=${toggleSteps}>Steps <b>${count(stepCount(activity.items))}</b></button>
+      <button type="button" class="fchip steps-toggle" aria-pressed=${activity.steps ? "true" : "false"} data-filter="steps" onClick=${toggleSteps}>Steps <b>${count(activity.stepTotal ?? stepCount(activity.items))}</b></button>
       <button type="button" class="fchip logs-toggle" aria-pressed=${activity.logs ? "true" : "false"} data-filter="logs" onClick=${() => toggleLogs(runId)}>Info logs <b>${count(activity.logCount || 0)}</b></button>
       <span class="r">
         <span class="hint"><span class="kbd">j k</span> move</span>
@@ -2786,6 +2829,11 @@ function ActivityTab({ detail }) {
         ${view.none ? html`<div class="detail-empty" role="status">This run has no problems. <button type="button" class="btn ghost show-all" data-filter="problems" onClick=${() => setProblems(false)}>Show the whole timeline</button></div>` : null}
         ${view.empty && !view.none && view.problems && !view.query ? html`<div class="detail-empty" role="status">No problems in this work item. <button type="button" class="btn ghost clear-search" onClick=${clearFilters}>Clear the filters</button></div>` : null}
         ${view.empty && !view.none && view.query && (view.problems || activity.search.status === "ready") ? html`<div class="detail-empty" role="status">${view.problems ? "No problems match" : "Nothing in this run matches"} “${view.query}”. <button type="button" class="btn ghost clear-search" onClick=${clearFilters}>Clear the search</button></div>` : null}
+        ${activity.older && !view.filtering ? html`<div class="raw-more tl-older">
+          <button type="button" class="btn ghost show-older" disabled=${activity.widening === "loading"} onClick=${() => showOlder(runId)}>${activity.widening === "loading" ? "Reading older work items…" : "Show older work items"}</button>
+          <span class="dim">${plural(activity.older, "older work item is", "older work items are")} not shown.</span>
+          ${activity.widening === "failed" ? html`<span class="dim" role="alert">Older work items could not be read.</span>` : null}
+        </div>` : null}
         ${view.items.map((item) => html`<${ItemSection} key=${item.work_id} item=${item} alive=${alive} rows=${rows} selected=${activity.selected} pick=${pick} folds=${folds} headed=${headed} view=${view} hits=${hits} steps=${activity.steps} />`)}
         ${searching ? html`<div role="status" class="dim search-note"><span class="spin" aria-hidden="true"></span>Searching the transcripts of this run…</div>` : null}
         ${searchFailed ? html`<div role="status" class="dim search-note">The transcripts of this run could not be searched. These rows match the row text only. <button type="button" class="btn ghost retry-search" onClick=${() => searchTranscripts(runId, view.query)}>Retry now</button></div>` : null}
