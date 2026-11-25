@@ -3,10 +3,8 @@ from __future__ import annotations
 
 import functools
 import hashlib
-import json
 import shutil
 import subprocess
-from collections import Counter
 import itertools
 from collections.abc import Callable
 from dataclasses import replace
@@ -24,21 +22,19 @@ from workhorse.pyflow.driver import drive
 from workhorse.pyflow.engine import RunEnv
 from workhorse.runner.backends.delegates import Delegate
 from workhorse.runner.backends.null import NullBackend
-from workhorse.runner.failure import TurnDeadlineExceeded
 
 from workhorse_workflows.coder.dev import flow as dev_flow
 from workhorse_workflows.coder.dev.flow import Dev
 from workhorse_workflows.coder.shared.owner import MAX_LAPS
-from workhorse_workflows.coder.shared import commits, work
-from workhorse_workflows.coder.shared.review import ANSWERS_FILE
+from workhorse_workflows.coder.shared import work
 from workhorse_workflows.coder.shared.schemas.dev import DispatchEntry
 from workhorse_workflows.coder.shared.schemas.dev_story import DevOutcome
 from workhorse_workflows.coder.shared.schemas.qa import StackStatus
 from workhorse_workflows.kit.qa import runner as qa_runner
 from workhorse_workflows.kit.qa.runner import copy_lease
 from workhorse_workflows.kit.qa.schemas import QaPlanRun
-from workhorse_workflows.kit.git import commit_all
 from _epics import epics_root
+from coder.dev.fake_agent import BLOCK_NOTE, OPERATOR_ANSWER, FakeAgent, git_head
 
 EPIC = "EPIC-1"
 STORY = "STORY-1"
@@ -80,39 +76,6 @@ Users need links that only point inside the site.
 - **Status**: Not started
 """
 
-RED_MAKEFILE = "lint:\n\t@echo 'links.go:1: undefined: allowList'; exit 1\n"
-
-TEST_NAME = "TestRejectsRelativeDestination"
-
-BLOCK_NOTE = "nobody has said whether a protocol-relative link counts as relative"
-
-OPERATOR_ANSWER = "A protocol-relative link counts as external, so reject it."
-
-API_SERVICE: dict[str, Any] = {
-    "repo": "api",
-    "path": ".",
-    "type": "go",
-    "plan_file": "plan-api.md",
-}
-
-FINDINGS: list[dict[str, Any]] = [
-    {
-        "target": "api/links.go:3",
-        "issue": "a destination starting with `//` passes as internal",
-        "repair": "treat a protocol-relative destination as external",
-        "category": "Bug",
-        "score": 90,
-    },
-    {
-        "target": "api/links.go:1",
-        "issue": "the validator could reuse the url package's parser",
-        "repair": "parse with net/url",
-        "category": "Reuse",
-        "score": 40,
-    },
-]
-
-
 @pytest.fixture
 def docs(
     repo: Path,
@@ -151,199 +114,6 @@ def workspace(
     return {"api": api}
 
 
-class _Agent:
-    """The dev turn and the resolver, scripted on the flow's arms."""
-
-    def __init__(
-        self,
-        workspace: dict[str, Path],
-        *,
-        blocked: int = 0,
-        red: int = 0,
-        unanswered: int = 0,
-        stray: int = 0,
-        also_fixed: tuple[str, ...] = (),
-        follow_ups: tuple[dict[str, Any], ...] = (),
-        outside: dict[str, str] | None = None,
-        walk: tuple[int, ...] = (1,),
-        failed: tuple[str, ...] = (),
-        repo: str = "api",
-        blocked_in: str = "review",
-        departures: tuple[str, ...] = (),
-        advise_from: int = 1,
-        consult_from: int = 1,
-        session: Callable[[int], str] | None = None,
-        cut: tuple[str, ...] = (),
-    ) -> None:
-        self.cut = set(cut)
-        self.nodes: list[Any] = []
-        self.kwargs: list[dict[str, Any]] = []
-        self.blocked_in = blocked_in
-        self.departures = departures
-        self.advise_from = advise_from
-        self.consult_from = consult_from
-        self.session = session
-        self.workspace = workspace
-        self.repo = repo
-        self.outside = dict(outside or {})
-        self.failed = failed
-        self.walk = walk
-        self.follow_ups = follow_ups
-        self.also_fixed = also_fixed
-        self.blocked = blocked
-        self.red = red
-        self.unanswered = unanswered
-        self.stray = stray
-        self.prefix = ""
-        self.calls: list[str] = []
-        self.args: list[dict[str, Any]] = []
-        self.powers: list[tuple[str, str | None]] = []
-        self.rebriefs: list[Callable[[], str] | None] = []
-
-    def __call__(self, node: Any, ctx: Any, *args: Any, **kwargs: Any) -> Any:
-        stem = Path(node.prompt).stem
-        data = ctx.as_dict()
-        self.calls.append(stem)
-        self.args.append(data)
-        self.powers.append((stem, node.power))
-        self.rebriefs.append(kwargs.get("rebrief"))
-        self.nodes.append(node)
-        self.kwargs.append(kwargs)
-        if stem in self.cut:
-            self.cut.discard(stem)
-            raise TurnDeadlineExceeded(stem, node.deadline, node.deadline + 1.0)
-        if self.session is not None and len(args) > 1:
-            chain = Path(args[1])
-            chain.parent.mkdir(parents=True, exist_ok=True)
-            chain.write_text(self.session(len(self.calls)), encoding="utf-8")
-        handler = getattr(self, f"_{stem.replace('-', '_')}")
-        return f"(scripted) {node.prompt}", handler(data, self.counts()[stem])
-
-    def counts(self) -> Counter[str]:
-        return Counter(self.calls)
-
-    def rebriefs_for(self, stem: str) -> list[Callable[[], str] | None]:
-        return [r for s, r in zip(self.calls, self.rebriefs, strict=True) if s == stem]
-
-    def args_for(self, stem: str) -> list[dict[str, Any]]:
-        return [a for s, a in zip(self.calls, self.args, strict=True) if s == stem]
-
-    def _dev_plan(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        """The plan phase: ready, or blocked while `blocked` counts it down."""
-        if self.blocked_in == "plan" and nth <= self.blocked:
-            return {"status": "blocked", "notes": BLOCK_NOTE}
-        return {"status": "ready", "notes": "planned"}
-
-    def _dev_build(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        """The build phase: ready with its departures, advised from the `advise_from`th turn on."""
-        if self.blocked_in == "build" and nth <= self.blocked:
-            return {"status": "blocked", "notes": BLOCK_NOTE}
-        advice = "keep it" if nth >= self.advise_from else ""
-        return {
-            "status": "ready",
-            "notes": "built",
-            "departures": [
-                {"change": change, "reason": "the plan fails a gate", "advice": advice}
-                for change in self.departures
-            ],
-        }
-
-    def _dev_follow_up(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        """A later turn of a phase: what the phase's own turn would answer."""
-        phase = str(data["phase"])
-        handler = getattr(self, f"_dev_{phase}")
-        spec = Path(str(data["spec_dir"]))
-        carried = {**data, "answers_file": str(spec / ANSWERS_FILE), "review_prefix": self.prefix}
-        return handler(carried, self.counts()[f"dev-{phase}"] + nth)
-
-    def _dev_review(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        """Build, commit, write the plan and the answers, and report the review's findings once."""
-        if self.blocked_in == "review" and nth <= self.blocked:
-            return {"status": "blocked", "notes": BLOCK_NOTE}
-        spec = Path(str(data["spec_dir"]))
-        spec.mkdir(parents=True, exist_ok=True)
-        entries = "".join(f"\n### AC {n}: criterion {n}\n\n- **Met by**: {self.repo}/links.go:3\n" for n in self.walk)
-        (spec / "plan.md").write_text(
-            f"# Plan\n\nReject relative links in the api.\n\n## Acceptance Walk\n{entries}",
-            encoding="utf-8",
-        )
-        if self.failed:
-            log = spec / "qa" / "qa-run.ndjson"
-            log.parent.mkdir(parents=True, exist_ok=True)
-            rows: list[dict[str, Any]] = [{"kind": "session_start", "run_id": "qa-run-1"}]
-            rows += [{"kind": "assert", "scenario": sid, "action": 1, "result": "FAIL"} for sid in self.failed]
-            rows += [{"kind": "assert", "scenario": "scenario-ok", "action": 1, "result": "PASS"}]
-            log.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
-        (spec / f"plan-{self.repo}.md").write_text(
-            f"# Plan: {self.repo}\n\nValidate in links.go.\n", encoding="utf-8"
-        )
-        repo = self.workspace[self.repo]
-        (repo / "links.go").write_text(f"package links\n\n// pass {nth}\n", encoding="utf-8")
-        (repo / "links_test.go").write_text(
-            f"package links\n\nfunc {TEST_NAME}(t *testing.T) {{}}\n", encoding="utf-8"
-        )
-        makefile = repo / "Makefile"
-        if nth <= self.red:
-            makefile.write_text(RED_MAKEFILE, encoding="utf-8")
-        elif makefile.exists():
-            makefile.unlink()
-        message = commits.message(
-            "feat",
-            commits.scope(repo.name),
-            "reject relative link destinations",
-            epic=str(data["epic"]),
-            story=str(data["story_id"]),
-        )
-        commit_all(repo, message)
-        if nth <= self.stray:
-            (repo / "scratch.go").write_text("package links\n", encoding="utf-8")
-        first = not self.prefix
-        if first:
-            self.prefix = str(data["review_prefix"])
-        if nth > self.unanswered:
-            sha = _head(repo)
-            Path(str(data["answers_file"])).write_text(
-                f"## {self.prefix}1: fixed\n"
-                f"- commit: {sha}\n"
-                f"- path: {self.repo}/links.go\n"
-                f"- test: {TEST_NAME}\n\n"
-                f"## {self.prefix}2: declined\n"
-                "Reason: coincidence: the story's technical notes keep the validator free of new imports; the url package parses another grammar.\n"
-                + "".join(
-                    f"\n## {item}: fixed\n- commit: {sha}\n- path: {self.repo}/links.go\n- test: {TEST_NAME}\n"
-                    for item in self.also_fixed
-                ),
-                encoding="utf-8",
-            )
-        return {
-            "status": "ready",
-            "summary": "reject relative link destinations in the api",
-            "notes": f"built and reviewed on pass {nth}",
-            "services": [{**API_SERVICE, "repo": self.repo, "plan_file": f"plan-{self.repo}.md"}],
-            "findings": [{**f, "target": f["target"].replace("api/", f"{self.repo}/", 1)} for f in FINDINGS] if first else [],
-            "follow_ups": list(self.follow_ups) if first else [],
-            "consults": [
-                {"finding": f"{self.prefix}2", "question": "is the decline right?", "advice": "yes"}
-            ]
-            if nth >= self.consult_from
-            else [],
-        }
-
-    def _judge(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        """The judge's ruling: each scope subject its title names in `outside`, the rest at its default."""
-        if data["kind"] == "scope":
-            subjects: dict[str, str] = json.loads(str(data["subjects"]))
-            return {"answers": {
-                rid: kind for rid, text in subjects.items()
-                for title, kind in self.outside.items() if text.startswith(f"{title}:")
-            }}
-        return {"answers": {}}
-
-    def _resolve_operator(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
-        """The resolver's say on a block, which this fake declines to give."""
-        return {"decision": "escalated", "summary": "only the operator can decide this"}
-
-
 def _answers(seen: list[str]) -> Callable[..., None]:
     """A stand-in for the human the `Await` is waiting on."""
 
@@ -352,12 +122,6 @@ def _answers(seen: list[str]) -> Callable[..., None]:
         path.write_text(f"STATUS: ANSWERED\n\n{OPERATOR_ANSWER}\n", encoding="utf-8")
 
     return answered
-
-
-def _head(repo: Path) -> str:
-    return subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=repo, check=True, capture_output=True, text=True
-    ).stdout.strip()
 
 
 def _dev(docs: Path, operator_mode: str = "auto") -> Dev:
@@ -372,7 +136,7 @@ def test_a_clean_pass_settles_the_fix_and_records_the_decline(
     git: Callable[..., subprocess.CompletedProcess],
 ) -> None:
     """One ready turn with a fixed and a declined answer finishes the run on its first check."""
-    agent = _Agent(workspace)
+    agent = FakeAgent(workspace)
 
     result = drive_flow(_dev(docs), env(), agent)
 
@@ -410,7 +174,7 @@ def test_the_check_hands_the_plan_its_storys_declared_services(
     setattr(spy, NODE_ATTR, replace(node_spec(real), fn=spy))
     monkeypatch.setattr(dev_flow, "record_plan", spy)
 
-    drive_flow(_dev(docs), env(), _Agent(workspace))
+    drive_flow(_dev(docs), env(), FakeAgent(workspace))
 
     assert seen and all(item == ["api", "web"] for item in seen), seen
 
@@ -422,7 +186,7 @@ def test_a_red_gate_sends_its_output_back_and_a_green_turn_finishes(
     drive_flow: Callable[..., Any],
 ) -> None:
     """The check's failure is the next turn's report, and the run ends once the gates pass."""
-    agent = _Agent(workspace, red=1)
+    agent = FakeAgent(workspace, red=1)
 
     result = drive_flow(_dev(docs), env(), agent)
 
@@ -447,7 +211,7 @@ def test_a_copy_the_story_added_comes_back_as_a_copies_failure_before_any_servic
     copies: Any,
 ) -> None:
     """The lap names the copy to the review turn, and the service gates wait for the lap that has none."""
-    agent = _Agent(workspace, red=2)
+    agent = FakeAgent(workspace, red=2)
     copies.finds("api/links.go:1-9", str(workspace["api"]))
 
     result = drive_flow(_dev(docs), env(), agent)
@@ -471,7 +235,7 @@ def test_the_clone_check_is_not_consulted_when_the_story_status_check_fails(
     """A story stamped finished is the first failure, so the clone check has not run in that lap."""
     story = epics_root() / EPIC / "stories" / STORY / "story.md"
 
-    class Stamping(_Agent):
+    class Stamping(FakeAgent):
         def _dev_review(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
             story.write_text(
                 STORY_MD.replace("Not started", "Done") if nth == 1 else STORY_MD,
@@ -496,7 +260,7 @@ def test_the_clone_check_receives_the_dispatch_repos_and_the_story_identity(
     copies: Any,
 ) -> None:
     """The docs entry never reaches the check, and the story's id and slug do."""
-    agent = _Agent(workspace)
+    agent = FakeAgent(workspace)
 
     drive_flow(_dev(docs), env(), agent)
 
@@ -523,7 +287,7 @@ def test_the_lap_gates_a_service_the_check_set_adds_after_the_plan_services(
         DispatchEntry(service="dependent", repo="api", cwd=str(dependent), type="go", label="go")
     )
 
-    class Repairing(_Agent):
+    class Repairing(FakeAgent):
         def _dev_review(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
             if nth > 1:
                 makefile.unlink(missing_ok=True)
@@ -547,7 +311,7 @@ def test_the_check_set_receives_the_dispatch_and_the_story_identity(
     check_set: Any,
 ) -> None:
     """The check set sees the plan's dispatch, docs entry included, and the story's id and slug."""
-    agent = _Agent(workspace)
+    agent = FakeAgent(workspace)
 
     drive_flow(_dev(docs), env(), agent)
 
@@ -566,7 +330,7 @@ def test_the_check_set_is_not_consulted_when_the_clone_check_finds_a_copy(
     check_set: Any,
 ) -> None:
     """The lap that fails on a copy stops before the check set; the lap after it consults it."""
-    agent = _Agent(workspace)
+    agent = FakeAgent(workspace)
     copies.finds("api/links.go:1-9", str(workspace["api"]))
 
     drive_flow(_dev(docs), env(), agent)
@@ -582,7 +346,7 @@ def test_an_unanswered_finding_comes_back_named_in_the_report(
     drive_flow: Callable[..., Any],
 ) -> None:
     """A finding with no section in the answer file stays open and buys another turn."""
-    agent = _Agent(workspace, unanswered=1)
+    agent = FakeAgent(workspace, unanswered=1)
 
     result = drive_flow(_dev(docs), env(), agent)
 
@@ -615,7 +379,7 @@ def test_a_finding_qa_filed_in_the_parent_run_reaches_the_dev_turn(
         "score": 80,
     }
     work.file(work.worklist(parent), work.finding_items(STORY, "qa", 1, [qa]), by="qa")
-    agent = _Agent(workspace, also_fixed=(f"{STORY}/qa-1.1",))
+    agent = FakeAgent(workspace, also_fixed=(f"{STORY}/qa-1.1",))
     dev = Dev(story=STORY, epic=EPIC, worklist_dir=str(parent))
 
     result = drive_flow(dev, env(), agent)
@@ -657,7 +421,7 @@ def test_a_story_turn_s_follow_up_goes_to_the_register_not_the_worklist(
 ) -> None:
     """A follow-up the story turn reports lands as a record and adds no follow-up item to the run."""
     run = _run_with_story(tmp_path)
-    agent = _Agent(workspace, follow_ups=(_follow_up("Paginate the audit log", "it loads every row"),))
+    agent = FakeAgent(workspace, follow_ups=(_follow_up("Paginate the audit log", "it loads every row"),))
 
     drive_flow(Dev(story=STORY, epic=EPIC, worklist_dir=str(run)), env(), agent)
 
@@ -692,7 +456,7 @@ def test_a_follow_up_that_is_no_product_work_is_not_filed(
     """The judge reads the follow-up's own reason, and one it calls no product work never reaches the register."""
     run = _run_with_story(tmp_path)
     product = _follow_up("Paginate the audit log", "it loads every row")
-    agent = _Agent(workspace, follow_ups=(entry, product), outside={entry["title"]: kind})
+    agent = FakeAgent(workspace, follow_ups=(entry, product), outside={entry["title"]: kind})
     dev = Dev(story=STORY, epic=EPIC, worklist_dir=str(run))
 
     with caplog.at_level("INFO"):
@@ -721,7 +485,7 @@ def test_a_follow_up_the_judge_reads_as_pre_existing_is_filed_with_that_pattern(
         "Fix the MySQL error on the audit query",
         "the review hit it and it predates this story",
     )
-    agent = _Agent(workspace, follow_ups=(entry,), outside={entry["title"]: "pre-existing"})
+    agent = FakeAgent(workspace, follow_ups=(entry,), outside={entry["title"]: "pre-existing"})
 
     drive_flow(Dev(story=STORY, epic=EPIC, worklist_dir=str(run)), env(), agent)
 
@@ -749,7 +513,7 @@ def test_a_follow_up_that_cites_an_open_record_files_no_record(
     """A follow-up whose reason cites an open record by id adds nothing to the register."""
     _file_open(docs, SNAPSHOTS, "clear-report-snapshots")
     before = _register(docs)
-    agent = _Agent(
+    agent = FakeAgent(
         workspace,
         follow_ups=(_follow_up(
             "Drop cached snapshots when the user logs out", "see [clear-report-snapshots]"
@@ -771,7 +535,7 @@ def test_a_follow_up_no_open_record_holds_is_filed_beside_the_qa_ones(
 ) -> None:
     """A new follow-up adds one coder record, and the open record QA filed keeps its line."""
     _file_open(docs, SNAPSHOTS, "clear-report-snapshots", filed_by="qa")
-    agent = _Agent(workspace, follow_ups=(_follow_up("Paginate the audit log", "it loads every row"),))
+    agent = FakeAgent(workspace, follow_ups=(_follow_up("Paginate the audit log", "it loads every row"),))
 
     drive_flow(_dev(docs), env(), agent)
 
@@ -818,9 +582,9 @@ def test_two_follow_ups_of_a_workspace_run_land_as_records_on_the_untracked_shel
         _follow_up("Paginate the audit log", "it loads every row", repo="api-service", symbols=["audit/log.go"]),
         _follow_up("Cache the rate card", "it is read on every call", repo="api-service", area="pricing", pattern="add-cache"),
     )
-    code_heads = {name: _head(path) for name, path in two_repo_workspace.items()}
+    code_heads = {name: git_head(path) for name, path in two_repo_workspace.items()}
 
-    drive_flow(_dev(docs), env(), _Agent(two_repo_workspace, follow_ups=followed, repo="api-service"))
+    drive_flow(_dev(docs), env(), FakeAgent(two_repo_workspace, follow_ups=followed, repo="api-service"))
 
     folders = sorted(p.parent.relative_to(artifacts / "backlogs").parts[:2] for p in (artifacts / "backlogs").glob("*/*/*/record.md"))
     assert folders == [("api-service", "audit"), ("api-service", "pricing")]
@@ -831,10 +595,10 @@ def test_two_follow_ups_of_a_workspace_run_land_as_records_on_the_untracked_shel
     assert any("audit" in line and "paginate-list" in line and "Paginate the audit log" in line for line in lines)
     assert any("pricing" in line and "add-cache" in line and "Cache the rate card" in line for line in lines)
     assert not (two_repo_workspace["web-app"] / "backlog").exists()
-    assert _head(two_repo_workspace["web-app"]) == code_heads["web-app"]
+    assert git_head(two_repo_workspace["web-app"]) == code_heads["web-app"]
     assert not list(two_repo_workspace["api-service"].rglob("record.md"))
 
-    drive_flow(_dev(docs), env(name="coder-again"), _Agent(two_repo_workspace, follow_ups=followed, repo="api-service"))
+    drive_flow(_dev(docs), env(name="coder-again"), FakeAgent(two_repo_workspace, follow_ups=followed, repo="api-service"))
 
     assert _register(docs) == lines
     assert len(list((artifacts / "backlogs").glob("*/*/*/record.md"))) == 2
@@ -848,7 +612,7 @@ def test_a_blocked_turn_in_human_mode_parks_and_resumes_with_the_answer(
     drive_flow: Callable[..., Any],
 ) -> None:
     """A human operator is asked directly, and the answer reaches the next dev turn."""
-    agent = _Agent(workspace, blocked=1)
+    agent = FakeAgent(workspace, blocked=1)
     seen: list[str] = []
 
     with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
@@ -871,7 +635,7 @@ def test_checks_that_stay_red_past_the_lap_budget_park_instead_of_failing(
     drive_flow: Callable[..., Any],
 ) -> None:
     """A spent repair budget is a block: the resolver escalates, and the answer resumes the dev owner."""
-    agent = _Agent(workspace, red=MAX_LAPS + 1)
+    agent = FakeAgent(workspace, red=MAX_LAPS + 1)
     seen: list[str] = []
 
     with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
@@ -896,7 +660,7 @@ def test_work_the_turn_left_uncommitted_comes_back_named_in_the_report(
     drive_flow: Callable[..., Any],
 ) -> None:
     """A path the story wrote and did not commit fails the check, so the owner records it."""
-    agent = _Agent(workspace, stray=1)
+    agent = FakeAgent(workspace, stray=1)
 
     result = drive_flow(_dev(docs), env(), agent)
 
@@ -922,7 +686,7 @@ def test_a_backlog_record_filed_under_an_artifacts_dir_in_the_repo_is_not_the_ow
     inside = workspace["api"] / "artifacts"
     shutil.move(core_config.resolve_artifacts_dir(), inside)
     monkeypatch.setenv("STABLEMATE_ARTIFACTS_DIR", str(inside))
-    agent = _Agent(
+    agent = FakeAgent(
         workspace, follow_ups=(_follow_up("Paginate the audit log", "it loads every row"),)
     )
 
@@ -943,7 +707,7 @@ def test_a_path_dirty_before_the_story_began_is_not_the_story_s_to_commit(
     mine = workspace["api"] / "notes.go"
     mine.write_text("package links\n", encoding="utf-8")
     entry = f"notes.go\0{hashlib.sha256(mine.read_bytes()).hexdigest()}"
-    agent = _Agent(workspace)
+    agent = FakeAgent(workspace)
     dev = _dev(docs).model_copy(update={"preexisting": (entry,)})
 
     result = drive_flow(dev, env(), agent)
@@ -977,7 +741,7 @@ def test_a_plan_that_skips_a_criterion_goes_back_naming_it(
     """The walk check names the criterion the plan left out, and the next turn's full walk finishes."""
     _three_criteria(docs, git)
 
-    class Walks(_Agent):
+    class Walks(FakeAgent):
         def _dev_review(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
             self.walk = (1, 3) if nth == 1 else (1, 2, 3)
             return super()._dev_review(data, nth)
@@ -1003,7 +767,7 @@ def test_a_full_walk_proceeds(
 ) -> None:
     """A plan that walks all three criteria costs no repair turn."""
     _three_criteria(docs, git)
-    agent = _Agent(workspace, walk=(1, 2, 3))
+    agent = FakeAgent(workspace, walk=(1, 2, 3))
 
     result = drive_flow(_dev(docs), env(), agent)
 
@@ -1020,7 +784,7 @@ def test_a_follow_up_turn_needs_no_walk(
 ) -> None:
     """A follow-up item skips the walk check, whatever the plan holds."""
     _three_criteria(docs, git)
-    agent = _Agent(workspace, walk=())
+    agent = FakeAgent(workspace, walk=())
     dev = Dev(story=STORY, epic=EPIC, follow_up_title="Tidy the validator")
 
     result = drive_flow(dev, env(), agent)
@@ -1087,7 +851,7 @@ def test_no_failed_record_touches_no_stack(
     stack = _Stack()
     stack.install(monkeypatch)
 
-    result = drive_flow(_dev(docs), env(), _Agent(workspace))
+    result = drive_flow(_dev(docs), env(), FakeAgent(workspace))
 
     assert result.status == "ready", result
     assert stack.calls == [], stack.calls
@@ -1103,7 +867,7 @@ def test_failed_scenarios_that_now_pass_finish(
     """The scoped rerun runs only the failed ids, and a pass lets the item leave dev."""
     stack = _Stack()
     stack.install(monkeypatch)
-    agent = _Agent(workspace, failed=("scenario-b", "scenario-a"))
+    agent = FakeAgent(workspace, failed=("scenario-b", "scenario-a"))
 
     result = drive_flow(_dev(docs), env(), agent)
 
@@ -1123,7 +887,7 @@ def test_a_scenario_that_still_fails_goes_back_to_review(
     """A red rerun is the next turn's report, names the ids, and spends one repair lap."""
     stack = _Stack(failed=("scenario-a",), red=1)
     stack.install(monkeypatch)
-    agent = _Agent(workspace, failed=("scenario-a",))
+    agent = FakeAgent(workspace, failed=("scenario-a",))
 
     result = drive_flow(_dev(docs), env(), agent)
 
@@ -1145,7 +909,7 @@ def test_a_scoped_run_that_does_not_finish_lets_the_item_leave(
     """An unfinished or unreachable rerun is QA's to own, and the copy is still released."""
     stack = _Stack(status="invalid")
     stack.install(monkeypatch)
-    agent = _Agent(workspace, failed=("scenario-a",))
+    agent = FakeAgent(workspace, failed=("scenario-a",))
 
     result = drive_flow(_dev(docs), env(), agent)
 
@@ -1164,7 +928,7 @@ def test_a_stack_that_will_not_come_up_is_skipped_and_released(
     """No stack means no rerun and no repair turn, and the lease is still released."""
     stack = _Stack(ready="no")
     stack.install(monkeypatch)
-    agent = _Agent(workspace, failed=("scenario-a",))
+    agent = FakeAgent(workspace, failed=("scenario-a",))
 
     result = drive_flow(_dev(docs), env(), agent)
 
@@ -1184,7 +948,7 @@ def test_the_dev_lease_is_not_the_qa_lease(
     stack.install(monkeypatch)
     run_env = env()
 
-    drive_flow(_dev(docs), run_env, _Agent(workspace, failed=("scenario-a",)))
+    drive_flow(_dev(docs), run_env, FakeAgent(workspace, failed=("scenario-a",)))
 
     (lease,) = stack.leases
     assert lease != copy_lease(STORY, "t"), lease
@@ -1202,7 +966,7 @@ def test_a_second_failing_self_check_hands_the_item_to_qa(
     """The self-check bounces dev once, and a still-red rerun then finishes the item and says QA owns it."""
     stack = _Stack(failed=("scenario-a",), red=5)
     stack.install(monkeypatch)
-    agent = _Agent(workspace, failed=("scenario-a",))
+    agent = FakeAgent(workspace, failed=("scenario-a",))
 
     with caplog.at_level("INFO"):
         result = drive_flow(_dev(docs), env(), agent)
@@ -1254,7 +1018,7 @@ def test_a_fresh_story_runs_plan_build_and_review_in_that_order(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    agent = _Agent(workspace)
+    agent = FakeAgent(workspace)
 
     drive_flow(_dev(docs), env(), agent)
 
@@ -1267,7 +1031,7 @@ def test_a_failed_check_reenters_review_and_not_build(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    agent = _Agent(workspace, red=1)
+    agent = FakeAgent(workspace, red=1)
 
     drive_flow(_dev(docs), env(), agent)
 
@@ -1281,7 +1045,7 @@ def test_an_operator_answer_on_a_build_block_returns_to_build(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    agent = _Agent(workspace, blocked=1, blocked_in="build")
+    agent = FakeAgent(workspace, blocked=1, blocked_in="build")
     seen: list[str] = []
 
     with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
@@ -1301,7 +1065,7 @@ def test_a_departure_without_advice_sends_the_build_back_when_an_advisor_is_offe
     env: Callable[..., RunEnv],
     drive_advised: Callable[..., Any],
 ) -> None:
-    agent = _Agent(workspace, departures=("swap the parser",), advise_from=2)
+    agent = FakeAgent(workspace, departures=("swap the parser",), advise_from=2)
 
     result = drive_advised(_dev(docs), env(), agent)
 
@@ -1326,7 +1090,7 @@ def test_without_an_advisor_a_departure_passes_and_every_phase_runs_at_max(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    agent = _Agent(workspace, departures=("swap the parser",), advise_from=9)
+    agent = FakeAgent(workspace, departures=("swap the parser",), advise_from=9)
 
     drive_flow(_dev(docs), env(), agent)
 
@@ -1344,7 +1108,7 @@ def test_a_decline_with_no_consult_is_reopened_and_named_when_an_advisor_is_offe
     env: Callable[..., RunEnv],
     drive_advised: Callable[..., Any],
 ) -> None:
-    agent = _Agent(workspace, consult_from=2)
+    agent = FakeAgent(workspace, consult_from=2)
 
     result = drive_advised(_dev(docs), env(), agent)
 
@@ -1361,7 +1125,7 @@ def test_a_decline_with_a_consult_on_file_stays_declined(
     env: Callable[..., RunEnv],
     drive_advised: Callable[..., Any],
 ) -> None:
-    agent = _Agent(workspace, consult_from=1)
+    agent = FakeAgent(workspace, consult_from=1)
 
     result = drive_advised(_dev(docs), env(), agent)
 
@@ -1375,7 +1139,7 @@ def test_a_later_turn_of_a_phase_on_the_same_conversation_sends_only_the_follow_
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    agent = _Agent(workspace, red=1, session=lambda n: "sess-1")
+    agent = FakeAgent(workspace, red=1, session=lambda n: "sess-1")
     run_env = env()
 
     drive_flow(_dev(docs), run_env, agent)
@@ -1399,7 +1163,7 @@ def test_a_conversation_other_than_the_briefed_one_opens_with_the_full_brief_aga
 ) -> None:
     reads = itertools.count()
     monkeypatch.setattr(Dev, "chain_session", lambda self, key: f"conversation-{next(reads)}")
-    agent = _Agent(workspace, red=1, session=lambda n: "sess-1")
+    agent = FakeAgent(workspace, red=1, session=lambda n: "sess-1")
 
     drive_flow(_dev(docs), env(), agent)
 
@@ -1413,7 +1177,7 @@ def test_the_plan_turn_on_a_fresh_conversation_carries_the_full_rules(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    agent = _Agent(workspace, session=lambda n: "sess-1")
+    agent = FakeAgent(workspace, session=lambda n: "sess-1")
 
     drive_flow(_dev(docs), env(), agent)
 
@@ -1430,7 +1194,7 @@ def test_the_opening_brief_records_an_operator_answer_as_a_product_page(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    agent = _Agent(workspace, session=lambda n: "sess-1")
+    agent = FakeAgent(workspace, session=lambda n: "sess-1")
 
     drive_flow(_dev(docs), env(), agent)
 
@@ -1449,7 +1213,7 @@ def test_the_build_turn_on_the_plans_conversation_points_at_the_opening_brief(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    agent = _Agent(workspace, session=lambda n: "sess-1")
+    agent = FakeAgent(workspace, session=lambda n: "sess-1")
 
     drive_flow(_dev(docs), env(), agent)
 
@@ -1471,7 +1235,7 @@ def test_a_rebrief_renders_the_full_rules_and_rewrites_the_brief_on_disk(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    agent = _Agent(workspace, session=lambda n: "sess-1")
+    agent = FakeAgent(workspace, session=lambda n: "sess-1")
 
     drive_flow(_dev(docs), env(), agent)
 
@@ -1493,7 +1257,7 @@ def test_the_first_review_turn_writes_the_reviewer_files_beside_its_brief(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    agent = _Agent(workspace)
+    agent = FakeAgent(workspace)
 
     drive_flow(_dev(docs), env(), agent)
 
@@ -1516,7 +1280,7 @@ def test_a_build_turn_cut_at_its_deadline_parks_and_resumes_on_the_same_session(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    agent = _Agent(workspace, cut=("dev-build",), session=lambda n: "sid-1")
+    agent = FakeAgent(workspace, cut=("dev-build",), session=lambda n: "sid-1")
     seen: list[str] = []
 
     with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
@@ -1541,7 +1305,7 @@ def test_a_cut_resolver_turn_lands_on_the_gate(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    agent = _Agent(workspace, blocked=1, cut=("resolve-operator",))
+    agent = FakeAgent(workspace, blocked=1, cut=("resolve-operator",))
     seen: list[str] = []
 
     with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
@@ -1560,7 +1324,7 @@ def test_turn_minutes_sets_the_owner_deadline(
     env: Callable[..., RunEnv],
     drive_flow: Callable[..., Any],
 ) -> None:
-    agent = _Agent(workspace)
+    agent = FakeAgent(workspace)
 
     drive_flow(Dev(story=STORY, epic=EPIC, turn_minutes=7), env(), agent)
 
