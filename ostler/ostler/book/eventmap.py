@@ -26,12 +26,30 @@ def root_of(module: str) -> str | None:
     return root if os.path.isdir(os.path.join(root, "services")) else None
 
 
+def scoped(module: str, service: Service[Any], root: str | None) -> list[str]:
+    """The books a book is read with: its own product's, and each owner it names with a `Foreign`."""
+    from ostler.book.check import references
+
+    if root is None:
+        return []
+    parts = module.split(".")
+    every = services_of(root)
+    if len(parts) >= 3:
+        names = [name for name in every if name.startswith(".".join(parts[:2]) + ".")]
+    else:
+        names = [name for name in every if name.count(".") == 1]
+    for reference in references(module, service):
+        if reference.owner in every and reference.owner not in names:
+            names.append(reference.owner)
+    return names
+
+
 def books(module: str, service: Service[Any]) -> tuple[Books, dict[str, str]]:
     """The books under the root of `module`, this one as given, and why each other book that cannot be loaded was left out."""
     found: Books = {module: service}
     skipped: dict[str, str] = {}
     root = root_of(module)
-    for name in services_of(root) if root is not None else ():
+    for name in scoped(module, service, root):
         if name == module:
             continue
         try:

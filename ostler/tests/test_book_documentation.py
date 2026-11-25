@@ -51,6 +51,7 @@ def test_a_service_given_both_after_it_is_built_is_refused_when_loaded(monkeypat
     monkeypatch.setattr(cli.importlib, "import_module", lambda name: type("Module", (), {"service": book}))
     monkeypatch.setattr(cli, "book_root", lambda cwd: str(FIXTURE))
     monkeypatch.setattr(cli.os.path, "isdir", lambda path: True)
+    monkeypatch.setattr(cli.os.path, "isfile", lambda path: True)
     with pytest.raises(BookError, match="vendor.*both"):
         cli.load("services.vendor")
 

@@ -41,7 +41,7 @@ from ostler.book.files import cmd_files
 from ostler.book.exploration import BASELINE, REFUSED, Cell, Played as Explored, Walk, never_refused, play as play_cells, seed, unreached
 from ostler.book.graph import dot, render
 from ostler.book.pages import LEVELS, cmd_pages
-from ostler.book.index import book_root, cmd_index, cmd_search_book, flat_books, moved_hint
+from ostler.book.index import book_root, cmd_index, cmd_search_book, flat_books, moved_hint, services_of
 from ostler.book.http import Endpoint, identity_lines, named_shapes
 from ostler.book.inputs import Tried, fields_tried, play as play_inputs
 from ostler.book.journey import JourneyResult
@@ -79,11 +79,17 @@ def default_out(args: argparse.Namespace) -> bool:
 
 def load(name: str) -> Service[Any]:
     root = book_root(os.getcwd())
-    if not os.path.isdir(os.path.join(root, *name.split("."))):
+    book_dir = os.path.join(root, *name.split("."))
+    if not os.path.isdir(book_dir):
         parts = name.split(".")
         flat = parts[2] if len(parts) >= 3 and parts[2] in flat_books(root) else None
         hint = f"; {moved_hint(flat, books.service_package(Path(os.getcwd())))}" if flat else ""
         raise SystemExit(f"no book {name!r} under {root}{hint}")
+    if not os.path.isfile(os.path.join(book_dir, "service.py")):
+        children = [child for child in services_of(root) if child.startswith(f"{name}.")]
+        if children:
+            raise SystemExit(f"ostler book: {name!r} has no service.py. Did you mean one of its books: {', '.join(children)}?")
+        raise SystemExit(f"ostler book: no service.py exists under {book_dir}")
     service = importlib.import_module(f"{name}.service").service
     service.declared()
     return service
