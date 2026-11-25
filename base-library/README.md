@@ -16,6 +16,7 @@ farrier install                                   # renders it into a repo
 | `library/skills/{farrier,groom,ostler,saddlebag,workhorse}/` | the skills documenting the toolchain |
 | `library/skills/method/` | ways of working that hold in any repo: decompose, grill, review, diagnose |
 | `library/skills/{architecture,testing,ui}/` | the cross-language contracts |
+| `library/prompts/{story,book}/` | commands that run a story from spec to book QA, and write or catch up a book, by hand |
 | `packs/stablemate.yml` | the toolchain skills, which `farrier init` proposes for the user library |
 | `packs/general.yml` | the method skills and the cross-language contracts |
 | `agents.example.yml` | an annotated starting `agents.yml` |
@@ -53,7 +54,7 @@ overlay may also provide `scaffolds/` for farrier to apply.
 
 ## Overriding a coder-workflow turn (`library/prompts/coder/`)
 
-The base ships no coder-turn prompts. A coder turn renders a body that says how the job
+The base ships no coder-turn prompts. Its `story/` and `book/` commands are for a person, and no turn reads them. A coder turn renders a body that says how the job
 is done in your repo: its stack, its test runner, its house style. Drop
 `library/prompts/coder/<role>.md` into an overlay and that role's body becomes yours.
 The roles are listed in
