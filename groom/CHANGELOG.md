@@ -1,5 +1,18 @@
 # Changelog
 
+## [2.2.0](https://github.com/GabrielCpp/stablemate/compare/groom-v2.1.1...groom-v2.2.0) (2026-11-25)
+
+
+### Features
+
+* **groom:** offer the registry's harnesses in a dispatch cli select ([52ac51c](https://github.com/GabrielCpp/stablemate/commit/52ac51c17da954e5a8baf6ec4a668ef41ce39d0d))
+* **workhorse:** add pi as a harness and backend ([73ee80c](https://github.com/GabrielCpp/stablemate/commit/73ee80c9aa2e1dc1d7f7bd864d919a6c1a8af20d))
+
+
+### Code Refactoring
+
+* **groom:** split the activity search tests out of test_activity ([f72d933](https://github.com/GabrielCpp/stablemate/commit/f72d933de08e8b17bc39660d9f1224473928d650))
+
 ## [2.1.1](https://github.com/GabrielCpp/stablemate/compare/groom-v2.1.0...groom-v2.1.1) (2026-11-25)
 
 
