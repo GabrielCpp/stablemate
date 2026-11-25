@@ -27,3 +27,10 @@ def scoped_envs(values: Mapping[str, str]) -> Iterator[None]:
         for name, value in values.items():
             stack.enter_context(scoped_env(name, value))
         yield
+
+
+def child_env(extra: Mapping[str, str] | None = None) -> dict[str, str] | None:
+    """The environment a child process starts with: ``None`` to inherit untouched, or the inherited one with *extra* laid over it."""
+    if not extra:
+        return None
+    return {**os.environ, **extra}

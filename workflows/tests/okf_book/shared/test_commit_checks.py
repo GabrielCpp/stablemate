@@ -21,11 +21,13 @@ SCRIPT = (
 
 
 def _declares(monkeypatch: pytest.MonkeyPatch, listing: str, calls: list[list[str]]) -> None:
-    def _run(argv: list[str], cwd: str | Path | None = None) -> subprocess.CompletedProcess[str]:
+    def _run(
+        argv: list[str], cwd: str | Path | None = None, *, env: dict[str, str] | None = None, timeout: float | None = None
+    ) -> subprocess.CompletedProcess[str]:
         calls.append(argv)
         if argv[:2] == ["farrier", "checks"]:
             return subprocess.CompletedProcess(argv, 0, stdout=listing, stderr="")
-        return run_tool(argv, cwd)
+        return run_tool(argv, cwd, env=env, timeout=timeout)
 
     monkeypatch.setattr(commit_checks, "run_tool", _run)
 
@@ -130,3 +132,30 @@ def test_checks_that_all_pass_return_nothing(tmp_path: Path, monkeypatch: pytest
     _stage_a_page(root)
 
     assert declared_checks_failure(root, "docs: page", ("docs",)) == ""
+
+
+def test_each_check_runs_through_run_tool_with_the_commit_variables_and_a_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = make_git_repo(tmp_path / "acme")
+    seen: list[dict[str, object]] = []
+
+    def _run(argv: list[str], cwd: str | Path | None = None, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if argv[:2] == ["farrier", "checks"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="mycheck\t5\n", stderr="")
+        seen.append({"argv": argv, "cwd": cwd, **kwargs})
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(commit_checks, "run_tool", _run)
+    _stage_a_page(root)
+
+    assert declared_checks_failure(root, "docs: page", ("docs",)) == ""
+
+    assert seen == [
+        {
+            "argv": ["mycheck", "docs"],
+            "cwd": root,
+            "env": {commit_checks.COMMAND_ENV: "git commit -m 'docs: page'", commit_checks.CWD_ENV: str(root)},
+            "timeout": 60.0,
+        }
+    ]

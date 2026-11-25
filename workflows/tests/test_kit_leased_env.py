@@ -5,7 +5,7 @@ import os
 
 import pytest
 
-from workhorse_workflows.kit.leased_env import scoped_env, scoped_envs
+from workhorse_workflows.kit.leased_env import child_env, scoped_env, scoped_envs
 
 _NAME = "STABLEMATE_TEST_SCOPED_ENV_VAR"
 
@@ -54,3 +54,17 @@ def test_scoped_envs_sets_every_name_for_the_block_and_clears_them_after():
 
     assert _NAME not in os.environ
     assert _NAME + "_2" not in os.environ
+
+
+def test_child_env_is_none_without_an_override():
+    assert child_env(None) is None
+    assert child_env({}) is None
+
+
+def test_child_env_lays_the_override_over_the_inherited_environment():
+    with scoped_env("STABLEMATE_TEST_INHERITED_VAR", "kept"):
+        built = child_env({_NAME: "override"})
+
+    assert built is not None
+    assert built[_NAME] == "override"
+    assert built["STABLEMATE_TEST_INHERITED_VAR"] == "kept"

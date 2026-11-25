@@ -1,7 +1,6 @@
 """The commit checks a repo declares, run over the paths a workflow is about to commit, so a workflow's commit meets what an agent's commit meets."""
 from __future__ import annotations
 
-import os
 import shlex
 import subprocess
 from pathlib import Path
@@ -60,17 +59,14 @@ def declared_checks_failure(root: Path, message: str, pathspecs: tuple[str, ...]
             return ""
     except GitError as failed:
         return str(failed)
-    env = {**os.environ, COMMAND_ENV: shlex.join(["git", "commit", "-m", message]), CWD_ENV: str(root)}
+    env = {COMMAND_ENV: shlex.join(["git", "commit", "-m", message]), CWD_ENV: str(root)}
     failures: list[str] = []
     for command, budget in checks:
         try:
-            ran = subprocess.run(
+            ran = run_tool(
                 [*shlex.split(command), *pathspecs],
-                cwd=str(root),
+                cwd=root,
                 env=env,
-                capture_output=True,
-                text=True,
-                check=False,
                 timeout=max(budget * 10, 60.0),
             )
         except (OSError, subprocess.TimeoutExpired) as unrunnable:

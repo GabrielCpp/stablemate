@@ -7,6 +7,8 @@ import signal
 import subprocess
 from pathlib import Path
 
+from workhorse_workflows.kit import leased_env
+
 
 def run_tool(
     argv: list[str],
@@ -25,7 +27,7 @@ def run_tool(
             text=True,
             check=False,
             cwd=str(cwd) if cwd is not None else None,
-            env={**os.environ, **env} if env else None,
+            env=leased_env.child_env(env),
         )
     else:
         result = _run_limited(argv, cwd, env, timeout)
@@ -48,7 +50,7 @@ def _run_limited(
         stderr=subprocess.PIPE,
         text=True,
         cwd=str(cwd) if cwd is not None else None,
-        env={**os.environ, **env} if env else None,
+        env=leased_env.child_env(env),
     ) as process:
         try:
             stdout, stderr = process.communicate(timeout=timeout)
