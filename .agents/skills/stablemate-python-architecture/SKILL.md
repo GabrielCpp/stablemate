@@ -1,6 +1,6 @@
 ---
 name: stablemate-python-architecture
-description: "Python mechanics for the ports-and-adapters contract and the code-structure rules: Protocol vs ABC, the port package layout (interface at the root, adapters beneath, registry apart), which typed value to reach for (Pydantic, frozen dataclass, TypedDict, NamedTuple), services built by dependency injection from a frozen settings object, null objects for optional collaborators, injected clocks, and the ruff, ty and import-linter rules that gate each of these. The concrete mechanics behind hexagonal-architecture and code-structure for this stack. Load when structuring a Python package beyond a single module, defining a port or adapter, or choosing a typed value for data crossing a boundary."
+description: "Python ports-and-adapters mechanics: Protocol vs ABC, port package layout, typed values (Pydantic, dataclass, TypedDict), dependency injection. Load when structuring a Python package, defining a port or adapter, or typing data"
 metadata:
   name: python-architecture
   generated_by: farrier

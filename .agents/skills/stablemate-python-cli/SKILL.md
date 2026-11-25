@@ -1,6 +1,6 @@
 ---
 name: stablemate-python-cli
-description: "Python CLI conventions: Python 3.12+, type hints, absolute imports, uv as package manager, linting with ruff and ty at zero findings (`# ty: ignore`, not `# type: ignore`), entry point pattern, exit codes, logging, subprocess, pathlib, JSON I/O, error handling, naming. Package structure and typed values live in python-architecture. Load when writing or reviewing a Python script or command-line tool, setting up its entry point, exit codes or logging, or fixing ruff and ty findings."
+description: "Python CLI conventions: Python 3.12+, uv, ruff and ty at zero findings, entry points, exit codes, logging, subprocess, pathlib, JSON I/O. Load when writing or reviewing a Python script or command-line tool, or fixing ruff and ty findings."
 metadata:
   name: python-cli
   generated_by: farrier

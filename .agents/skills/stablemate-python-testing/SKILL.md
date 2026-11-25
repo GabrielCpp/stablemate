@@ -1,6 +1,6 @@
 ---
 name: stablemate-python-testing
-description: "Generic pytest patterns: hermetic fixtures, parametrize, subprocess script testing, mocking external calls, markers, conftest.py, assertions, coverage, parallel safety, and doubles that subclass the port so `ty check` catches a fake that has drifted. The concrete mechanics behind testing-design for this stack. Load when writing or reviewing pytest tests, building a fixture or a test double for a port, or testing a script that runs as a subprocess."
+description: "Generic pytest patterns: hermetic fixtures, parametrize, mocking, markers, conftest.py, subprocess script tests, port doubles. Load when writing or reviewing pytest tests, a fixture or test double, or a script run as a subprocess."
 metadata:
   name: python-testing
   generated_by: farrier
