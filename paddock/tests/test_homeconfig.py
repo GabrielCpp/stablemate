@@ -72,11 +72,11 @@ def test_a_relative_workspace_table_member_is_anchored_and_keeps_its_other_keys(
 
 
 def test_absolute_and_home_workspace_members_are_kept(tmp_path: Path) -> None:
-    base = write_base(tmp_path, '[workspaces]\nweb = ["/abs/web-app", "~/api-service"]\n')
+    base = write_base(tmp_path, '[workspaces]\nweb = ["/abs/web-app", "~/api-service", "$HOME/mobile-app"]\n')
 
     dest = homeconfig.materialize(base, {"other": 1}, tmp_path / "config.toml", stage=tmp_path / "stage")
 
-    assert homeconfig.load(dest)["workspaces"] == {"web": ["/abs/web-app", "~/api-service"]}
+    assert homeconfig.load(dest)["workspaces"] == {"web": ["/abs/web-app", "~/api-service", "$HOME/mobile-app"]}
 
 
 def test_a_base_with_a_relative_member_and_no_override_is_rewritten_not_copied(tmp_path: Path) -> None:

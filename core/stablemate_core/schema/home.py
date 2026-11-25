@@ -11,15 +11,18 @@ from .home_values import (
     BUILTIN_DEFAULT_CLI,
     cli_name,
     compact_window_or_none,
+    expanded_path,
+    path_or_none,
     positive_finite,
-    text_or_none,
 )
 from .selection import Selection
 
 AttendMode = Literal["off", "session", "headless"]
 
 
-OptionalPath = Annotated[str | None, BeforeValidator(text_or_none)]
+OptionalPath = Annotated[str | None, BeforeValidator(path_or_none)]
+
+ExpandedPath = Annotated[str | None, BeforeValidator(expanded_path)]
 
 
 class PowerTier(Section):
@@ -99,8 +102,8 @@ class CliBackend(Section):
 class WorkspaceEntry(Section):
     """One repository of a workspace."""
 
-    path: str = setting(
-        description="The repository's folder. A leading `~` expands to the home directory.",
+    path: Annotated[str, BeforeValidator(expanded_path)] = setting(
+        description="The repository's folder. A leading `~` and environment variables such as `$HOME` expand.",
         examples=["~/code/api-service"],
     )
     name: str | None = setting(
@@ -317,37 +320,37 @@ class HomeConfig(Section):
         description="The schema version this file was last written under. An absent key reads as version 1. A tool refuses to write a file newer than it understands and lifts an older one on its first write.",
         examples=[2],
     )
-    library_dir: str | None = setting(
+    library_dir: ExpandedPath = setting(
         None,
-        description="The overlay library root, a folder holding `library/` and `packs/`. It layers over the base library.",
+        description="The overlay library root, a folder holding `library/` and `packs/`. It layers over the base library. A leading `~` and environment variables such as `$HOME` expand.",
         examples=["~/code/example-org/agents"],
         env="FARRIER_LIBRARY_DIR",
         precedence="farrier's `--library` flag, then the environment variable, then this key",
         default_text="unset",
     )
-    base_dir: str | None = setting(
+    base_dir: ExpandedPath = setting(
         None,
-        description="An explicit path to the base library content. An invalid path is skipped, not an error.",
+        description="An explicit path to the base library content. An invalid path is skipped, not an error. A leading `~` and environment variables such as `$HOME` expand.",
         examples=["~/code/stablemate/base-library"],
         env="STABLEMATE_BASE_DIR",
         precedence="the environment variable, then this key, then `<stablemate_dir>/base-library`, then the shared cache",
         default_text="unset",
     )
-    stablemate_dir: str | None = setting(
+    stablemate_dir: ExpandedPath = setting(
         None,
-        description="A local stablemate checkout. Its `base-library` folder serves as the base library, and local-source runs of the generated launcher use it.",
+        description="A local stablemate checkout. Its `base-library` folder serves as the base library, and local-source runs of the generated launcher use it. A leading `~` and environment variables such as `$HOME` expand.",
         examples=["~/code/stablemate"],
         default_text="unset",
     )
     worktree_dir: OptionalPath = setting(
         None,
-        description="The parent folder new git worktrees are cut into. It need not exist yet. A value that is not a non-empty string reads as unset.",
+        description="The parent folder new git worktrees are cut into. It need not exist yet. A value that is not a non-empty string reads as unset. A leading `~` and environment variables such as `$HOME` expand.",
         examples=["~/code/worktrees"],
         default_text="unset",
     )
     artifacts_dir: OptionalPath = setting(
         None,
-        description="Where per-user story artifacts live, outside git and shared by every worktree. A value that is not a non-empty string reads as unset.",
+        description="Where per-user story artifacts live, outside git and shared by every worktree. A value that is not a non-empty string reads as unset. A leading `~` and environment variables such as `$HOME` expand.",
         examples=["~/Documents/artifacts"],
         env="STABLEMATE_ARTIFACTS_DIR",
         precedence="the environment variable, then this key, then the default",
@@ -355,7 +358,7 @@ class HomeConfig(Section):
     )
     paddock_dir: OptionalPath = setting(
         None,
-        description="The benchmark root paddock reads and writes: `gold/`, `workspace/` and `results/` live under it. A value that is not a non-empty string reads as unset.",
+        description="The benchmark root paddock reads and writes: `gold/`, `workspace/` and `results/` live under it. A value that is not a non-empty string reads as unset. A leading `~` and environment variables such as `$HOME` expand.",
         examples=["~/Documents/benchmarks"],
         default_text="`<user data dir>/stablemate/paddock`",
     )

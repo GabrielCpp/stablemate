@@ -11,6 +11,7 @@ from typing import cast
 import tomli_w
 
 from paddock._vendor.stablemate_core.config import ConfigError, parse_home_config
+from paddock._vendor.stablemate_core.schema.home_values import expanded_path
 
 TomlTable = dict[str, object]
 
@@ -42,7 +43,7 @@ def load(path: Path) -> TomlTable:
 
 def _anchored(value: object, stage: Path) -> str | None:
     """The absolute path inside *stage* that a relative path names, or None when *value* is not one."""
-    if not isinstance(value, str) or not value or value.startswith("~") or Path(value).is_absolute():
+    if not isinstance(value, str) or not value or Path(expanded_path(value)).is_absolute():
         return None
     return str((stage / value).resolve())
 

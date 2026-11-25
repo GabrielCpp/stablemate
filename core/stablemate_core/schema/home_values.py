@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import os
 from typing import Any, Literal
 
 BUILTIN_DEFAULT_CLI = "claude"
@@ -11,6 +12,16 @@ BUILTIN_DEFAULT_CLI = "claude"
 def text_or_none(raw: Any) -> str | None:
     """A non-empty string, or ``None`` for anything else: a malformed path reads as unset."""
     return raw if isinstance(raw, str) and raw else None
+
+
+def expanded_path(raw: Any) -> Any:
+    """A path string with its environment variables and a leading ``~`` expanded; anything else as given."""
+    return os.path.expanduser(os.path.expandvars(raw)) if isinstance(raw, str) else raw
+
+
+def path_or_none(raw: Any) -> str | None:
+    """A non-empty path string, expanded, or ``None`` for anything else."""
+    return expanded_path(text_or_none(raw))
 
 
 def cli_name(raw: Any) -> str:
