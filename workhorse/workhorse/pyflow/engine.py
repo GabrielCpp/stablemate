@@ -127,10 +127,19 @@ class RunEnv:
     resume_pending: bool = False
     worktree_dispatched: bool = False
 
+    @property
+    def effective_deadline(self) -> float | None:
+        """The wall-clock deadline pushed back by every second the run slept on usage caps."""
+        if self.deadline is None:
+            return None
+        return self.deadline + self.writer.cap_waited_s
+
     def __post_init__(self) -> None:
         """Bind the run's ladder to the run's clock, once."""
         if self.agent_runner is None:
-            self.agent_runner = AgentRunner.from_config(self.config, clock=self.clock)
+            self.agent_runner = AgentRunner.from_config(
+                self.config, clock=self.clock, on_cap_wait=self.writer.record_cap_wait
+            )
 
     @property
     def run_dir(self) -> Path:

@@ -150,7 +150,7 @@ def park_on(path: Path, env: RunEnv, *, kind: str) -> None:
             clock=env.clock,
             channel=control.armed(),
             log=env.log,
-            deadline=env.deadline,
+            deadline=env.effective_deadline,
             kind=kind,
         )
         if interrupted is None:

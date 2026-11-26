@@ -198,10 +198,11 @@ def drive(
         state_seq = env.writer.write_state_checkpoint(
             spec.name, jsonable(params), inputs=inputs, flow=flow_name, ctx=ctx_payload
         )
-        if env.deadline is not None and env.clock.now().timestamp() > env.deadline:
+        deadline = env.effective_deadline
+        if deadline is not None and env.clock.now().timestamp() > deadline:
             raise RunBudgetExceeded(
                 "run exceeded its WORKHORSE_MAX_RUNTIME_S wall-clock budget, counted "
-                "from the run's original start. Raise the budget and resume."
+                "from the run's original start, not counting usage-cap waits. Raise the budget and resume."
             )
         boundary = reload.boundary_requested()
         if boundary is not None and boundary.action == reload.SWITCH_PROFILE:

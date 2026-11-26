@@ -94,9 +94,16 @@ class AgentRunner:
     print_prompt: bool = True
     model_override: str | None = None
     profile: ProfileSelection = field(default_factory=ProfileSelection)
+    on_cap_wait: Callable[[float], None] | None = None
 
     @classmethod
-    def from_config(cls, config: RunConfig, *, clock: Clock = SYSTEM_CLOCK) -> AgentRunner:
+    def from_config(
+        cls,
+        config: RunConfig,
+        *,
+        clock: Clock = SYSTEM_CLOCK,
+        on_cap_wait: Callable[[float], None] | None = None,
+    ) -> AgentRunner:
         """The ladder this run's configuration describes."""
         return cls(
             backend=config.backend,
@@ -105,6 +112,7 @@ class AgentRunner:
             print_prompt=config.print_prompt,
             model_override=config.model_override,
             profile=ProfileSelection(config.profile),
+            on_cap_wait=on_cap_wait,
         )
 
     def run(
@@ -613,6 +621,8 @@ class AgentRunner:
                         probing=probing,
                     )
                     budget.consume("cap", sleep_s)
+                    if self.on_cap_wait is not None:
+                        self.on_cap_wait(sleep_s)
                     with otel.wait("cap", node_id):
                         interrupted = sleep_with_notice(
                             sleep_s,

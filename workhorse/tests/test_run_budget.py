@@ -3,11 +3,12 @@ from __future__ import annotations
 
 import json
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from _fakes import FakeClock
+from _fakes import FakeBackend, FakeClock
 from workhorse.artifacts import ArtifactWriter
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import run as run_mod
@@ -138,6 +139,90 @@ def test_the_driver_raises_it_when_the_deadline_has_passed():
             assert "WORKHORSE_MAX_RUNTIME_S" in str(exc), exc
         else:
             raise AssertionError("an expired deadline did not stop the run")
+
+
+def _env(tmp: str, clock: FakeClock, budget_s: float) -> tuple[RunEnv, float]:
+    writer = ArtifactWriter("budgeted", Path(tmp) / "runs", run_id="t")
+    started = clock.now().timestamp()
+    env = RunEnv(
+        writer=writer,
+        workflow_dir=Path(tmp),
+        session_id_path=writer.run_dir / ".session_id",
+        config=RunConfig(),
+        clock=clock,
+        deadline=started + budget_s,
+    )
+    return env, started
+
+
+def _is_over(env: RunEnv) -> bool:
+    try:
+        drive(Budgeted(), env)
+    except RunBudgetExceeded as exc:
+        assert "not counting usage-cap waits" in str(exc), exc
+        return True
+    return False
+
+
+def test_cap_waits_push_the_wall_clock_deadline_back():
+    budget_s, waited_s = 600.0, 10_800.0
+    with tempfile.TemporaryDirectory() as tmp:
+        clock = FakeClock()
+        env, started = _env(tmp, clock, budget_s)
+        env.writer.record_cap_wait(waited_s)
+
+        clock.sleep(budget_s + waited_s - 1 - (clock.now().timestamp() - started))
+        assert not _is_over(env)
+
+        clock.sleep(2)
+        assert _is_over(env)
+
+
+def test_cap_waits_survive_a_resume():
+    budget_s, waited_s = 600.0, 10_800.0
+    with tempfile.TemporaryDirectory() as tmp:
+        clock = FakeClock()
+        env, started = _env(tmp, clock, budget_s)
+        env.writer.record_cap_wait(waited_s / 2)
+        env.writer.record_cap_wait(waited_s / 2)
+
+        resumed = ArtifactWriter.resume(env.writer.run_dir)
+        again = RunEnv(
+            writer=resumed,
+            workflow_dir=Path(tmp),
+            session_id_path=resumed.run_dir / ".session_id",
+            config=RunConfig(),
+            clock=clock,
+            deadline=started + budget_s,
+        )
+        assert again.effective_deadline == started + budget_s + waited_s
+
+
+def test_the_ladder_records_each_cap_sleep_on_the_run():
+    with tempfile.TemporaryDirectory() as tmp:
+        clock = FakeClock()
+        env, _ = _env(tmp, clock, 600.0)
+        calls = {"n": 0}
+
+        def capped_once(*args: Any, **kwargs: Any) -> Any:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise BackendInvocationError("spending cap reached", transient=True)
+            return "ok"
+
+        runner = env.agent_runner
+        assert runner is not None
+        runner = replace(
+            runner,
+            backend=FakeBackend(capped_once),
+            resilience=runner.resilience.with_overrides(
+                cap_default_wait_s=100, cap_wait_margin_s=0, cap_probe_s=0
+            ),
+        )
+        runner.turn("p", "n", None, timeout=runner.resilience.result_timeout_s)
+
+        assert env.writer.cap_waited_s == 100
+        assert ArtifactWriter.resume(env.writer.run_dir).cap_waited_s == 100
 
 
 HANDOFF_CLOCK = FakeClock()

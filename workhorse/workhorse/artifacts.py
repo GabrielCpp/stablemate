@@ -102,6 +102,7 @@ class ArtifactWriter:
         self._repo_start = _observe_repo()
         self._profile = ""
         self._profile_config: dict[str, Any] = {}
+        self._cap_waited_s = 0.0
         self._worktree_path = ""
         self._worktree_branch = ""
         self._worktree_repo = ""
@@ -174,6 +175,7 @@ class ArtifactWriter:
         self._repo_start = record.repo_start or _observe_repo()
         self._profile = record.profile
         self._profile_config = dict(record.profile_config)
+        self._cap_waited_s = record.cap_waited_s
         self._worktree_path = record.worktree_path
         self._worktree_branch = record.worktree_branch
         self._worktree_repo = record.worktree_repo
@@ -429,6 +431,16 @@ class ArtifactWriter:
         self._profile_config = dict(tables or {})
         self._write_run_json(terminal=None)
 
+    @property
+    def cap_waited_s(self) -> float:
+        """Seconds this run has slept on usage caps, across every process that ran it."""
+        return self._cap_waited_s
+
+    def record_cap_wait(self, seconds: float) -> None:
+        """Add ``seconds`` of usage-cap sleep to the run's total, so the wall-clock budget leaves it out."""
+        self._cap_waited_s += seconds
+        self._write_run_json(terminal=None)
+
     def record_worktree(self, path: str, branch: str, *, repo: str = "", base: str = "") -> None:
         """Record the worktree and branch this run was dispatched into."""
         entry = RunWorktree(name=Path(repo or path).name, path=path, branch=branch, repo=repo, base=base)
@@ -530,6 +542,7 @@ class ArtifactWriter:
             repo_end=_observe_repo() if terminal else None,
             profile=self._profile,
             profile_config=self._profile_config,
+            cap_waited_s=self._cap_waited_s,
             worktree_path=self._worktree_path,
             worktree_branch=self._worktree_branch,
             worktree_repo=self._worktree_repo,
