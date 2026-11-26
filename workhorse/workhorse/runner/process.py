@@ -38,7 +38,7 @@ def _align_pwd(popen_kwargs: dict[str, Any]) -> None:
     env.pop("OLDPWD", None)
 
 
-def _kill_process_group(proc: subprocess.Popen, sig: int = signal.SIGKILL) -> None:
+def _kill_process_group(proc: subprocess.Popen, sig: int = getattr(signal, "SIGKILL", signal.SIGTERM)) -> None:
     """Signal the subprocess AND its entire process group, reaping any grandchildren (MCP servers, headless browsers, JVMs) the agent spawned."""
     try:
         os.killpg(os.getpgid(proc.pid), sig)
@@ -74,7 +74,7 @@ class ActiveProcess:
         try:
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
-            _kill_process_group(proc, signal.SIGKILL)
+            _kill_process_group(proc)
             proc.wait()
 
 
@@ -178,7 +178,7 @@ def _arm_watchdog(
                     )
                     if on_deadline is not None:
                         on_deadline()
-                    _kill_process_group(proc, signal.SIGKILL)
+                    _kill_process_group(proc)
                     return
             if timeout == float("inf"):
                 continue
@@ -196,7 +196,7 @@ def _arm_watchdog(
             )
             if on_fire is not None:
                 on_fire()
-            _kill_process_group(proc, signal.SIGKILL)
+            _kill_process_group(proc)
             return
 
     threading.Thread(target=_watch, daemon=True).start()
@@ -434,7 +434,7 @@ class ProcessSupervisor:
                 try:
                     proc.wait(timeout=5)
                 except subprocess.TimeoutExpired:
-                    _kill_process_group(proc, signal.SIGKILL)
+                    _kill_process_group(proc)
             proc.wait()
         finally:
             if tee is not None:
@@ -443,7 +443,7 @@ class ProcessSupervisor:
                 watchdog.cancel()
             self.active.clear()
             if proc.poll() is None:
-                _kill_process_group(proc, signal.SIGKILL)
+                _kill_process_group(proc)
                 try:
                     proc.wait(timeout=5)
                 except subprocess.TimeoutExpired:
