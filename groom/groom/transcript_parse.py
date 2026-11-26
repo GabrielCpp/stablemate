@@ -312,6 +312,30 @@ def _pi(path: Path, window: Window | None) -> list[dict[str, Any]]:
     return entries
 
 
+def _antigravity(path: Path) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    text: dict[int, str] = {}
+    for record in _records(path):
+        step = record.get("step_update")
+        if record.get("event") != "step_update" or not isinstance(step, dict):
+            continue
+        index = int(step.get("step_index") or 0)
+        done = step.get("state") == "DONE"
+        if step.get("step_type") == "agent_response":
+            text[index] = text.get(index, "") + str(step.get("text_delta") or "")
+            if done and text[index].strip():
+                entries.append(_message("assistant", text.pop(index).strip()))
+        elif step.get("step_type") in ("tool", "subagent") and step.get("state") != "ACTIVE":
+            raw = step.get("tool_info")
+            info: dict[str, Any] = raw if isinstance(raw, dict) else {}
+            args = info.get("parameters") or (step.get("subagent_info") or {}).get("subagents")
+            entries.append(_tool(
+                str(step.get("tool_name") or "tool"), tool_subject(args), _args_text(args),
+                str(info.get("output") or ""), not done, step.get("duration_seconds"),
+            ))
+    return entries
+
+
 def _first_record(path: Path) -> dict[str, Any]:
     return next(_records(path), {})
 
@@ -320,6 +344,8 @@ def _jsonl(path: Path, window: Window | None) -> list[dict[str, Any]]:
     first = _first_record(path)
     if "payload" in first:
         return _codex(path, window)
+    if first.get("event") == "init":
+        return _antigravity(path)
     if first.get("type") == "session":
         return _pi(path, window)
     if "part" in first or first.get("type") in ("step_start", "text", "tool_use", "reasoning"):

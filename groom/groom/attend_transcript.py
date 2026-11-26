@@ -87,7 +87,10 @@ def _text_of(content: Any) -> str:
     return "\n\n".join(part for part in parts if part).strip()
 
 
-SUMMARY_KEYS = ("file_path", "filePath", "path", "command", "pattern", "query", "url", "description", "prompt")
+SUMMARY_KEYS = (
+    "file_path", "filePath", "path", "command", "pattern", "query", "url", "description", "prompt",
+    "Path", "CommandLine", "Pattern", "Query", "Url",
+)
 
 SESSION_TYPES = ("user", "assistant")
 
