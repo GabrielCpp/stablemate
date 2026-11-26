@@ -21,6 +21,11 @@ def test_a_fresh_run_reloads_the_data_first() -> None:
     assert "--fresh-data" not in _run_argv("services.api", [], "copy", "out")
 
 
+def test_every_run_keeps_its_videos_so_a_passing_journey_leaves_one() -> None:
+    assert "--keep-videos" in _run_argv("services.api", [], "copy", "out")
+    assert "--keep-videos" in _run_argv("services.api", ["AddTodo"], "copy", "out", journeys=["One"], fresh=True)
+
+
 def test_journeys_with_no_named_calls_run_partial_one_flag_each() -> None:
     argv = _run_argv("services.api", [], "copy", "out", journeys=["One", "Two words"])
 

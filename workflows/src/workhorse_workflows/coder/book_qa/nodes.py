@@ -766,7 +766,7 @@ def _run_argv(
         argv += ["--partial"]
         for title in journeys:
             argv += ["--journey", title]
-    return argv + ["--copy", copy, "--out", out_dir]
+    return argv + ["--keep-videos", "--copy", copy, "--out", out_dir]
 
 
 def _index_argv(module: str) -> list[str]:
