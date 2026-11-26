@@ -12,7 +12,7 @@ import json
 
 from ostler.book import Code, GrpcClient, GrpcSurface
 
-RACED = "the record changed, retry"
+RACED = "stale write, send again"
 ATTEMPTS = 5
 
 
@@ -35,9 +35,9 @@ class Retrying(GrpcClient):
         return status, raw
 
 
-class TicketSurface(GrpcSurface):
+class OrderSurface(GrpcSurface):
     def __init__(self, environment):
-        super().__init__(Retrying(environment.address("tickets"), plaintext=True))
+        super().__init__(Retrying(environment.address("orders"), plaintext=True))
 ```
 
 `GrpcClient` reports a refused call as `{"message": ...}`, so the message test reads that key.
@@ -68,9 +68,9 @@ class Retrying(Client):
         return status, raw
 
 
-class TicketSurface(HttpSurface):
+class OrderSurface(HttpSurface):
     def __init__(self, environment):
-        super().__init__(Retrying(environment.address("tickets")))
+        super().__init__(Retrying(environment.address("orders")))
 ```
 
 `transport` sees the status and the body, never the response headers. A signal that lives only in
