@@ -28,7 +28,7 @@ that workhorse makes from Python runs none of the agent checks.
    `scripts/` folder beside it. This matches the skill layout.
 4. A policy carries front matter. The renderer strips it before the policy text reaches
    `AGENTS.md`.
-5. Farrier installs a policy's scripts to `.agents/policies/<name>/scripts/`.
+5. A policy's scripts stay in the library. Farrier finds them there when a hook or a check runs.
 6. The policies README drops its rule that a policy bundles no assets.
 
 ### Agent-only checks

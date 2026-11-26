@@ -44,8 +44,8 @@ library/policies/<group>/<name>/scripts/
 A folder under a group, like a skill. Front matter carries `name` and `description`
 for humans and for farrier's error messages; both are stripped before aggregation, so
 neither is emitted anywhere. A policy may also declare `commit_checks:`, each a `run:`
-path under its `scripts/` and a `budget:` in seconds. Farrier installs the scripts to
-`.agents/policies/<name>/scripts/`, and the commit guard runs each check before an
+path under its `scripts/` and a `budget:` in seconds. The scripts stay in the
+library, and the commit guard runs each check from there before an
 agent's `git commit`. No `applyTo` and no `tags` — a policy is not auto-loaded by
 glob and is not discoverable by query. The body renders through Jinja2 like any other
 library source.

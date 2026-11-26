@@ -148,12 +148,12 @@ like a skill:
 
 ```
 library/policies/stablemate/stablemate-repo/POLICY.md   → policy name `stablemate-repo`
-library/policies/repo/commit-and-push/scripts/           → installed to .agents/policies/commit-and-push/scripts/
+library/policies/repo/commit-and-push/scripts/           → run from the library
 ```
 
-A policy may bundle a `scripts/` folder beside its `POLICY.md`. Farrier installs those
-scripts, with a generated copy of the policy text, under `.agents/policies/<name>/`. A
-script a policy names in `commit_checks:` runs from that installed copy. A flat
+A policy may bundle a `scripts/` folder beside its `POLICY.md`. Farrier installs nothing
+for it. A script a policy names in `commit_checks:` or `hooks:` runs from the library
+layer that holds the policy, which `farrier policies path <name>` prints. A flat
 `<group>/<name>.md` file still loads as a policy with no scripts.
 
 The reason the kind exists is the double charge. A skill folded into an always-loaded
@@ -314,12 +314,15 @@ workhorse-coder run
 ```
 
 There is no `workflows:` key in a pack or in `agents.yml`, no `workflows/` directory in
-a library, and nothing under `.agents/workflows/`. A leftover `workflows:` list is
-ignored rather than rejected. What farrier still generates is the launcher
-(`.agents/agents.mk`) and the per-repo context manifest
-(`.agents/agents-context*.json`) — the first regenerates and verifies the adapters, the
-second is how a running workflow resolves `instruction_ref` against *this* repo's
-adapters. Both are emitted for every install, workflow or not.
+a library. A leftover `workflows:` list is ignored rather than rejected. What farrier
+still generates is the launcher (`.agents/agents.mk`, tracked in the repo) and the
+per-repo context manifest. The first regenerates and verifies the adapters. The second
+is how a running workflow resolves `instruction_ref` against *this* repo's adapters.
+The manifest lives outside the repo, in `<stablemate cache dir>/farrier/<repo name>/`
+as `agents-context.json` and `agents-context.<cli>.json`. `farrier state-dir` prints
+that folder. `<repo name>` is `repo.name` from `agents.yml`, else the folder name of
+the repo's main worktree. A containerized run gets a copy of the manifests in its own
+folder under `.agents/worktrees/`. Both are emitted for every install, workflow or not.
 
 ## Templating
 

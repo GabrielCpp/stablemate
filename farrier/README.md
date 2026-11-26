@@ -233,7 +233,7 @@ no newline after it are all ordinary documents, and the regexes that preceded th
 every one of them as having no frontmatter at all.
 
 **Farrier does not install workflows.** A library ships none, `agents.yml` has no
-`workflows:` key, and nothing is written to `.agents/workflows/`. A workflow is a Python
+`workflows:` key, and no workflow files are written. A workflow is a Python
 distribution that brings its own command: install it with pip/uv and run it directly.
 
 ```bash
