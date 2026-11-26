@@ -14,7 +14,7 @@ from smoke import git
 
 from paddock import project as project_mod
 from paddock._vendor.stablemate_core.schema import HomeConfig
-from paddock.runner import Run
+from paddock.runner import Run, run_scope
 from paddock.tasks import stablemate as sm
 
 
@@ -37,8 +37,8 @@ def test_pin_config_writes_the_pinned_checkout_as_stablemate_dir(
     tracked = tmp_path / "models.toml"
     tracked.write_text("# model tables\n", encoding="utf-8")
     machine = HomeConfig(library_dir="/lib", stablemate_dir="/live/tree")
-    monkeypatch.setattr(sm.core_config, "load_home_config", lambda: machine)
-    run = cast(Run, SimpleNamespace(scratch=scratch, config=tracked, project=worktree))
+    monkeypatch.setattr(sm.core_config, "load_home_config", lambda *_: machine)
+    run = cast(Run, SimpleNamespace(scratch=scratch, config=tracked, project=worktree, operator_config=None))
 
     sm.pin_config(run)
 
@@ -46,6 +46,24 @@ def test_pin_config_writes_the_pinned_checkout_as_stablemate_dir(
     assert f'stablemate_dir = "{worktree}"' in text
     assert "/live/tree" not in text
     assert 'library_dir = "/lib"' in text
+
+
+def test_pin_config_takes_machine_paths_from_the_operators_config_inside_the_run_scope(tmp_path: Path) -> None:
+    worktree = tmp_path / "project"
+    worktree.mkdir()
+    (worktree / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    operator = tmp_path / "operator.toml"
+    operator.write_text('config_version = 2\nlibrary_dir = "/operator/lib"\n', encoding="utf-8")
+    tracked = tmp_path / "config.toml"
+    tracked.write_text('config_version = 2\nlibrary_dir = "/run/lib"\n', encoding="utf-8")
+    run = cast(Run, SimpleNamespace(scratch=scratch, config=tracked, project=worktree, operator_config=operator))
+
+    with run_scope(tracked):
+        sm.pin_config(run)
+
+    assert tomllib.loads(sm.effective(run).read_text(encoding="utf-8"))["library_dir"] == "/operator/lib"
 
 
 def test_pin_config_overrides_paths_the_benchmark_config_already_names(
@@ -63,8 +81,8 @@ def test_pin_config_overrides_paths_the_benchmark_config_already_names(
         encoding="utf-8",
     )
     machine = HomeConfig(library_dir="/lib")
-    monkeypatch.setattr(sm.core_config, "load_home_config", lambda: machine)
-    run = cast(Run, SimpleNamespace(scratch=scratch, config=tracked, project=worktree))
+    monkeypatch.setattr(sm.core_config, "load_home_config", lambda *_: machine)
+    run = cast(Run, SimpleNamespace(scratch=scratch, config=tracked, project=worktree, operator_config=None))
 
     sm.pin_config(run)
 
@@ -85,8 +103,8 @@ def test_pin_config_refuses_a_malformed_benchmark_config_before_any_trial(
     tracked = tmp_path / "config.toml"
     tracked.write_text('[profiles.opencode]\nmodel = "m"\n', encoding="utf-8")
     machine = HomeConfig(library_dir="/lib")
-    monkeypatch.setattr(sm.core_config, "load_home_config", lambda: machine)
-    run = cast(Run, SimpleNamespace(scratch=scratch, config=tracked, project=worktree))
+    monkeypatch.setattr(sm.core_config, "load_home_config", lambda *_: machine)
+    run = cast(Run, SimpleNamespace(scratch=scratch, config=tracked, project=worktree, operator_config=None))
 
     with pytest.raises(sm.TrialError, match=r"profiles\.opencode|opencode"):
         sm.pin_config(run)

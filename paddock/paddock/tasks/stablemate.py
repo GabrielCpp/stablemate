@@ -109,7 +109,7 @@ def effective(run: Run) -> Path:
 
 def pin_config(run: Run) -> None:
     """Write the effective stablemate config the trials run under, into `scratch/`."""
-    machine = core_config.load_home_config()
+    machine = core_config.load_home_config(run.operator_config)
     local = {
         name: value
         for name in ("library_dir", "base_dir", "stablemate_dir", "worktree_dir")

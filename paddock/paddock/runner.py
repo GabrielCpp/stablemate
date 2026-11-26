@@ -21,7 +21,7 @@ from typing import Any
 from paddock import homeconfig, locks, manifest, names, paths, project as project_mod, reap
 from paddock.loader import Benchmark
 from paddock.names import RunName
-from paddock._vendor.stablemate_core.config import ARTIFACTS_DIR_ENV, CONFIG_PATH_ENV
+from paddock._vendor.stablemate_core.config import ARTIFACTS_DIR_ENV, CONFIG_PATH_ENV, config_path
 from paddock.registry import Input, Score, Step, Task
 
 logger = logging.getLogger(__name__)
@@ -123,6 +123,7 @@ class Run:
     benchmark: Benchmark
     project: Path | None = None
     pinned: project_mod.Project | None = None
+    operator_config: Path | None = None
     echo: bool = True
     step_name: str = ""
     commands: list[tuple[str, ...]] = field(default_factory=list)
@@ -428,6 +429,7 @@ def _new_run(
         benchmark=benchmark,
         project=pinned.path if pinned else source,
         pinned=pinned,
+        operator_config=config_path(),
         echo=echo,
     )
 
