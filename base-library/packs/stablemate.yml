@@ -7,9 +7,10 @@ description: >
   and how to write a repo's README and CLAUDE.md. For groom:
   the operator-gate dashboard and the telemetry store behind it. For saddlebag:
   signing in and running commands with secrets the agent never sees. For paddock:
-  writing, running and reading benchmarks of a workflow. Four commands run the
-  coder and okf-book flows by hand: story-spec-dev, story-book-qa, book-write and
-  book-catch-up.
+  writing, running and reading benchmarks of a workflow. The coder-* commands run
+  each coder subflow by hand, one command per subflow: coder-docs, coder-dev,
+  coder-review, coder-qa, coder-book-qa, coder-fix and coder-fix-ci. book-write
+  and book-catch-up run the okf-book flows.
 # The `stablemate/` segment is the library namespace and is stripped from the
 # installed name; the skill names themselves no longer repeat it. Each one says
 # which tool it is about — `ostler`, `groom`, `farrier-setup`,
@@ -25,5 +26,5 @@ skills:
   - saddlebag/*
   - workhorse/*
 prompts:
-  - story/*
+  - coder/*
   - book/*

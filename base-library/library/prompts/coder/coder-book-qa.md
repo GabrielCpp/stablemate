@@ -1,11 +1,12 @@
 ---
-description: "Prove a built story through its service books: state each acceptance criterion as a book claim, play it against a local stack, judge every criterion, then land the book. Falls back to a scenario QA plan when no book covers the story."
+description: "Prove a built story through its service books: state each acceptance criterion as a book claim, play it against a local stack, judge every criterion, then land the book. The coder book_qa subflow by hand. A story no book covers goes to coder-qa."
 argument-hint: "<story-id>"
 ---
 
 # Book QA for story $ARGUMENTS
 
-The story's code is built and reviewed on its branch. This session proves each
+This command does by hand what the coder `book_qa` subflow does
+(`workhorse-coder run book_qa`). The story's code is built and reviewed on its branch. This session proves each
 acceptance criterion by playing the book against the running app. A criterion is proven
 when a play observed it. A green unit test alone leaves it unproven.
 
@@ -98,9 +99,5 @@ change by path with a `test` subject and the `Epic:` and `Story:` trailers. Run
 
 ## 8. Fallback: scenario QA
 
-A story no book covers gets a QA plan instead. Write `<spec>/qa_plan.py` with one
-scenario per criterion. Run `ostler qa lint` and `ostler qa validate`, then run the plan
-against the stack from step 3. `ostler qa report` writes `<spec>/qa-report.md`.
-{{ find_by_tags("qa") }}
-
-**Done when** the report shows every criterion asserted and passing.
+A story no book covers, and each criterion no book claim can state, goes to the coder-qa
+command on `$ARGUMENTS`.
