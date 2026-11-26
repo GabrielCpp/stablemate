@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from paddock import homeconfig, manifest, names, paths, project as project_mod, reap
+from paddock import homeconfig, locks, manifest, names, paths, project as project_mod, reap
 from paddock.loader import Benchmark
 from paddock.names import RunName
 from paddock._vendor.stablemate_core.config import ARTIFACTS_DIR_ENV, CONFIG_PATH_ENV
@@ -449,7 +449,7 @@ def _drive(
     try:
         run.write_json(run.workspace / ROUND_FILE, state)
         try:
-            with _without_operator_env():
+            with _without_operator_env(), locks.hold_lock(task.lock):
                 try:
                     outcomes = _run_steps(run, done)
                 finally:

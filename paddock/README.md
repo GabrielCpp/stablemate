@@ -78,6 +78,7 @@ def caught(run) -> Score:
 ```
 
 - `task()` opens a task and may be called several times in one module. Each call opens a new task, and a repeated name is an error. `config` and `inputs` are optional. A benchmark that wants two budgets declares two tasks.
+- `task(lock="name")` makes the round hold an exclusive `flock` on `~/.cache/paddock/locks/<name>.lock` (under `$XDG_CACHE_HOME` when set) for all its steps and the score. A second round waits, after printing one line, until the first ends, even if a step failed. The path is in `PADDOCK_LOCK_FILE`, so a helper or a person can `flock` the same file.
 - `@step()` and `@score()` bind to the most recently opened task. A task with no `@score()` is unscored. A module-level function called `score` is not picked up.
 - `@step()` marks functions that run in declaration order. They are functions so that setup which is not a workflow invocation needs no schema escape hatch.
 - A task swaps models by overriding the config tables. The harness has no model vocabulary of its own.

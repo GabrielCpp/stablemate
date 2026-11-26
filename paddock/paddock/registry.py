@@ -55,6 +55,7 @@ class Task:
     score: ScoreFn | None
     module: str = ""
     doc: str = ""
+    lock: str | None = None
 
     def describe(self) -> str:
         scored = "scored" if self.score else "unscored"
@@ -66,6 +67,7 @@ class _Draft:
     name: str
     config: Mapping[str, object]
     inputs: Mapping[str, Input]
+    lock: str | None = None
     steps: list[Step] = field(default_factory=list)
     score: ScoreFn | None = None
 
@@ -89,14 +91,22 @@ REGISTRY = _Registry()
 
 
 def task(
-    *, name: str, config: Mapping[str, object] | None = None, inputs: Mapping[str, Input] | None = None
+    *,
+    name: str,
+    config: Mapping[str, object] | None = None,
+    inputs: Mapping[str, Input] | None = None,
+    lock: str | None = None,
 ) -> None:
-    """Open a task: its name, the config it lays over the benchmark's and the inputs its steps read."""
+    """Open a task: its name, the config it lays over the benchmark's, the inputs its steps read and the lock its round holds."""
     if not name:
         raise TaskError("task() needs a name")
+    if lock is not None and (not lock or "/" in lock or lock.startswith(".")):
+        raise TaskError(f"task {name!r}: lock {lock!r} must be a plain name, not a path")
     if any(draft.name == name for draft in REGISTRY.drafts):
         raise TaskError(f"task {name!r} is declared twice in this module")
-    REGISTRY.drafts.append(_Draft(name=name, config=dict(config or {}), inputs=dict(inputs or {})))
+    REGISTRY.drafts.append(
+        _Draft(name=name, config=dict(config or {}), inputs=dict(inputs or {}), lock=lock)
+    )
 
 
 def step(*, name: str = "") -> Callable[[StepFn], StepFn]:
@@ -145,6 +155,7 @@ def collect(module_name: str, doc: str = "") -> tuple[Task, ...]:
             score=draft.score,
             module=module_name,
             doc=doc,
+            lock=draft.lock,
         )
         for draft in REGISTRY.drafts
     )

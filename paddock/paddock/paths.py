@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from paddock._vendor.stablemate_core.config import resolve_paddock_dir
@@ -40,3 +41,9 @@ def repo_root(start: Path | None = None) -> Path:
 def checkout_root() -> Path:
     """The stablemate checkout this package is imported from."""
     return repo_root(Path(__file__).parent)
+
+
+def lock_file(name: str) -> Path:
+    """The file a task's named lock is taken on, under the user's cache."""
+    base = Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache")
+    return base / "paddock" / "locks" / f"{name}.lock"
