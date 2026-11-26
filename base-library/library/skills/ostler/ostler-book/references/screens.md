@@ -40,6 +40,8 @@ Heading("#pane h2", "Settings")
 | `Form` | role `form`, `group` or `region` by its accessible name. A form the page draws from data states its fields with `lists=`, each entry a name and a role |
 | `Button`, `Check`, `Heading`, `MenuItem`, `Link`, `Option`, `Tab` | the role of the same name |
 | `Image` | role `img` named by its alternative text |
+| `Group` | role `group` by its accessible name, such as a tile or a card that gathers content |
+| `Radios` | role `radiogroup` by its accessible name, its radios' names in `options=(...)` |
 | `Banner`, `Spinner` | role `alert`, `progressbar` |
 | `Text` | by its text, or by `data-testid` when it has an id |
 
@@ -54,6 +56,56 @@ A screen also declares what the page does: `stored` values, `phases` (what is sh
 or disabled, and why) and `transitions` between them. `describe(lang)` prints all of it in
 one language. `check` builds it in each declared language and refuses a label that misses
 one or names an undeclared one.
+
+## A screen that changes with its state
+
+A phase with `when` is a claim the run checks. Each time a step lands on the screen and the
+condition holds, the run waits for every component in `shows` to appear, every one in `hides`
+to go, every one in `disabled` to be disabled, and every state in `states` to read as stated.
+A phase without `when` only describes the page, and the run judges nothing from it.
+
+```python
+from ostler.book import Condition, Is, Viewport
+from ostler.book.screen import EXPANDED, Aspect, Button, MenuItem, Phase
+
+PHONE = Viewport("phone", 390, 844)
+
+def closed(model, by) -> bool:
+    """the menu is closed"""
+    return not model.menu_open
+
+class Nav(Screen):
+    menu = Button(None, "Open navigation menu")
+    reports = MenuItem(None, "Reports")
+    phases = (
+        Phase("menu closed on a phone", shows=(menu,), hides=(reports,),
+              states=(Is(menu, EXPANDED, "false"),),
+              when=Condition("the page is on a phone and the menu is closed", holds=closed, viewport=PHONE)),
+    )
+```
+
+- **`Condition(says, holds=None, viewport=None)`** says when the phase holds, in the product's
+  words. `holds(model, by)` reads the model and the person looking, as `Lists.always` does.
+  `viewport` holds only when the step played at that size, and a condition with no viewport
+  holds at every size, the phone's included. Each part given must hold.
+- **`Viewport(name, width, height)`** is a page size. An interaction plays at the size its class
+  states in `viewport = PHONE`, and every step without one plays at the browser's own size,
+  1280 by 720. The page is laid out again before the step, so a component the app shows only
+  below a breakpoint is found there.
+- **`Is(component, aspect, value)`** claims a component is in a state. `value` is the text the
+  run reads, or a function of the model and the person looking that returns it, with a
+  docstring that says what it reads.
+- **`Aspect(name, attribute)`** is a state the book names. `attribute` is the attribute the run
+  reads, so `Aspect("collapsed", "aria-expanded")` or `Aspect("current", "aria-current")` need no
+  runtime change. The book ships `EXPANDED` (`aria-expanded`), `INVALID` (`aria-invalid`),
+  `CHECKED`, which reads whether a check is ticked as `true` or `false`, and `PICKED`, which reads
+  the option a select shows or the name of the radio a `Radios` has checked. An aspect with no
+  attribute and another name is a `BookError` where it is declared.
+
+A phase that claims `states` and gives no `when` is a `BookError`. A condition whose `holds`
+raises fails the step as "the book contradicts itself". A part that does not read as stated
+fails the step with `<Screen> <phase>: <what the page showed>`. Visible and disabled are not
+aspects: claim them with `shows`, `hides` and `disabled`.
 
 ## Moving between screens
 
@@ -377,6 +429,8 @@ Everything else goes through `self.browser`:
 | `answered(*matchers)` | runs the body, then waits for the first answer one of them matches |
 | `sent`, `holding` | waits for a request to leave, or keeps it from reaching the server |
 | `set_offline(bool)` | the browser loses or regains the network |
+| `resize(viewport)` | lays the page out at a `Viewport`, or at the browser's own size for `None` |
+| `read(component, aspect, within)`, `holds(component, aspect, value, within)` | reads a component's state, or waits until it reads `value` and returns what it read when it never does |
 
 Match requests with `request(method, path, **query)`, `answer(...)` and `refusal(...)`. A `{id}` in
 the path stands for one segment, as in `request("PATCH", "/projects/{id}/variants")`. A form
@@ -398,7 +452,9 @@ app's words. After each step the runtime fails the step if the page sent a reque
 that no screen's `sends` declares. With `api = "/api"` that judges the app's gateway endpoints. The data
 handed with a page and the form actions are not under it, so they are never strays. Only a request to a
 host the environment declares is judged. A call to a third party, such as an error reporter's
-`/api/<project>/envelope/`, is never a stray and no screen declares it. `check` builds every screen in each declared language and every
+`/api/<project>/envelope/`, is never a stray and no screen declares it. When the step lands on a
+screen, each phase whose `when` holds is judged as [a screen that changes with its
+state](#a-screen-that-changes-with-its-state) says. `check` builds every screen in each declared language and every
 interaction. `run` plays the journeys, then the lifecycle cells.
 
 A web run records a video of each journey and each cell arrangement under `<out>/videos`. It keeps
@@ -464,6 +520,10 @@ the last one before it, its body and URL. A port already held fails the start an
 backend through a bridge on that port (a `socat` step) leaves the port to ostler: drop the bridge.
 `labels(component)` opens a list, judges it as a pick does, and closes it. `picked` is judged again after `launch()`
 or `clear()`.
+
+A device has one size, so an interaction that states a `viewport` is a `BookError` on a phone. A
+phase's `shows`, `hides` and `disabled` are judged as on the web. A device reads no component
+states, so a phase that claims `states` fails its step on a phone with a fault that says so.
 
 `fill` types with `adb input text`, so text outside printable ASCII is a `CannotReach`. It reads
 the field back and types again, up to three times, when a keystroke was lost. The video comes from
