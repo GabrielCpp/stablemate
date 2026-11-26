@@ -44,8 +44,38 @@ class Decision:
         return [*self.header, *self.lines()]
 
 
+def folder(module: str) -> str:
+    return os.path.dirname(importlib.import_module(module).__file__ or "")
+
+
 def directory(module: str) -> str:
-    return os.path.join(os.path.dirname(importlib.import_module(module).__file__ or ""), "decisions")
+    return os.path.join(folder(module), "decisions")
+
+
+def shared(module: str) -> str | None:
+    """The package a surface-split book keeps above its surfaces, holding the model and no `service.py`. Its
+    `decisions/` and `QUESTIONS.md` belong to every surface. None for a book of one surface."""
+    if "." not in module:
+        return None
+    above = os.path.dirname(folder(module))
+    if os.path.isfile(os.path.join(above, "service.py")) or not os.path.isdir(os.path.join(above, "model")):
+        return None
+    return module.rsplit(".", 1)[0]
+
+
+def folders(module: str) -> list[str]:
+    """Where a surface reads its decisions and questions: its own folder, then the book's shared root."""
+    return [folder(module), *([os.path.dirname(folder(module))] if shared(module) else [])]
+
+
+def surfaces(module: str) -> list[str]:
+    """Every surface of the book `module` is one surface of, itself included."""
+    root = shared(module)
+    if root is None:
+        return [module]
+    above = os.path.dirname(folder(module))
+    return [f"{root}.{name}" for name in sorted(os.listdir(above))
+            if os.path.isfile(os.path.join(above, name, "service.py"))]
 
 
 def read_page(path: str, searched: tuple[str, ...]) -> tuple[dict[str, str], tuple[tuple[int, str], ...], str, int]:
@@ -73,22 +103,31 @@ def parse(path: str) -> Decision:
 
 
 def load(module: str) -> list[Decision]:
-    root = directory(module)
-    if not os.path.isdir(root):
-        return []
-    return [parse(os.path.join(root, name)) for name in sorted(os.listdir(root)) if name.endswith(".md")]
+    found: list[Decision] = []
+    for place in folders(module):
+        root = os.path.join(place, "decisions")
+        if os.path.isdir(root):
+            found += [parse(os.path.join(root, name)) for name in sorted(os.listdir(root)) if name.endswith(".md")]
+    return found
+
+
+def is_shared(decision: Decision, module: str) -> bool:
+    """Whether the decision sits in the book's shared root rather than in the surface's own folder."""
+    return os.path.dirname(os.path.dirname(decision.path)) != folder(module)
 
 
 def model_names(module: str) -> dict[str, str]:
     found: dict[str, str] = {}
-    for sub in MODEL_MODULES:
-        try:
-            loaded = importlib.import_module(f"{module}.model.{sub}")
-        except ModuleNotFoundError:
-            continue
-        for name in vars(loaded):
-            if not name.startswith("_"):
-                found.setdefault(name, f"model.{sub}")
+    root = shared(module)
+    for book in (module, *([root] if root else [])):
+        for sub in MODEL_MODULES:
+            try:
+                loaded = importlib.import_module(f"{book}.model.{sub}")
+            except ModuleNotFoundError:
+                continue
+            for name in vars(loaded):
+                if not name.startswith("_"):
+                    found.setdefault(name, f"model.{sub}")
     return found
 
 
@@ -105,6 +144,15 @@ def resolve(service: Service[Any], module: str) -> dict[str, str]:
     found.update({i.__name__: "interaction" for i in service.interactions})
     found.update({j.__name__: "journey" for j in service.journeys})
     found.update({s.__name__: "screen" for s in service.screens})
+    return found
+
+
+def resolve_book(service: Service[Any], module: str) -> dict[str, str]:
+    """The names a decision or question in the book's shared root may cite: those of every surface of the book."""
+    found = resolve(service, module)
+    for other in surfaces(module):
+        if other != module:
+            found = {**resolve(importlib.import_module(f"{other}.service").service, other), **found}
     return found
 
 

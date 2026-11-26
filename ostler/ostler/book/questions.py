@@ -20,11 +20,13 @@ class Question:
 
 
 def rows(module: str) -> list[tuple[int, str]]:
-    path = os.path.join(os.path.dirname(decisions.directory(module)), "QUESTIONS.md")
-    if not os.path.isfile(path):
-        return []
-    with open(path) as f:
-        return [(n, row.strip()) for n, row in enumerate(f.read().splitlines(), 1)]
+    found: list[tuple[int, str]] = []
+    for place in decisions.folders(module):
+        path = os.path.join(place, "QUESTIONS.md")
+        if os.path.isfile(path):
+            with open(path) as f:
+                found += [(n, row.strip()) for n, row in enumerate(f.read().splitlines(), 1)]
+    return found
 
 
 def load(module: str) -> list[Question]:

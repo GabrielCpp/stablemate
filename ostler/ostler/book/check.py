@@ -291,6 +291,7 @@ def decision_faults(service: Service[Any], module: str, app: str | None = None) 
     found: list[Finding] = []
     members = books.book_checkouts(Path(app)) if app else {}
     known = decisions.resolve(service, module)
+    book = decisions.resolve_book(service, module) if decisions.shared(module) else known
     for d in decisions.load(module):
         name = f"decision {d.slug}"
         if not d.story:
@@ -300,7 +301,7 @@ def decision_faults(service: Service[Any], module: str, app: str | None = None) 
         if not d.elements:
             found.append(Finding(name, "names no element", blocks=False))
         found += [Finding(name, f"element {e} resolves to no element of the book", blocks=False)
-                  for e in d.elements if e not in known]
+                  for e in d.elements if e not in (book if decisions.is_shared(d, module) else known)]
         if app is not None:
             found += [Finding(name, f"source {s} is not there", blocks=False)
                       for s in d.sources if not under_site(service, s) and not source_is_there(s, app, members)]
@@ -308,7 +309,7 @@ def decision_faults(service: Service[Any], module: str, app: str | None = None) 
 
 
 def question_faults(service: Service[Any], module: str) -> list[Finding]:
-    known = decisions.resolve(service, module)
+    known = decisions.resolve_book(service, module)
     unread = [Finding(f"question line {n}", "is no entry, write it as `- <Element>: <question>`", blocks=False)
               for n in questions.unread(module)]
     return unread + [Finding(f"question line {q.line}", f"element {q.element} resolves to no element of the book", blocks=False)

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import subprocess
+import sys
+from collections.abc import Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -198,3 +200,59 @@ def test_a_decision_source_under_a_declared_site_brings_no_finding(module, tmp_p
 
 def test_a_decision_source_under_another_site_is_not_there(module, tmp_path):
     assert _vendor_findings(module, tmp_path, "https://other.example.com/docs", tmp_path) == ["source https://other.example.com/docs is not there"]
+
+
+SIBLING = """from types import SimpleNamespace
+
+
+class Pay:
+    carries = None
+
+
+service = SimpleNamespace(name="shop-api", endpoints=(Pay,), records=(), screens=(), interactions=(), journeys=(), documentation=None)
+"""
+
+
+@pytest.fixture
+def surface(module: str, tmp_path: Path) -> Iterator[str]:
+    """The web surface of a book split by surface: `shop_book` holds the model and the shared decisions, and an api
+    surface beside the web one declares the endpoint `Pay`."""
+    book = tmp_path / "shop_book"
+    for part in ("model", "web", "api"):
+        (book / part).mkdir()
+        (book / part / "__init__.py").write_text("")
+    (book / "web" / "service.py").write_text("")
+    (book / "api" / "service.py").write_text(SIBLING)
+    yield f"{module}.web"
+    for name in [n for n in sys.modules if n.startswith(f"{module}.")]:
+        sys.modules.pop(name)
+
+
+def _shared(tmp_path: Path, element: str) -> None:
+    (tmp_path / "shop_book" / "decisions" / "why.md").write_text(f"story: none\ndate: 2026-11-25\nelements: {element}\n\nWhy.\n")
+
+
+def test_a_surface_reads_the_decisions_of_the_book_shared_root(surface, tmp_path):
+    _shared(tmp_path, "Home")
+    assert [d.slug for d in decisions.load(surface)] == ["why"]
+
+
+def test_a_shared_decision_naming_a_screen_leaves_it_out_of_unexplained(surface, tmp_path):
+    _shared(tmp_path, "Home")
+    assert decisions.unexplained(_service(), surface, "screen") == []
+
+
+def test_a_shared_decision_naming_an_element_of_another_surface_brings_no_finding(surface, tmp_path):
+    _shared(tmp_path, "Home, Pay")
+    assert [f.problem for f in decision_faults(_service(), surface)] == []
+
+
+def test_a_surface_decision_naming_an_element_of_another_surface_still_brings_the_finding(surface, tmp_path):
+    (tmp_path / "shop_book" / "web" / "decisions").mkdir()
+    (tmp_path / "shop_book" / "web" / "decisions" / "why.md").write_text("story: none\ndate: 2026-11-25\nelements: Pay\n\nWhy.\n")
+    assert [f.problem for f in decision_faults(_service(), surface)] == ["element Pay resolves to no element of the book"]
+
+
+def test_a_question_in_the_shared_root_is_read_by_each_surface(surface, tmp_path):
+    (tmp_path / "shop_book" / "QUESTIONS.md").write_text("- Pay: why?\n- Missing: why?\n")
+    assert [f.problem for f in question_faults(_service(), surface)] == ["element Missing resolves to no element of the book"]
