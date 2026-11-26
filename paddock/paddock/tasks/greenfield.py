@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import subprocess
 import time
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,7 +32,7 @@ from workhorse.runner import extract as wh_extract
 from workhorse.runner.backends.registry import get_backend
 from paddock._vendor.stablemate_core import books
 from paddock._vendor.stablemate_core.clock import SYSTEM_CLOCK
-from paddock._vendor.stablemate_core.config import ARTIFACTS_DIR_ENV
+from paddock._vendor.stablemate_core.config import ARTIFACTS_DIR_ENV, CONFIG_PATH_ENV
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +124,28 @@ def artifacts_of(run: Run) -> Path:
     return Path(tree.launch(run, run.stage).env[ARTIFACTS_DIR_ENV])
 
 
+@contextmanager
+def in_trial(run: Run) -> Iterator[None]:
+    """Answer a lone repo's book lookups in this process as its phases see them, not as the operator's artifacts dir does."""
+    if tree.stage_members(run):
+        yield
+        return
+    env = tree.launch(run, run.stage).env
+    keys = (ARTIFACTS_DIR_ENV, CONFIG_PATH_ENV)
+    previous = {key: os.environ.get(key) for key in keys}
+    for key in keys:
+        if key in env:
+            os.environ[key] = env[key]
+    try:
+        yield
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
 def home_of(run: Run) -> Path:
     """Where the docs, milestones and epics live: the one repo, or a folder's docs home."""
     return tree.witness_docs(run, run.stage)
@@ -129,7 +153,8 @@ def home_of(run: Run) -> Path:
 
 def milestone_folder(run: Run, fixture: Fixture) -> Path:
     """Where the round's milestone lives: under its product in the artifacts folder."""
-    home = books.milestones_home(home_of(run), artifacts_of(run))
+    with in_trial(run):
+        home = books.milestones_home(home_of(run), artifacts_of(run))
     if home is None:
         raise TrialError(f"no product for {home_of(run)} — the round has nowhere to keep its milestone")
     return home / fixture.slug
@@ -331,7 +356,8 @@ def seed_milestone(run: Run, fixture: Fixture) -> None:
 def product_pages_folder(run: Run) -> Path:
     """Where the round's product pages live: `product/` of a book kept in the repo, else the product's folder in the artifacts folder."""
     home = home_of(run)
-    folder = books.product_folder(home) if books.book_in_repo(home) else books.product_home(home, artifacts_of(run))
+    with in_trial(run):
+        folder = books.product_folder(home) if books.book_in_repo(home) else books.product_home(home, artifacts_of(run))
     if folder is None:
         raise TrialError(f"no product for {home} — the round has nowhere to keep its product pages")
     return folder

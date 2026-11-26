@@ -47,6 +47,21 @@ def test_the_milestone_is_copied_from_beside_the_tasks_module(tmp_path: Path) ->
     assert (run.stage / BOOKS_DIR / "api").is_dir()
 
 
+def test_the_milestone_finds_its_product_when_the_operators_artifacts_hold_the_round(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = fake_run(tmp_path)
+    monkeypatch.setenv(core_config.ARTIFACTS_DIR_ENV, str(tmp_path))
+    (run.stage / "docs").mkdir()
+    milestone = run.benchmark.root / "milestones" / "m1"
+    milestone.mkdir(parents=True)
+    (milestone / greenfield.MILESTONE_FILE).write_text("# m\n", encoding="utf-8")
+
+    greenfield.seed_milestone(run, FIXTURE)
+
+    assert greenfield.produced_milestone(run, FIXTURE).is_relative_to(greenfield.artifacts_of(run))
+
+
 def test_a_missing_milestone_is_named(tmp_path: Path) -> None:
     with pytest.raises(TrialError, match="no milestone at"):
         greenfield.seed_milestone(fake_run(tmp_path), FIXTURE)
