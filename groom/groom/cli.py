@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import io
 import ipaddress
 import sys
 from typing import Any
@@ -1072,7 +1073,16 @@ def dispatch_stop(queue: str, item: str) -> None:
         print(f"{item} was not running")
 
 
+def _utf8_stdio() -> None:
+    if sys.platform != "win32":
+        return
+    for stream in (sys.stdout, sys.stderr):
+        if isinstance(stream, io.TextIOWrapper) and stream.encoding.lower() != "utf-8":
+            stream.reconfigure(encoding="utf-8")
+
+
 def main(argv: list[str] | None = None) -> None:
+    _utf8_stdio()
     try:
         _main(argv)
     except ConfigError as exc:
