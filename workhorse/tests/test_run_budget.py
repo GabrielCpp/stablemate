@@ -10,11 +10,13 @@ from unittest.mock import patch
 
 from _fakes import FakeBackend, FakeClock
 from workhorse.artifacts import ArtifactWriter
+from workhorse import gates
 from workhorse.config_run import RunConfig
 from workhorse.pyflow import run as run_mod
 from workhorse.pyflow.driver import drive
 from workhorse.pyflow.engine import RunEnv
 from workhorse.pyflow.errors import RunBudgetExceeded, WorkflowFailed
+from workhorse.pyflow.park import park_on
 from workhorse.pyflow.registry import Registry
 from workhorse.pyflow.run import RunInvocation, run_pyflow
 from workhorse.pyflow.transitions import Continue, Done, Transition
@@ -159,7 +161,7 @@ def _is_over(env: RunEnv) -> bool:
     try:
         drive(Budgeted(), env)
     except RunBudgetExceeded as exc:
-        assert "not counting usage-cap waits" in str(exc), exc
+        assert "not counting usage-cap waits or answered operator waits" in str(exc), exc
         return True
     return False
 
@@ -223,6 +225,55 @@ def test_the_ladder_records_each_cap_sleep_on_the_run():
 
         assert env.writer.cap_waited_s == 100
         assert ArtifactWriter.resume(env.writer.run_dir).cap_waited_s == 100
+
+
+class AnsweringClock(FakeClock):
+    """A fake clock that answers the gate once `answer_after_s` have slept."""
+
+    def __init__(self, gate: Path, answer_after_s: float | None) -> None:
+        super().__init__()
+        self.gate = gate
+        self.answer_after_s = answer_after_s
+
+    def sleep(self, seconds: float) -> None:
+        super().sleep(seconds)
+        if self.answer_after_s is not None and self._elapsed >= self.answer_after_s:
+            self.gate.write_text(gates.apply_answer(self.gate.read_text(), "go"))
+
+
+def _parked_env(tmp: str, answer_after_s: float | None, budget_s: float) -> tuple[RunEnv, Path, float]:
+    gate = Path(tmp) / "gate.md"
+    gate.write_text(gates.format_operator_gate("ready?"))
+    clock = AnsweringClock(gate, answer_after_s)
+    env, started = _env(tmp, clock, budget_s)
+    return env, gate, started
+
+
+def test_an_answered_operator_park_is_refunded_to_the_budget():
+    budget_s, parked_s = 600.0, 2400.0
+    with tempfile.TemporaryDirectory() as tmp:
+        env, gate, started = _parked_env(tmp, parked_s, budget_s * 10)
+        park_on(gate, env, kind="operator")
+
+        assert env.writer.operator_waited_s == parked_s
+        assert env.effective_deadline == started + budget_s * 10 + parked_s
+        assert ArtifactWriter.resume(env.writer.run_dir).operator_waited_s == parked_s
+
+
+def test_a_park_that_hits_the_deadline_records_no_operator_wait():
+    budget_s = 600.0
+    with tempfile.TemporaryDirectory() as tmp:
+        env, gate, _ = _parked_env(tmp, None, budget_s)
+        try:
+            park_on(gate, env, kind="operator")
+        except WorkflowFailed as exc:
+            assert exc.failure_class == "await-deadline-exceeded"
+        else:
+            raise AssertionError("an unanswered park past the deadline did not end the run")
+
+        assert env.writer.operator_waited_s == 0
+        assert ArtifactWriter.resume(env.writer.run_dir).operator_waited_s == 0
+        assert _is_over(env)
 
 
 HANDOFF_CLOCK = FakeClock()

@@ -112,6 +112,7 @@ class RunRecord(BaseModel):
     worktree_outcome: WorktreeOutcome | None = None
     worktrees: list[RunWorktree] = Field(default_factory=list)
     cap_waited_s: float = 0.0
+    operator_waited_s: float = 0.0
 
 
 def run_worktrees(record: RunRecord) -> list[RunWorktree]:

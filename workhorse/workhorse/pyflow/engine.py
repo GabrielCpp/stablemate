@@ -129,10 +129,10 @@ class RunEnv:
 
     @property
     def effective_deadline(self) -> float | None:
-        """The wall-clock deadline pushed back by every second the run slept on usage caps."""
+        """The wall-clock deadline pushed back by every second the run slept on usage caps or waited on an operator gate that was answered."""
         if self.deadline is None:
             return None
-        return self.deadline + self.writer.cap_waited_s
+        return self.deadline + self.writer.cap_waited_s + self.writer.operator_waited_s
 
     def __post_init__(self) -> None:
         """Bind the run's ladder to the run's clock, once."""

@@ -143,6 +143,7 @@ def _consume_answer(
 
 def park_on(path: Path, env: RunEnv, *, kind: str) -> None:
     """Block on `path` until answered, honouring control requests while parked."""
+    parked_at = env.clock.now().timestamp() if kind == "operator" else None
     while True:
         interrupted = wait_for_answer(
             path,
@@ -154,6 +155,8 @@ def park_on(path: Path, env: RunEnv, *, kind: str) -> None:
             kind=kind,
         )
         if interrupted is None:
+            if parked_at is not None:
+                env.writer.record_operator_wait(env.clock.now().timestamp() - parked_at)
             return
         cut = reload.cut_by(interrupted)
         if cut is not None:

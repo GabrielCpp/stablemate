@@ -202,7 +202,7 @@ def drive(
         if deadline is not None and env.clock.now().timestamp() > deadline:
             raise RunBudgetExceeded(
                 "run exceeded its WORKHORSE_MAX_RUNTIME_S wall-clock budget, counted "
-                "from the run's original start, not counting usage-cap waits. Raise the budget and resume."
+                "from the run's original start, not counting usage-cap waits or answered operator waits. Raise the budget and resume."
             )
         boundary = reload.boundary_requested()
         if boundary is not None and boundary.action == reload.SWITCH_PROFILE:
