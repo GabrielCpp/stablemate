@@ -150,6 +150,7 @@ exclude = [
 
 [tool.ty.environment]
 extra-paths = ["ostler/ostler/qa/harness"]
+python-platform = "linux"
 
 # basedpyright — pyright's inference and its bundled third-party stubs, run from this
 # root next to ruff and ty (`make lint`). It is a third opinion, not a replacement:
