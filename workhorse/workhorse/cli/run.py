@@ -14,8 +14,10 @@ from workhorse._vendor.stablemate_core.config import (
     ConfigError,
     docs_home,
     load_home_config,
+    repository_identity,
     resolve_workspace,
 )
+from workhorse._vendor.stablemate_core.books import book_in_repo
 from workhorse._vendor.stablemate_core.discovery import base_library_dir
 from workhorse._vendor.stablemate_core.harness import workhorse_harnesses
 from workhorse._vendor.stablemate_core.schema import HomeConfig
@@ -225,7 +227,7 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
         recorded = _recorded_workspace(resume_run_dir)
         if recorded:
             _enter_workspace(recorded)
-    if docs_home(Path.cwd()) is not None:
+    if docs_home(Path.cwd()) is not None or _keeps_book_in_artifacts(Path.cwd()):
         ensure_artifacts_repo()
     params.setdefault("repo_dir", os.environ.get("AGENT_REPO_DIR") or str(Path.cwd().resolve()))
     params.setdefault("library_dirs", library_dirs(home))
@@ -248,6 +250,11 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
         ),
         telemetry=otel.TelemetryHost(otel.OtelSettings.from_env(os.environ)),
     )
+
+
+def _keeps_book_in_artifacts(start: Path) -> bool:
+    """Whether *start* is in a repository whose book lives in the artifacts folder."""
+    return (repository_identity(start).folder / ".git").exists() and not book_in_repo(start)
 
 
 def _load_home() -> HomeConfig:

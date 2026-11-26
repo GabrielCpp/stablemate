@@ -104,3 +104,34 @@ def test_a_run_launched_inside_a_member_repo_initialises_the_artifacts_repo_with
     assert code == 0
     assert "workspace" not in seen[0].params
     assert (home / "artifacts" / ".git").exists()
+
+
+def _lone_repo(home: Path, monkeypatch, manifest: str = "") -> Path:
+    repo = home / "notes-api"
+    repo.mkdir()
+    subprocess.run(["git", "init", "--quiet", str(repo)], check=True)
+    if manifest:
+        (repo / "agents.yml").write_text(manifest)
+    monkeypatch.chdir(repo)
+    return repo
+
+
+def test_a_run_in_a_lone_repo_whose_book_lives_in_the_artifacts_folder_initialises_it(home, monkeypatch):
+    _lone_repo(home, monkeypatch)
+
+    _, code = _launch(["run", "--dry-run"], monkeypatch)
+
+    assert code == 0
+    artifacts = home / "artifacts"
+    assert (artifacts / ".git").exists()
+    head = subprocess.run(["git", "-C", str(artifacts), "rev-parse", "--verify", "HEAD"], capture_output=True, check=False)
+    assert head.returncode == 0
+
+
+def test_a_run_in_a_lone_repo_that_keeps_its_book_leaves_the_artifacts_folder_alone(home, monkeypatch):
+    _lone_repo(home, monkeypatch, "agents:\n  claude: true\nbook:\n  home: repo\n")
+
+    _, code = _launch(["run", "--dry-run"], monkeypatch)
+
+    assert code == 0
+    assert not (home / "artifacts").exists()
