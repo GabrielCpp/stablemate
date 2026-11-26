@@ -43,8 +43,10 @@ def unbooked_message(names: list[str], service_books: Path) -> str:
     named = ", ".join(f"`{name}`" for name in names)
     return (
         f"{named} has no book: no `{service_books}/<name>/service.py` and no "
-        f"`{service_books}/<name>/*/service.py`. Write it with "
-        "`workhorse-okf-book run python_book`, then run the story again."
+        f"`{service_books}/<name>/*/service.py`. For an app that already has code, write it with "
+        "`workhorse-okf-book run python_book`. For an app with no behaviour yet, open the book with a "
+        "`service.py` that holds one docstring line, and this story writes its first claims. "
+        "Then run the story again."
     )
 
 

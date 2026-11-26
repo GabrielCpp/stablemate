@@ -287,7 +287,7 @@ def test_a_story_naming_a_service_without_a_book_stops_before_the_spec_turn(
         drive_flow(Docs(story=STORY, epic=EPIC), env(), agent)
 
     assert "`web`" in str(refused.value) and "`api`" not in str(refused.value), refused.value
-    assert "workhorse-okf-book run python_book" in str(refused.value), refused.value
+    assert "workhorse-okf-book run python_book" in str(refused.value) and "one docstring line" in str(refused.value), refused.value
     assert agent.counts() == {}, agent.counts()
 
 
