@@ -47,6 +47,29 @@ def test_parse_reset_seconds_variants():
     assert caps.parse_reset_seconds("resets soon", now) is None
 
 
+CODEX_MSG = (
+    "You\u2019ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro), "
+    "visit https://chatgpt.com/settings/usage to purchase more credits or try again at {at}."
+)
+
+
+def test_parse_reset_seconds_reads_codex_try_again_at():
+    now = datetime(2026, 11, 25, 14, 0, 0)
+    hour = 3600
+    cases = {
+        "3:40 PM": 1 * hour + 40 * 60,
+        "3 PM": hour,
+        "15:40": 1 * hour + 40 * 60,
+        "1:10 PM": 23 * hour + 10 * 60,
+        "Nov 26th, 2026 3:40 PM": 25 * hour + 40 * 60,
+        "Nov 25th, 2026 3:40 PM": 1 * hour + 40 * 60,
+    }
+    for at, expected in cases.items():
+        assert abs(_reset_seconds(CODEX_MSG.format(at=at), now) - expected) < 1, at
+    assert caps.parse_reset_seconds("try again at some point", now) is None
+    assert caps.parse_reset_seconds(CODEX_MSG.format(at="Foo 26th, 2026 3:40 PM"), now) is None
+
+
 def test_cap_reset_beyond_the_node_wait_budget_fails_without_partial_sleep():
     """Sleeping partway to a known-unreached cap reset only delays a resumable stop."""
     clock = FakeClock()

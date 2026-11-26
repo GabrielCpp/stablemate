@@ -13,22 +13,51 @@ from workhorse._vendor.stablemate_core.clock import Clock
 from workhorse.runner.failure import BackendInvocationError
 
 
+_LEAD = r"(?:resets?(?:\s+at)?|try\s+again\s+at)\s+"
+_DATE = (
+    r"(?:(?P<month>[a-z]{3})[a-z]*\.?\s+(?P<day>\d{1,2})(?:st|nd|rd|th)?"
+    r"(?:,?\s+(?P<year>\d{4}))?,?\s+(?:at\s+)?)?"
+)
+_CLOCK_12H = re.compile(
+    _LEAD + _DATE + r"(?P<hour>\d{1,2})(?::(?P<minute>\d{2}))?\s*(?P<meridiem>[ap]m)", re.IGNORECASE
+)
+_CLOCK_24H = re.compile(_LEAD + _DATE + r"(?P<hour>\d{1,2}):(?P<minute>\d{2})\b", re.IGNORECASE)
+_MONTHS = ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+
+
 def parse_reset_seconds(text: str, now: datetime) -> float | None:
-    """Seconds from ``now`` until the cap reset time named in ``text`` — e.g."""
-    m = re.search(r"resets?(?:\s+at)?\s+(\d{1,2})(?::(\d{2}))?\s*([ap]m)", text, re.IGNORECASE)
+    """Seconds from ``now`` until the cap reset time named in ``text``, such as "resets 3pm" or "try again at 3:40 PM"."""
+    m = _CLOCK_12H.search(text)
     if m:
-        hour = int(m.group(1)) % 12
-        if m.group(3).lower() == "pm":
+        hour = int(m.group("hour")) % 12
+        if m.group("meridiem").lower() == "pm":
             hour += 12
-        minute = int(m.group(2) or 0)
     else:
-        m = re.search(r"resets?(?:\s+at)?\s+(\d{1,2}):(\d{2})\b", text, re.IGNORECASE)
+        m = _CLOCK_24H.search(text)
         if not m:
             return None
-        hour, minute = int(m.group(1)), int(m.group(2))
+        hour = int(m.group("hour"))
+    minute = int(m.group("minute") or 0)
     if not (0 <= hour <= 23 and 0 <= minute <= 59):
         return None
     target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if m.group("month"):
+        month = m.group("month").lower()
+        if month not in _MONTHS:
+            return None
+        year = int(m.group("year") or now.year)
+        try:
+            target = target.replace(
+                year=year, month=_MONTHS.index(month) + 1, day=int(m.group("day"))
+            )
+        except ValueError:
+            return None
+        if not m.group("year") and target <= now:
+            try:
+                target = target.replace(year=year + 1)
+            except ValueError:
+                return None
+        return max((target - now).total_seconds(), 0.0) or None
     if target <= now:
         target += timedelta(days=1)
     return (target - now).total_seconds()

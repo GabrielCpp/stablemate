@@ -212,7 +212,7 @@ stops a run's process group with os.killpg, sending SIGTERM and then SIGKILL. Ex
 "workflows/tests/coder/shared/test_story_commit.py" = 552
 "workflows/tests/coder/test_workflow.py" = 1283
 "workflows/tests/research/test_workflow.py" = 1628
-"workhorse/tests/test_agent_cap.py" = 676
+"workhorse/tests/test_agent_cap.py" = 699
 "workhorse/tests/test_agent_recovery.py" = 656
 "workhorse/tests/test_backends.py" = 1535
 "workhorse/tests/test_control_channel.py" = 418
