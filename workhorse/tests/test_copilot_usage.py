@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from workhorse.runner.backends import copilot
 from workhorse.runner.backends.turn import TurnState
 
@@ -22,8 +24,10 @@ RESULT = {
 }
 
 
-def usage_record(input_tokens, output, read, write, reasoning, sequence=1):
-    return {
+def usage_record(
+    input_tokens, output, read, write, reasoning, sequence=1, nano_aiu=None
+):
+    record = {
         "type": "session.usage_record",
         "data": {
             "usage": {
@@ -38,6 +42,9 @@ def usage_record(input_tokens, output, read, write, reasoning, sequence=1):
             }
         },
     }
+    if nano_aiu is not None:
+        record["data"]["usage"]["copilotUsage"] = {"totalNanoAiu": nano_aiu}
+    return record
 
 
 def write_log(path: Path, events: list[dict]) -> None:
@@ -87,6 +94,25 @@ def test_two_usage_records_of_one_turn_sum_into_the_canonical_fields(tmp_path):
 def test_the_premium_request_cost_is_not_recorded_as_dollars(tmp_path):
     write_log(log_path(tmp_path), [usage_record(100, 5, 0, 90, 0)])
     assert run_turn(tmp_path).usage.total_cost_usd is None
+
+
+def test_ai_credits_are_recorded_as_dollars_at_one_cent_each(tmp_path):
+    write_log(
+        log_path(tmp_path),
+        [usage_record(33184, 11609, 0, 0, 10394, 1, nano_aiu=18245800000)],
+    )
+    assert run_turn(tmp_path).usage.total_cost_usd == pytest.approx(0.182458)
+
+
+def test_the_credits_of_every_record_in_the_turn_add_up(tmp_path):
+    write_log(
+        log_path(tmp_path),
+        [
+            usage_record(100, 5, 0, 90, 0, 1, nano_aiu=2_000_000_000),
+            usage_record(100, 5, 0, 90, 0, 2, nano_aiu=500_000_000),
+        ],
+    )
+    assert run_turn(tmp_path).usage.total_cost_usd == pytest.approx(0.025)
 
 
 def test_records_before_the_baseline_belong_to_an_earlier_turn(tmp_path):

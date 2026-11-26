@@ -34,13 +34,17 @@ def _on_event(event, state: TurnState, node_id):
         state.diagnostics.append(json.dumps(event)[:500])
 
 
+_NANO_AIU_PER_USD = 1e9 / 0.01
+
+
 def _count(value: Any) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 def _record_usage(record: dict[str, Any]) -> _usage.TurnUsage:
-    """One ``session.usage_record`` as canonical usage: the CLI counts cache reads and writes inside ``inputTokens`` and ``reasoningTokens`` inside ``outputTokens``, and its ``cost`` is premium requests, not dollars."""
+    """One ``session.usage_record`` as canonical usage: the CLI counts cache reads and writes inside ``inputTokens`` and ``reasoningTokens`` inside ``outputTokens``, its ``cost`` is premium requests, not dollars, and ``copilotUsage.totalNanoAiu`` is the AI credits the call billed, in billionths."""
     data = (record.get("data") or {}).get("usage") or {}
+    nano_aiu = _count((data.get("copilotUsage") or {}).get("totalNanoAiu"))
     reads = _count(data.get("cacheReadTokens")) or 0
     writes = _count(data.get("cacheWriteTokens")) or 0
     total_in = _count(data.get("inputTokens"))
@@ -50,6 +54,7 @@ def _record_usage(record: dict[str, Any]) -> _usage.TurnUsage:
         cache_read_input_tokens=_count(data.get("cacheReadTokens")),
         cache_creation_input_tokens=_count(data.get("cacheWriteTokens")),
         reasoning_output_tokens=_count(data.get("reasoningTokens")),
+        total_cost_usd=None if nano_aiu is None else nano_aiu / _NANO_AIU_PER_USD,
     )
 
 
