@@ -6,8 +6,8 @@ argument-hint: "<story-id>"
 # Scenario QA for story $ARGUMENTS
 
 This command does by hand what the coder `qa` subflow does in its owner turn
-(`workhorse-coder run qa`). It covers the criteria no book can state. coder-book-qa sends a
-story here when no book covers it. You select the scenarios, run them, debug each failure
+(`workhorse-coder run qa`). It covers what the books left: the criteria no book can state and the criteria no book
+play observed. coder-book-qa sends a story here when no book covers it. You select the scenarios, run them, debug each failure
 and record the result. QA never fixes the product. A defect in the story's code is a
 finding you report.
 
@@ -18,15 +18,30 @@ Load {{ skill_link("ostler-cli") }} for `ostler env` and QA plans.
 
 Read the story, its acceptance criteria, `<spec>/plan.md` and `<spec>/review-answers.md`.
 `ostler path spec $ARGUMENTS` names the spec folder. Read the repo's `AGENTS.md` and
-`docs/qa/lessons.md` when it exists. For each criterion, decide what observation of the
-running product shows it.
+`docs/qa/lessons.md` when it exists. For each criterion, decide what observation shows it.
+Each one takes the first proof that fits:
 
-Write `<spec>/qa_plan.py` by hand. Write one scenario per criterion, or one for several that
-a single observation proves. Each scenario carries `covers=["ac:<n>"]` and a
-`qa.check(..., covers=["ac:<n>"])` in its body. A criterion no scenario can reach stops the
-story. Report it with the reason. Run `ostler qa lint` on the plan.
+- **scenario**: a call, a screen, a command or a stored record on the local stack shows it.
+- **integration test**: only a test can show it, because it needs concurrent writers, a
+  restart, an injected failure, sustained load held to a threshold, or a dependency the
+  stack cannot host. Write the test in the repo's own suite. Cover the criterion with a
+  scenario that runs it through `qa.tool(<runner>).run(...)` and checks its result with
+  `qa.verify(...)`. A red test is a product finding.
+- **live check**: only the shared DEV environment shows it, after the deploy: a cloud
+  permission, a routing rule between deployed services, a secret, a scheduled job, a
+  migration on real data. Write `<spec>/live-qa.md`, the runbook a person runs on DEV after
+  the deploy: numbered steps, evidence per criterion under `qa/live/`, a verdict rule per
+  step and an evidence manifest. No scenario covers it.
 
-**Done when** every criterion is covered by a scenario and the plan lints.
+A criterion the local stack could show is never a live check.
+
+Write `<spec>/qa_plan.py` by hand. Write one scenario per criterion that is not a live
+check, or one for several that a single observation proves. Each scenario carries `covers=["ac:<n>"]` and a
+`qa.check(..., covers=["ac:<n>"])` in its body. A criterion no scenario, test or live check can
+show stops the story. Report it with the reason. Run `ostler qa lint` on the plan.
+
+**Done when** every criterion is covered by a scenario or a live runbook, and the plan
+lints.
 
 ## 2. Run
 
@@ -87,6 +102,9 @@ its frontmatter. Rewrite it on every pass.
 
 ## Assessment
 <what the run proved, what it did not, and why>
+
+## Owed after deploy
+<each live check, the criterion it proves and the runbook path, or "none">
 
 ## History
 - <date>: <status>: <outcome>

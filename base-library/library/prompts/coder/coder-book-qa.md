@@ -86,8 +86,8 @@ A step whose cells came back empty observed nothing. The reviewer may run one ex
 `--only` or `--journey` play per criterion under `timeout 300`, edits nothing, and
 touches no deployed environment.
 
-**Done when** no criterion is unmet or unobserved. Each one that is goes back to step 4
-or to the code.
+**Done when** no criterion is unmet. An unmet one goes back to step 4 or to the code. An
+unobserved one goes to step 8 as a claim the books left.
 
 ## 7. Land
 
@@ -99,5 +99,5 @@ change by path with a `test` subject and the `Epic:` and `Story:` trailers. Run
 
 ## 8. Fallback: scenario QA
 
-A story no book covers, and each criterion no book claim can state, goes to the coder-qa
-command on `$ARGUMENTS`.
+A story no book covers, each criterion no book claim can state and each criterion the
+review judged unobserved goes to the coder-qa command on `$ARGUMENTS`.
