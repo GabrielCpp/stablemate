@@ -9,7 +9,6 @@ be reached answers None, and the caller launches its own browser as before.
 from __future__ import annotations
 
 import contextlib
-import fcntl
 import json
 import os
 import shutil
@@ -67,11 +66,32 @@ def connect(playwright: Any) -> Any | None:
 @contextlib.contextmanager
 def _locked(root: Path) -> Iterator[None]:
     with open(root / "lock", "a") as handle:
-        fcntl.flock(handle, fcntl.LOCK_EX)
+        _lock(handle)
         try:
             yield
         finally:
-            fcntl.flock(handle, fcntl.LOCK_UN)
+            _unlock(handle)
+
+
+if sys.platform == "win32":
+    import msvcrt
+
+    def _lock(handle: Any) -> None:
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+
+    def _unlock(handle: Any) -> None:
+        handle.seek(0)
+        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+
+else:
+    import fcntl
+
+    def _lock(handle: Any) -> None:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+
+    def _unlock(handle: Any) -> None:
+        fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 def _answers(endpoint: str, path: str = "/json/version") -> Any | None:
