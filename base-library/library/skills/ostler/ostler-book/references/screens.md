@@ -139,6 +139,12 @@ on an environment that keeps other people's records. A derivation follows the da
 was given, and these two do not, so a list a backend fills wrongly needs them. A list may
 state any of the three claims alone.
 
+A picker whose choices come from data the book cannot compare, such as the sites of the signed-in
+account on a shared environment, states why instead of a list:
+`Select(None, SITE, "which site the page shows", unlisted="the sites of the signed-in account")`.
+The run judges no list in it, and a journey may still pick in it. A select states its options, its list, its shape or
+`unlisted`, and never `unlisted` with another.
+
 `entries=(in_order(), no_repeat())` states rules every entry holds whatever records the list
 holds, so they hold on a shared environment. `in_order(key)` and `no_repeat(key)` take no key
 (the entry itself), a function, or a dotted path read from a dict entry. A rule is any function
