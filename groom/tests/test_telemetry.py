@@ -520,8 +520,8 @@ def test_loop_convergence_reports_the_rate_card_beside_the_bill():
         }
         store.insert_spans(otlp.parse_traces(_trace_request([priced, lap_two])))
         row = store.loop_convergence(min_work_items=1)[0]
-        assert (row["cost_usd"], row["est_cost_usd"]) == (0.0, 45.0)
-        assert (row["est_turns"], row["excess_est_cost_usd"]) == (2, 30.0)
+        assert (row["cost_usd"], row["est_cost_usd"]) == (0.0, 30.0)
+        assert (row["est_turns"], row["excess_est_cost_usd"]) == (2, 20.0)
 
 
 def test_loop_convergence_keys_work_items_by_run_so_slugs_may_repeat():

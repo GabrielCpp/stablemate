@@ -117,6 +117,21 @@ def test_an_antigravity_turn_prices_as_the_model_its_effort_suffix_names():
             assert prices.price_for(model) is not None
 
 
+def test_a_turn_on_a_current_claude_model_prices_at_its_list_rates():
+    with _env():
+        expected = {
+            "claude-fable-5-2": (8.00, 40.00, 0.20),
+            "claude-opus-5-5": (4.00, 20.00, 0.20),
+            "claude-sonnet-5-5": (2.00, 10.00, 0.10),
+            "claude-haiku-5-5": (0.10, 0.50, 0.01),
+            "claude-sonnet-5": (2.00, 10.00, 0.20),
+        }
+        for model, rates in expected.items():
+            price = prices.price_for(model)
+            assert price is not None, model
+            assert (price.input, price.output, price.cache_read) == rates, model
+
+
 def test_the_override_file_extends_and_corrects_the_built_in_table():
     with _env('[models."acme/fast-1"]\ninput = 2.0\noutput = 8.0\n'):
         added = prices.price_for("acme/fast-1")
@@ -141,24 +156,24 @@ def test_a_malformed_override_file_is_ignored_rather_than_fatal():
 def test_a_turn_reporting_no_tokens_at_all_gets_no_estimate():
     with _env():
         assert prices.estimate("claude-sonnet-5", None, None, None, None) is None
-        assert prices.estimate("claude-sonnet-5", 1_000_000, None) == 3.0
+        assert prices.estimate("claude-sonnet-5", 1_000_000, None) == 2.0
 
 
 def test_an_estimate_is_stamped_at_ingest_beside_the_reported_cost():
     with _env():
         store.insert_spans([_turn("a" * 16, "claude-sonnet-5", _TOKENS, cost=12.34)])
-        assert _est("a" * 16) == 24.30
+        assert _est("a" * 16) == 16.20
         row = store._connection().execute(
             "SELECT total_cost_usd, est_cost_usd FROM spans"
         ).fetchone()
-        assert row["total_cost_usd"] == 12.34 and row["est_cost_usd"] == 24.30
+        assert row["total_cost_usd"] == 12.34 and row["est_cost_usd"] == 16.20
 
 
 def test_a_run_turn_span_carries_its_token_estimate():
     with _env():
         store.insert_spans([_turn("a" * 16, "claude-sonnet-5", _TOKENS, cost=12.34)])
         spans = store.run_turn_spans("R1")
-        assert [span["est_cost_usd"] for span in spans] == [24.30]
+        assert [span["est_cost_usd"] for span in spans] == [16.20]
 
 
 def test_reprice_fills_in_turns_that_predate_the_column():
@@ -169,7 +184,7 @@ def test_reprice_fills_in_turns_that_predate_the_column():
 
         result = store.reprice()
         assert result["priced"] == 1 and result["considered"] == 1
-        assert _est("b" * 16) == 24.30
+        assert _est("b" * 16) == 16.20
         assert store.reprice()["considered"] == 0
 
 
@@ -211,7 +226,7 @@ def test_node_costs_reports_the_estimate_beside_the_bill_and_never_folded_in():
         ])
         row = store.node_costs(run="R1")[0]
         assert row["cost_usd"] == 12.34
-        assert row["est_cost_usd"] == 24.30
+        assert row["est_cost_usd"] == 16.20
         assert row["est_turns"] == 1
         assert row["turns"] == 2
 
@@ -247,7 +262,7 @@ def test_an_alias_is_priced_by_the_model_its_session_store_names():
         result = turns.resolve_models()
         assert result["priced"] == 1 and result["sessions_read"] == 1
         assert result["resolved"] == {"sonnet -> claude-sonnet-5": 1}
-        assert _est("i" * 16) == 24.30
+        assert _est("i" * 16) == 16.20
         assert _priced_model("i" * 16) == "claude-sonnet-5"
         assert store.unpriced_models() == {}
 

@@ -43,7 +43,9 @@ def _rates(input_rate: float, output_rate: float) -> Price:
 
 
 DEFAULT_PRICES: dict[str, Price] = {
+    "claude-fable-5-2": Price(input=8.00, output=40.00, cache_read=0.20, cache_write=16.00),
     "claude-fable-5": _rates(10.00, 50.00),
+    "claude-opus-5-5": Price(input=4.00, output=20.00, cache_read=0.20, cache_write=8.00),
     "claude-opus-5": _rates(5.00, 25.00),
     "claude-opus-4-8": _rates(5.00, 25.00),
     "claude-opus-4-7": _rates(5.00, 25.00),
@@ -51,10 +53,12 @@ DEFAULT_PRICES: dict[str, Price] = {
     "claude-opus-4-5": _rates(5.00, 25.00),
     "claude-opus-4-1": _rates(15.00, 75.00),
     "claude-opus-4-0": _rates(15.00, 75.00),
-    "claude-sonnet-5": _rates(3.00, 15.00),
+    "claude-sonnet-5-5": Price(input=2.00, output=10.00, cache_read=0.10, cache_write=4.00),
+    "claude-sonnet-5": _rates(2.00, 10.00),
     "claude-sonnet-4-6": _rates(3.00, 15.00),
     "claude-sonnet-4-5": _rates(3.00, 15.00),
     "claude-sonnet-4-0": _rates(3.00, 15.00),
+    "claude-haiku-5-5": Price(input=0.10, output=0.50, cache_read=0.01, cache_write=0.20),
     "claude-haiku-4-5": _rates(1.00, 5.00),
     "gpt-5.5": Price(input=5.00, output=30.00, cache_read=0.50, cache_write=5.00),
     "gpt-5.6": Price(input=5.00, output=30.00, cache_read=0.50, cache_write=6.25),
