@@ -76,12 +76,14 @@ def test_the_registry_lists_home_harnesses_in_this_order() -> None:
     ]
 
 
-def test_antigravity_is_a_farrier_target_the_workhorse_never_offers() -> None:
+def test_antigravity_is_a_workhorse_harness_that_compacts_and_takes_extra_dirs() -> None:
     antigravity = harness.spec("antigravity")
 
-    assert antigravity.workhorse is False
-    assert antigravity.workhorse_reason
-    assert "antigravity" not in [spec.name for spec in harness.workhorse_harnesses()]
+    assert antigravity.workhorse is True
+    assert "antigravity" in [spec.name for spec in harness.workhorse_harnesses()]
+    assert antigravity.compaction.level is harness.Level.NATIVE
+    assert antigravity.extra_dirs.level is harness.Level.NATIVE
+    assert antigravity.subagents.level is harness.Level.NONE
 
 
 def test_pi_shares_the_agents_skill_folder_and_compacts_through_rpc() -> None:

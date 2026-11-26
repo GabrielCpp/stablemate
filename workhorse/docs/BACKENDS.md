@@ -2,7 +2,7 @@
 
 workhorse drives **one agent CLI per run** and picks **one model per agent turn**. This
 document covers both halves: choosing the backend (`claude`, `codex`, `copilot`,
-`opencode`, `pi`), and how a turn's abstract `power` tier resolves — through the config file
+`opencode`, `antigravity`, `pi`), and how a turn's abstract `power` tier resolves — through the config file
 workhorse shares with `farrier` — into a concrete model and effort. It also covers the two
 backends that need more than a flag: codex config profiles, and running OpenRouter models
 under `opencode`, where pinning the upstream endpoint is the largest cost lever
@@ -30,7 +30,8 @@ workhorse-<name> run                      # the configured default_cli, else cla
 workhorse-<name> run --cli codex
 workhorse-<name> run --cli copilot
 workhorse-<name> run --cli opencode       # OpenRouter-native
-# Equivalently, set the AGENT_CLI={claude,codex,copilot,opencode,pi} env var.
+workhorse-<name> run --cli antigravity    # Google's agy
+# Equivalently, set the AGENT_CLI={antigravity,claude,codex,copilot,opencode,pi} env var.
 ```
 
 **The unnamed case is yours to set.** `default_cli` in this same config file names the
@@ -71,6 +72,7 @@ CLI's opaque internal retry loop.
 | `codex` | `codex exec --json` | CLI default | no — ladder reframes on overflow |
 | `copilot` | `copilot -p --output-format json` | CLI default | no — ladder reframes on overflow |
 | `opencode` | `opencode run --format json` | — (node names it) | no — ladder reframes on overflow |
+| `antigravity` | `agy -p --output-format stream-json` | CLI default | yes (`/compact`) |
 | `pi` | `pi --mode json` | — (node names it) | yes (`pi --mode rpc`, `compact`) |
 
 For running OpenRouter models (e.g. MiMo) on `opencode`, see
@@ -145,6 +147,12 @@ cli = "opencode"
 [profiles.opencode.powers.high]
 model = "openai/gpt-5.5"
 effort = "high"
+
+[profiles.antigravity]
+cli = "antigravity"
+
+[profiles.antigravity.powers.high]
+model = "gemini-4-hydrogen-high"
 ```
 
 A tier you leave unmapped in a profile falls through to that profile's `default` table, so a
@@ -453,3 +461,18 @@ genuine overflow either way — opencode exposes no in-place `/compact`
 (`supports_compaction = False`), so workhorse reframes the node in a fresh session
 rather than compacting.
 
+
+## Antigravity — `agy`
+
+The `antigravity` backend runs each turn as `agy -p` with `--output-format stream-json`
+and resumes a node's conversation with `--conversation <id>`. `agy models` lists the model
+names a profile may map a tier to, such as `gemini-4-hydrogen-high` or
+`gemini-3.8-flash-low`. Each name carries its own effort.
+
+- A confined profile runs with `--sandbox`. That restricts the terminal. It holds neither
+  writes nor reads to the working directory, so the guards installed by `farrier` do the rest.
+- A node's delegates are not defined per turn. agy loads its subagents from the agents
+  folder `farrier` writes, and a turn that names delegates prints a warning.
+- agy reports tokens and no dollar cost. groom prices a turn from its rate card.
+- A quota or `RESOURCE_EXHAUSTED` error reads as a usage cap, and the run sleeps on it the
+  way it does for other CLIs.

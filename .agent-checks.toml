@@ -239,3 +239,10 @@ stops a run's process group with os.killpg, sending SIGTERM and then SIGKILL. Ex
 "workhorse/workhorse/runner/process.py" = 486
 "workhorse/workhorse/runner/transcript.py" = 460
 "workhorse/workhorse/worklist.py" = 441
+
+[[check-clones.coincidence]]
+files = ["workhorse/workhorse/runner/backends/antigravity.py", "workhorse/workhorse/runner/backends/pi.py"]
+reasons = [
+  "antigravity.py imports the backend base types because it reads agy's stream-json events",
+  "pi.py imports the same base types because it reads pi's json events and drives its rpc compaction",
+]

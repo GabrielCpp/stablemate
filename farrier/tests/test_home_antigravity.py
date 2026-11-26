@@ -32,8 +32,8 @@ def tool_call(tool: str, args: dict) -> dict:
     return {"sessionId": "s", "cwd": "/project", "toolName": tool, "toolInput": args}
 
 
-def test_the_workhorse_never_offers_antigravity() -> None:
-    assert "antigravity" not in {spec.name for spec in workhorse_harnesses()}
+def test_the_workhorse_offers_antigravity() -> None:
+    assert "antigravity" in {spec.name for spec in workhorse_harnesses()}
 
 
 def test_a_skill_lands_in_the_gemini_config_with_slash_references(

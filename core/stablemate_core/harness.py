@@ -199,8 +199,11 @@ ANTIGRAVITY = HarnessSpec(
             Surface.SETTINGS,
         }
     ),
-    workhorse=False,
-    workhorse_reason="its terms of service rule out automated use",
+    workhorse=True,
+    config_dirs=(".gemini/config", ".agents/skills"),
+    extra_dirs=Support(Level.NATIVE, "--add-dir"),
+    compaction=Support(Level.NATIVE, "/compact on the conversation"),
+    confinement=Support(Level.EMULATED, "--sandbox terminal restrictions"),
 )
 
 PI = HarnessSpec(
