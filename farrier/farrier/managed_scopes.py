@@ -13,13 +13,9 @@ from farrier._vendor.stablemate_core.harness import (
 )
 from farrier.agents import Agents
 from farrier.antigravity_bridge import ANTIGRAVITY_BRIDGE, ANTIGRAVITY_GUARDS
+from farrier.copilot_bridge import COPILOT_BRIDGE, COPILOT_GUARDS
 from farrier.drift import REGENERATE
-from farrier.home_guards import (
-    BRIDGE_FILE,
-    COPILOT_BRIDGE,
-    COPILOT_GUARDS,
-    PI_BRIDGE_FILE,
-)
+from farrier.home_guards import BRIDGE_FILE, PI_BRIDGE_FILE
 from farrier.hook_managers import LEFTHOOK_INCLUDE
 from farrier.launcher import (
     LAUNCHER_AGENTS_MK,

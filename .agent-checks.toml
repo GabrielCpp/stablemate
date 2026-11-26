@@ -75,7 +75,7 @@ stops a run's process group with os.killpg, sending SIGTERM and then SIGKILL. Ex
 "farrier/farrier/cli.py" = 1331
 "farrier/farrier/eject.py" = 425
 "farrier/farrier/home_entries.py" = 441
-"farrier/farrier/home_guards.py" = 506
+"farrier/farrier/home_guards.py" = 443
 "farrier/farrier/outputs.py" = 742
 "farrier/farrier/renderer.py" = 890
 "farrier/tests/test_eject.py" = 634
