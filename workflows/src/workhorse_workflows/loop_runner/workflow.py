@@ -4,14 +4,24 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 from workhorse.cli import console_script
-from workhorse.pyflow import Done, Registry, Workflow, dry_run
+from workhorse.pyflow import Done, Registry, Workflow
+from workhorse.runner.extract import parse_json_from_text
+
+DRY_RUN_SUMMARY = "Dry run: plan not actually carried out."
 
 
-@dry_run(summary="Dry run: plan not actually carried out.")
 class Outcome(BaseModel):
-    """What the agent turn must reply with once the plan is carried out."""
+    """What the run reports once the plan is carried out."""
 
     summary: str
+
+
+def outcome(reply: str | None) -> Outcome:
+    """The reply's `summary` field when it carries one as JSON, else the reply's own text."""
+    text = reply or DRY_RUN_SUMMARY
+    parsed = parse_json_from_text(text, ["summary"])
+    summary = parsed.get("summary") if parsed else None
+    return Outcome(summary=summary if isinstance(summary, str) else text.strip())
 
 
 class LoopRunner(Workflow):
@@ -20,11 +30,7 @@ class LoopRunner(Workflow):
     plan: str = ""
 
     def start(self) -> Done:
-        reply = self.agent(
-            "prompts/run.md",
-            returns=Outcome,
-            args={"plan": self.plan},
-        )
+        reply = outcome(self.agent("prompts/run.md", returns=str, args={"plan": self.plan}))
         self.logger.info("%s", reply.summary)
         return Done(reply)
 
@@ -32,6 +38,7 @@ class LoopRunner(Workflow):
 workflow = (
     Registry("loop-runner", package=__package__)
     .add_blueprints()
+    .stub_agents({"run": DRY_RUN_SUMMARY})
 )
 
 main = console_script(workflow.entry_point(LoopRunner))
