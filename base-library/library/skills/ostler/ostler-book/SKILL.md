@@ -135,6 +135,8 @@ open: it covers `Screen`, components found by role and accessible name, `Interac
 `PageSurface`, how the run judges a page, and the states a screen takes from a backend's book
 instead of making its records.
 
+Read [references/worked-example.md](references/worked-example.md) before the first file of a new book: it holds one small API book and one small web book, copied whole from a tested fixture.
+
 What a play calls on the book, in what order, is in [references/play.md](references/play.md).
 Open it when you need to know what a play does to the book, in what order, or why a world was
 or was not reset: the reset and the day of a world, the baseline of a journey, the hooks a
