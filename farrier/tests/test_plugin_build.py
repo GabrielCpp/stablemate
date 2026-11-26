@@ -163,3 +163,20 @@ def test_a_rebuild_drops_what_the_previous_plugin_carried(
     assert build(home, library, one, out, version="1.2.4") == 0
     assert not (out / "skills/ship").exists()
     assert json.loads((out / "plugin.json").read_text())["version"] == "1.2.4"
+
+
+def test_a_workhorse_launcher_drives_antigravity_unless_told_otherwise(
+    home: Path, library: Path, tmp_path: Path
+) -> None:
+    add_search_server(library)
+    out = tmp_path / "plugin"
+    assert build(home, library, '[user_library.antigravity]\nmcp = ["search"]\n', out) == 0
+    script = 'echo "$AGENT_CLI"'
+    for preset, expected in (({}, "antigravity"), ({"AGENT_CLI": "claude"}, "claude")):
+        body = (out / "bin/workhorse-coder").read_text().replace("exec uvx", script + " #")
+        done = subprocess.run(
+            ["sh", "-c", body], capture_output=True, text=True, check=True, timeout=30,
+            env={"PATH": os.environ["PATH"], **preset},
+        )
+        assert done.stdout.strip() == expected
+    assert "AGENT_CLI" not in (out / "bin/groom").read_text()

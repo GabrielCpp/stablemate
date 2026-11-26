@@ -50,12 +50,14 @@ PLACES = (
     (f"{GUARD_HOME}/", "hooks/"),
 )
 BRIDGE = "hooks/farrier-guards.py"
-LAUNCHER = '#!/bin/sh\nexec uvx --from "stablemate=={version}" {tool} "$@"\n'
+LAUNCHER = '#!/bin/sh\n{drive}exec uvx --from "stablemate=={version}" {tool} "$@"\n'
+DRIVE_AGY = 'export AGENT_CLI="${{AGENT_CLI:-{harness}}}"\n'
 
 
 def launcher(tool: str, version: str) -> Rendered:
+    drive = DRIVE_AGY.format(harness=HARNESS) if tool.startswith("workhorse-") else ""
     return Rendered(
-        LAUNCHER.format(version=version, tool=tool), verbatim=True, executable=True
+        LAUNCHER.format(drive=drive, version=version, tool=tool), verbatim=True, executable=True
     )
 
 
