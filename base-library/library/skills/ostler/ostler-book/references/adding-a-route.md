@@ -16,30 +16,30 @@ Do these in order. Each ends on a check you can run.
    (`explore --seed-only`) shows no contradiction.
 3. **Write the refusals and the action.** One `Rule` per refusal, the action's `rules` in the
    order the app checks them, `reduce` returning what the call does. Details in
-   [references/model.md](references/model.md), which covers `State`, `Collection`, `Action`,
+   [model.md](model.md), which covers `State`, `Collection`, `Action`,
    the reduce primitives, `Rule`, `Defect` and the cast.
 4. **Declare the endpoint.** Method, path, auth, params, query, body, every answer with its
    shape, `does`, `source` pointing at the handler and the code it reaches, `carries`.
    Shapes go in `endpoints/shapes.py`. Details in
-   [references/surface.md](references/surface.md), which covers `Endpoint`, `Answer`,
+   [surface.md](surface.md), which covers `Endpoint`, `Answer`,
    `Field`, `Id`, `List`, refusal keys and endpoints an outside event arranges. Done when
    `check` names nothing new.
 5. **Place it in a matrix.** A column in the lifecycle matrix of the record it reads or
    writes, and a scene for any state it needs that no scene reaches. An endpoint no matrix
    places is played in every state of the app. Details in
-   [references/matrices-and-journeys.md](references/matrices-and-journeys.md).
+   [matrices-and-journeys.md](matrices-and-journeys.md).
 6. **Give it fixtures and a journey.** A fixture for each state the route needs, registered
    in `__all__`. At least one journey per batch that a user would recognise as a story. A
    later step that names a record an earlier step created takes that step's fixture, never its
    id, or a fixture holding it as a field: the id the app answered travels with the object.
    `Fixture.of(record)`, path and query fixtures and `examples` are in
-   [references/matrices-and-journeys.md](references/matrices-and-journeys.md#fixtures).
+   [matrices-and-journeys.md](matrices-and-journeys.md#fixtures).
 7. **Replay it and settle every finding.** The targeted replay of your endpoints, then the
    targeted run of the same endpoints, which adds the journeys that call them and their input
    classes. Your endpoints are the new ones and every existing endpoint whose action, rule or
    record your change touched: `git diff` over `model/` names them. Fix each `FAIL` as book
    wrong or record it as app wrong. Done when both are at 0 fail.
-   [references/findings.md](references/findings.md) says what each finding means and how to
+   [findings.md](findings.md) says what each finding means and how to
    record what the book cannot see.
 
 The route is done when `check` is at its baseline, the walk has no contradiction, the

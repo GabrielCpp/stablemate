@@ -29,7 +29,7 @@ folder: each element with the journeys, cells and input classes that exercised i
 
 `--only` takes endpoint class names, or interaction class names in a screen book, or outside happening names, never journey names. A wrong name is refused before anything starts. `explore` and `run` print their verdict when they end, and a long one may outlive the shell's
 wait. Send the output to a file and read its last lines once the command has exited.
-[references/play.md](references/play.md#running-a-long-play) says how to start one and what it prints. Their report goes under
+[play.md](play.md#running-a-long-play) says how to start one and what it prints. Their report goes under
 `--out`. Omitted, it goes to a fresh temp folder the command names on a `reports:` line. In a story, point `--out` at the story's spec folder, and never inside a repository. `--no-stack` skips starting the
 stack `service.py` declares, and changes nothing when that stack is empty.
 

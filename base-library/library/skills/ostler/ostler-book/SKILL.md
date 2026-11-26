@@ -162,6 +162,7 @@ hears are declared beside the endpoints and share their model, journeys and deci
 ## Adding a route
 
 Adding a route, and backfilling a book over commits it missed, follow the steps in [references/adding-a-route.md](references/adding-a-route.md). Open it before you add an endpoint, a screen or a command.
+Its steps send you to [references/model.md](references/model.md) for records, actions and rules, [references/surface.md](references/surface.md) for endpoints and their answers, [references/matrices-and-journeys.md](references/matrices-and-journeys.md) for matrices, fixtures and journeys, and [references/findings.md](references/findings.md) for what each finding of a replay means.
 
 ## A book of an outside system
 
