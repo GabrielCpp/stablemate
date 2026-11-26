@@ -102,8 +102,8 @@ class ArtifactWriter:
         self._repo_start = _observe_repo()
         self._profile = ""
         self._profile_config: dict[str, Any] = {}
-        self._cap_waited_s = 0.0
-        self._operator_waited_s = 0.0
+        self.cap_waited_s = 0.0
+        self.operator_waited_s = 0.0
         self._worktree_path = ""
         self._worktree_branch = ""
         self._worktree_repo = ""
@@ -176,8 +176,8 @@ class ArtifactWriter:
         self._repo_start = record.repo_start or _observe_repo()
         self._profile = record.profile
         self._profile_config = dict(record.profile_config)
-        self._cap_waited_s = record.cap_waited_s
-        self._operator_waited_s = record.operator_waited_s
+        self.cap_waited_s = record.cap_waited_s
+        self.operator_waited_s = record.operator_waited_s
         self._worktree_path = record.worktree_path
         self._worktree_branch = record.worktree_branch
         self._worktree_repo = record.worktree_repo
@@ -205,9 +205,7 @@ class ArtifactWriter:
         self._start_fresh(run_dir, workflow_name, run_id)
         return self
 
-    def subscope(
-        self, node_id: str, flow_name: str, *, resume: bool = False
-    ) -> "ArtifactWriter":
+    def subscope(self, node_id: str, flow_name: str, *, resume: bool = False) -> "ArtifactWriter":
         """Writer for a flow invoked at ``node_id``, rooted under this run's node dir (``<run>/<node_id>/_flow``)."""
         sub_dir = self.run_dir / node_id / "_flow"
         if resume and (sub_dir / self.CHECKPOINT_FILE).exists() and not flow_finished(sub_dir):
@@ -425,32 +423,20 @@ class ArtifactWriter:
         self._append_event(node_id=node_id, phase="error", error=error)
         self._write_run_json(terminal=None, error=error)
 
-    def record_profile(
-        self, profile: str, tables: dict[str, Any] | None = None
-    ) -> None:
+    def record_profile(self, profile: str, tables: dict[str, Any] | None = None) -> None:
         """Record which config profile this run's models come from, and what it held."""
         self._profile = profile
         self._profile_config = dict(tables or {})
         self._write_run_json(terminal=None)
 
-    @property
-    def cap_waited_s(self) -> float:
-        """Seconds this run has slept on usage caps, across every process that ran it."""
-        return self._cap_waited_s
-
     def record_cap_wait(self, seconds: float) -> None:
         """Add ``seconds`` of usage-cap sleep to the run's total, so the wall-clock budget leaves it out."""
-        self._cap_waited_s += seconds
+        self.cap_waited_s += seconds
         self._write_run_json(terminal=None)
-
-    @property
-    def operator_waited_s(self) -> float:
-        """Seconds this run has spent parked on operator gates that were then answered, across every process that ran it."""
-        return self._operator_waited_s
 
     def record_operator_wait(self, seconds: float) -> None:
         """Add ``seconds`` parked on an answered operator gate to the run's total, so the wall-clock budget leaves it out."""
-        self._operator_waited_s += seconds
+        self.operator_waited_s += seconds
         self._write_run_json(terminal=None)
 
     def record_worktree(self, path: str, branch: str, *, repo: str = "", base: str = "") -> None:
@@ -554,8 +540,8 @@ class ArtifactWriter:
             repo_end=_observe_repo() if terminal else None,
             profile=self._profile,
             profile_config=self._profile_config,
-            cap_waited_s=self._cap_waited_s,
-            operator_waited_s=self._operator_waited_s,
+            cap_waited_s=self.cap_waited_s,
+            operator_waited_s=self.operator_waited_s,
             worktree_path=self._worktree_path,
             worktree_branch=self._worktree_branch,
             worktree_repo=self._worktree_repo,
