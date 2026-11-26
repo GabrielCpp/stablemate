@@ -151,8 +151,20 @@ effort = "high"
 [profiles.antigravity]
 cli = "antigravity"
 
+[profiles.antigravity.powers.low]
+model = "gemini-3.8-flash-low"
+
+[profiles.antigravity.powers.medium]
+model = "gemini-3.8-flash-high"
+
 [profiles.antigravity.powers.high]
+model = "gemini-4-hydrogen-medium"
+
+[profiles.antigravity.powers.max]
 model = "gemini-4-hydrogen-high"
+
+[profiles.antigravity.powers.ultra]
+model = "gemini-4-hydrogen-xhigh"
 ```
 
 A tier you leave unmapped in a profile falls through to that profile's `default` table, so a
@@ -473,6 +485,10 @@ names a profile may map a tier to, such as `gemini-4-hydrogen-high` or
   writes nor reads to the working directory, so the guards installed by `farrier` do the rest.
 - A node's delegates are not defined per turn. agy loads its subagents from the agents
   folder `farrier` writes, and a turn that names delegates prints a warning.
-- agy reports tokens and no dollar cost. groom prices a turn from its rate card.
+- agy reports tokens and no dollar cost. groom's rate card has no Gemini prices, so groom
+  shows the tokens and leaves the cost blank until `GROOM_PRICES` names a price.
+- groom shows each turn's answers and tool calls, mapped from the stream as the turn runs.
+- A `workhorse-*` command started from the agy plugin's `bin/` drives `antigravity` unless
+  `AGENT_CLI` or `--cli` names another CLI.
 - A quota or `RESOURCE_EXHAUSTED` error reads as a usage cap, and the run sleeps on it the
   way it does for other CLIs.
