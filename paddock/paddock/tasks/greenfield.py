@@ -243,8 +243,8 @@ def _end_phase(run: Run, phase: str, *, rc: int | None, wall_s: float) -> None:
 
 
 def phase_run_id(run: Run, phase: str) -> str:
-    """The workflow run id of *phase* in this round, unique across rounds so groom keeps each round apart."""
-    return f"{run.name.task}-{run.name.key}-{run.name.n}-{phase}"
+    """The workflow run id of *phase* in this round."""
+    return run.name.run_id(phase)
 
 
 def launch_phase(

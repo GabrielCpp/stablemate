@@ -26,6 +26,10 @@ class RunName:
     def key(self) -> str:
         return f"{self.data_commit[:SHA_WIDTH]}-{self.stablemate[:SHA_WIDTH]}"
 
+    def run_id(self, *parts: str) -> str:
+        """The workflow run id of this round, unique across rounds so groom keeps each round apart."""
+        return "-".join((self.task, self.key, str(self.n), *parts))
+
     def relative(self) -> Path:
         return Path(self.benchmark, self.task, self.key, str(self.n))
 
