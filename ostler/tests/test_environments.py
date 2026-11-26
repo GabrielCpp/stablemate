@@ -588,6 +588,18 @@ def test_up_writes_the_address_book_from_the_published_ports(tmp_path: Path) -> 
         ("story-1", "running")]
 
 
+def test_an_address_carries_the_host_name_its_service_names(tmp_path: Path) -> None:
+    root = _repo(tmp_path)
+    target = root / SERVICES / "web" / spec.OPS_DIR / spec.STACK_FILE
+    data = yaml.safe_load(target.read_text(encoding="utf-8"))
+    data["services"]["gateway"]["host"] = "acme.web.localhost"
+    target.write_text(yaml.safe_dump(data), encoding="utf-8")
+    outcome = commands.cmd_up(root, ["web"], copy_name="story-1", runner=FakeDocker())
+    assert outcome.ok, outcome.message
+    assert outcome.data["addresses"] == {"api": "http://localhost:49201",
+                                         "gateway": "http://acme.web.localhost:49200"}
+
+
 def test_down_removes_the_copy_and_drops_its_data_unless_kept(tmp_path: Path) -> None:
     root = _repo(tmp_path)
     docker = FakeDocker()

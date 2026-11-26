@@ -220,7 +220,7 @@ def _bring_up(
         if not published:
             return _fail(f"{service.ref} is up but compose reports no host port for "
                          f"{service.port}", copy=copy.name)
-        book[service.address] = runtime.host_url(service.scheme, published)
+        book[service.address] = runtime.host_url(service.scheme, published, service.host)
         number = published.rpartition(":")[2]
         if number.isdigit():
             probes[service.ref] = ("localhost", int(number))

@@ -101,6 +101,8 @@ KEYS: tuple[Key, ...] = (
         "the host port the shared copy keeps"),
     Key("service", "scheme", {"type": "string"},
         "the address's URL scheme, `http` unless stated"),
+    Key("service", "host", {"type": "string"},
+        "the host name the address's URL carries, `localhost` unless stated. A name under `.localhost` reaches this machine, so an app that reads its tenant from the host name is played at its own"),
 )
 
 
@@ -166,6 +168,7 @@ class Service:
     port: int = 0
     host_port: int = 0
     scheme: str = "http"
+    host: str = "localhost"
     once: bool = False
     outputs: tuple[str, ...] = ()
     files: dict[str, Path] = field(default_factory=dict)
@@ -456,6 +459,7 @@ def _read_service(
         port=port,
         host_port=_as_port(catalog, where, "host-port", body.get("host-port")),
         scheme=str(body.get("scheme") or "http"),
+        host=str(body.get("host") or "localhost"),
         once=bool(body.get("once")),
         outputs=outputs,
         files=placed,

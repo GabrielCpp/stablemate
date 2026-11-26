@@ -299,10 +299,10 @@ class Compose:
         return outcome.stdout.strip().splitlines()[0] if outcome.returncode == 0 and outcome.stdout.strip() else ""
 
 
-def host_url(scheme: str, published: str) -> str:
-    """The URL a client on this machine reaches a published `host:port` at."""
+def host_url(scheme: str, published: str, host: str = "localhost") -> str:
+    """The URL a client on this machine reaches a published `host:port` at, under the host name *host*."""
     _, _, port = published.rpartition(":")
-    return f"{scheme}://localhost:{port}"
+    return f"{scheme}://{host}:{port}"
 
 
 def remove(copy: Copy) -> None:

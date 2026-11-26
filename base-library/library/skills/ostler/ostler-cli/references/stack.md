@@ -49,6 +49,7 @@ services:
 | `port` | service | the container port the address publishes. An address needs one |
 | `host-port` | service | the host port the shared copy keeps. Every other copy takes a free one |
 | `scheme` | service | the address's URL scheme, `http` unless stated |
+| `host` | service | the host name the address's URL carries, `localhost` unless stated. A name under `.localhost` reaches this machine, so an app that reads its tenant from the host name is played at its own |
 
 Paths are read from the folder the file sits in, which is `ops/`. `ostler env schema` prints a
 JSON Schema for the file, for an editor to validate it with. It comes from the same key table as
