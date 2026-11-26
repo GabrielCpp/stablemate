@@ -7,6 +7,7 @@ import os
 import subprocess
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -56,7 +57,8 @@ def test_an_environment_of_plain_addresses_has_no_copy():
 def test_a_run_under_a_lease_plays_the_environment_ostler_serves(monkeypatch: pytest.MonkeyPatch):
     from ostler.book import Service
     remote = Environment("dev", {"api": "http://api.test"})
-    book = Service(name="api", new_model=dict, surface=lambda environment: None, journeys=(), stack=lambda copy: None,
+    inert = cast(Any, lambda *_: None)
+    book = Service(name="api", new_model=inert, surface=inert, journeys=(), stack=inert,
                    environments={"dev": remote, "local": named()}, default_environment="dev")
     assert book.environment().name == "dev"
     monkeypatch.setenv(LEASE_ENV, "story-1")
