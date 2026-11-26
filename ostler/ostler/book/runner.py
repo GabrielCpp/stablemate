@@ -475,7 +475,8 @@ def move(step: object, request: object, model: Model, surface: Surface) -> StepR
         app_rows, reads = landed(surface, model_rows)
     else:
         app_rows, reads = surface.rows(), 1
-    if callable(express) and hearing is None and isinstance(model_outcome, Done) and isinstance(app_outcome, Done):
+    heard_or_arranged = hearing is not None or isinstance(request, Arrange)
+    if callable(express) and not heard_or_arranged and isinstance(model_outcome, Done) and isinstance(app_outcome, Done):
         answered = difference(express(request, model_outcome), app_outcome.view) or ""
     ok = agree(model_outcome, app_outcome) and model_rows == app_rows and not answered
     note = ""

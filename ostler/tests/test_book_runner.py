@@ -7,8 +7,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from ostler.book import Answer, Arrange, Endpoint, OffShape, Refusal
-from ostler.book.http import Identities
+from ostler.book import Answer, Arrange, Done, Endpoint, OffShape, Refusal
+from ostler.book.http import Client, Identities
+from ostler.book.httpsurface import HttpSurface
 from ostler.book.runner import PATIENCE, Landings, landed, perform, spoken
 
 from book_fakes import Counter as Tally
@@ -116,3 +117,16 @@ def test_a_model_refusal_that_quotes_an_app_id_is_read_under_the_model_id() -> N
     assert told == Refusal("user asset-1 not found", 404)
     assert spoken(surface, Refusal("user AS-150 not found", 404)) == Refusal("user AS-150 not found", 404)
     assert spoken(Quiet(), Refusal("user AS-15 not found", 404)) == Refusal("user AS-15 not found", 404)
+
+
+def test_an_outside_event_on_an_http_surface_has_no_answer_to_compare() -> None:
+    class Shop(HttpSurface):
+        def __init__(self) -> None:
+            super().__init__(Client("http://shop.invalid"))
+
+        def perform(self, step: object) -> Done:
+            return Done()
+
+    step = Bump()
+    result = perform(step, step, Counter(DAY), Shop())
+    assert result.ok
