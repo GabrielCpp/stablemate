@@ -27,7 +27,8 @@ and the JSON result below.
 3. **Verify.** Run every gate and verification command the plan declares, for every service
    touched. Then bring up each touched layer with the plan's Local run (smoke) command, and
    hit the changed path once. Bound every long process with a `timeout`, and stop what you
-   started. A docs-only story has no runtime, so skip the smoke and say so in `notes`.
+   started. A docs-only story has no runtime, so skip the smoke and say so in `notes`.{% if has_skill("testing-races") %}
+   A gate that fails on one run and passes on the next is a race: load {{ skill_command("testing-races") }}, and rerun nothing until it is fixed.{% endif %}
 4. **Walk the criteria.** Under `## Acceptance Walk` in `plan.md`, write one
    `### AC <n>: <the criterion's first words>` heading per Acceptance Criterion, numbered
    in the story's order from 1. Under each, two bullets: `- **Met by**:` the

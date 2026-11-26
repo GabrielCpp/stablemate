@@ -115,7 +115,8 @@ earlier assumption in the story, the plan or a finding. Do not raise the same bl
      scenario so it records it.
    - **regression**: an existing spec this story's change broke, or a stale spec. Fix a stale
      or flaky spec in the spec, against the real stack, without weakening an assertion or
-     deep-linking past a broken step. A regression in the product is a finding.
+     deep-linking past a broken step. A regression in the product is a finding.{% if has_skill("testing-races") %}
+     A scenario that fails on one run and passes on the next is a race: load {{ skill_command("testing-races") }}.{% endif %}
 
    You may run one scenario on its own with `--scenario <id> --out-dir <label>` while you
    debug it. Run the whole plan again once a repair lands. Stop when the scored run passes, or

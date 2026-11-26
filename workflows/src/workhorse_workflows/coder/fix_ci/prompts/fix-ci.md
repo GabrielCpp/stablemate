@@ -44,7 +44,7 @@ again.
    missing secret, a service the job cannot reach.
 4. **Reproduce.** Run the failing job's commands locally where you can, using the
    repository's own `make` targets or the exact command from the workflow file. Bound every
-   command with `timeout`. A failure you cannot reproduce locally is still a failure. Say
+   command with `timeout`. A failure that appears on some runs is a race{% if has_skill("testing-races") %}: load {{ skill_command("testing-races") }}{% endif %}. A failure you cannot reproduce locally is still a failure. Say
    so in `notes`, and fix it from the log.
 5. **Fix.** Have a fixer repair the root cause of each failure the triager placed in this
    repository's code. Common causes are generated-file drift, formatting, a failing test and

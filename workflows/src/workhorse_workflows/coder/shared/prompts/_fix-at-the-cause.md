@@ -13,3 +13,6 @@ case for QA to find. Findings whose chains meet are one fix.
 
 A fix lands at the cause, with the test that covers it, and each fix is its own commit with
 its chain in the commit body.
+{% if has_skill("testing-races") %}
+A failure that comes and goes is a race. Load {{ skill_command("testing-races") }} before you touch the code.
+{% endif %}

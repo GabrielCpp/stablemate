@@ -18,7 +18,7 @@ scope.
 ## Lenses
 
 - **Bugs.** Wrong logic, unhandled errors, races, leaks and broken invariants on the
-  changed lines.
+  changed lines.{% if has_skill("testing-races") %} Check a race fix against {{ skill_command("testing-races") }}.{% endif %}
 - **The standard.** A rule an installed coding standard states, quoted.
 - **Local guidance.** A comment in a changed file whose rule the change now breaks.
 - **Reuse.** Code the diff adds that repeats code the tree already has, or a name the diff
