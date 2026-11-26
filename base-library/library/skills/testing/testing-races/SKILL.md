@@ -17,6 +17,10 @@ in others, so a green run proves nothing about it.
   on a version, a transaction, a single writer, an idempotency key. Or make the refusal part of the
   contract, with a documented retry signal, and retry in the app's own internal clients. A sleep, a
   longer timeout or a retry in the test hides the race and leaves it in the product.
+- **Look for two owners of one record.** A service that writes its own derived state, such as a
+  clock, a counter or a cache, back onto a record people also edit makes every edit race it. The same
+  write also makes a read see that state only some of the time. Give the derived state its own
+  record, owned by the service that computes it, and join it on read. A retry fixes neither effect.
 - **For an app you do not own,** obey its documented retry signal and nothing else. Report any
   other race as a finding. For a book, the rule is in the `ostler-book` skill, under "A call the app
   asks to send again".
