@@ -67,30 +67,9 @@ time, one per kind, each waiting only on its own yardstick.
 
 ## The clock
 
-A unit reaches the loop from one of two sources, and the loop names which:
-
-- **A feed.** The process delivers on its own. Every notification, ten to thirty minutes
-  apart, is a **read** and gets one line in a fixed shape, so lines compare across ticks:
-
-  ```
-  <stage> · lap <k>, stage median <m> · turn <elapsed> · doing: <phrase from the transcript> · seen before: <lap or none> · working: <tax in hand, or converged>
-  ```
-
-  "Doing" names what the current turn is at, read from its transcript, not from the node
-  name. "Seen before" names the earlier lap of this unit that did the same thing, or none.
-  "Working" names the tax the attendant is removing between this tick and the next. A line
-  without "doing" and "seen before" is a check not made. A line reading "working: none"
-  while the table holds a tax is the attendant's own dead time, and it counts like any
-  other. A lap count above the stage's median, or a "seen before" that names a lap, starts
-  a measure at once, while a rewind can still save the rest of the unit.
-- **A paid run.** No feed delivers, so the loop runs the unit itself, at the cheapest rung
-  of the instrument ladder under "Change" that reads what the cycle needs. Before each run,
-  name the record already paid for that answers the same question, or why none does. A
-  record that answers is cited, not re-run.
-
-Every unit delivered, from either source, is a full **measure** and **rank**: the whole
-table rebuilt with the new unit, the fresh judge, and the grade of every open cycle.
-Between units, the loop runs the diagnose, design and change steps of the top open tax.
+A unit reaches the loop from a feed or from a run the loop pays for. Every unit is a full measure and
+rank. The shape of a feed read, and when a paid run is allowed, are in
+[references/clock.md](references/clock.md). Open it before you start tending.
 
 Everything appends to one file, `EXAMINED.md`, in the folder `ostler path notes <slug>` prints. The next cycle and the fresh judge read the previous
 ones from there.
@@ -352,22 +331,7 @@ beside the live process keeps removing it.
 
 ## The report
 
-Written at every measure, one screen. Lead with the top tax, as one sentence: the kind, the
-units it appeared in, its price per unit, and the cycle open on it. Then at most five kinds,
-ranked by price, each with its evidence, its construct, its cause class and its cycle's
-state.
-
-Then the **grades**: every change whose boundary has passed, its verdict, its kind's count
-before and after, and every other kind before and after.
-
-Then the **null report**: one line per kind, saying which stages were read and what each
-read. A line the attendant cannot fill is a check not made. A report that says the process
-is fine and carries no table has examined nothing.
-
-Close with one verdict: **improving** when the last change held, **taxed** when a kind
-recurs and no cycle is open on it, **converged** when no kind recurs, **unrecorded** when a
-stage left no record. At run end add
-the one adoption line: wall time and bill against what a person would need.
+The report's shape is in [references/report.md](references/report.md). Open it before you write one.
 
 ## Completion criterion
 
