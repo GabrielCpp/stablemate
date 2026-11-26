@@ -65,15 +65,15 @@ def test_a_turn_that_keeps_talking_outlives_its_budget():
     """A long turn is not a hung one: the budget bounds silence, so a process still streaming runs past it untouched."""
     timed_out, rc, lines = _run(
         "import sys, time\n"
-        "for _ in range(12):\n"
+        "for _ in range(40):\n"
         "    print('tok'); sys.stdout.flush(); time.sleep(0.1)\n",
-        timeout=0.5,
-        grace=0.3,
+        timeout=2.0,
+        grace=0.5,
     )
 
     assert timed_out is False, "a streaming turn was killed for taking longer than its budget"
     assert rc == 0
-    assert len(lines) == 12
+    assert len(lines) == 40
 
 
 def test_a_turn_that_stops_talking_is_cut_at_its_budget():
