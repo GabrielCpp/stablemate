@@ -101,13 +101,6 @@ Baselines live in [`.release-please-manifest.json`](../.release-please-manifest.
 package map in [`.release-please-config.json`](../.release-please-config.json); a new
 distribution is one entry in each, plus its build/publish steps in the workflow.
 
-A release that ships `stablemate` also attaches the Antigravity plugin to the
-`stablemate-v<version>` GitHub release. The `antigravity-plugin` job runs
-`stablemate/plugin/build.sh` after the PyPI upload, because the plugin's launchers fetch that
-version from PyPI. The script builds from the base library alone, as
-`stablemate/plugin/antigravity.toml` selects it, and validates the folder when `agy` is on
-the `PATH`.
-
 ## One-time setup (not in the repo)
 
 1. On PyPI, add a trusted publisher to each project — owner `GabrielCpp`, repository

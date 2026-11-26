@@ -82,18 +82,6 @@ Workhorse also runs workflow turns on Antigravity, as `--cli antigravity`.
 At repo scope it shares `.agents/skills` with Codex, and a repo with both on gets the path form of each skill reference.
 Its guards run through a generated bridge, `~/.gemini/config/hooks/farrier-guards.py`.
 
-`farrier plugin build --harness antigravity --out DIR --version V` writes the same
-Antigravity selection as a plugin folder instead of a home. The `[user_library.antigravity]`
-table of the home config picks its content, or of the file `--config PATH` names. The folder
-holds `plugin.json`, the skills, agents and rules, a `hooks.json` whose guards run from the
-plugin folder, and an `mcp_config.json`. It also holds one launcher per stablemate tool in
-`bin/`, which runs `uvx --from stablemate==V <tool>`. A server or guard that starts a stablemate
-tool starts it through its launcher, so the plugin works where no tool is installed. The build
-refuses a skill over 24 KB, because Antigravity reads no further, and a table that names
-`settings`, because a plugin cannot carry them. It replaces a folder it built before and leaves
-any other folder alone. `agy plugin validate --strict DIR` checks the result, and
-`agy plugin install DIR` installs it.
-
 A harness with no prompt folder takes each selected prompt as a skill the user runs by name.
 At home only Claude has one, and in a repo Codex and Antigravity have none. The skill lands as `<name>/SKILL.md`
 in the harness's skill folder, with `disable-model-invocation: true` in its front matter. A folder Codex

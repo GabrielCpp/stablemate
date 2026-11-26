@@ -229,12 +229,12 @@ def selected_guards(home: HomeConfig) -> dict[str, list[Guard]]:
     return selected
 
 
-def installed_command(guard: Guard, home: Path, harness: str, folder: str = "") -> str:
+def installed_command(guard: Guard, home: Path, harness: str) -> str:
     """The record's command, with ``{dir}`` as the folder the guard installs into.
 
     ``{harness}`` becomes the harness that runs it, for a guard whose answer differs by harness.
     """
-    folder = folder or shlex.quote(str(home / GUARD_HOME / guard.name))
+    folder = shlex.quote(str(home / GUARD_HOME / guard.name))
     return guard.command.replace("{dir}", folder).replace("{harness}", harness)
 
 
@@ -342,12 +342,13 @@ def copilot_guard_files(
     }
 
 
-def antigravity_hook(guard: Guard, harness: str, bridge: str, command: str) -> dict[str, Any]:
+def antigravity_hook(guard: Guard, harness: str, home: Path) -> dict[str, Any]:
     """The Antigravity hook group that hands one call to *guard* through the bridge."""
+    bridge = shlex.quote(str(home / ANTIGRAVITY_BRIDGE))
     moment = "done" if guard.when == "done" else "tool"
     handler: dict[str, Any] = {
         "type": "command",
-        "command": f"python3 {bridge} {moment} {shlex.quote(command)}",
+        "command": f"python3 {bridge} {moment} {shlex.quote(installed_command(guard, home, harness))}",
         "timeout": guard.timeout or BRIDGE_DEFAULT_SECONDS,
     }
     if guard.when == "done":
@@ -359,29 +360,17 @@ def antigravity_guard_files(
     guards: list[Guard], harness: str, home: Path
 ) -> dict[Path, Rendered]:
     """Antigravity's hooks file, whose entries call each guard through the generated bridge."""
-    document = antigravity_hooks(
-        guards,
-        harness,
-        shlex.quote(str(home / ANTIGRAVITY_BRIDGE)),
-        lambda guard: installed_command(guard, home, harness),
+    hooks: dict[str, list[dict[str, Any]]] = {}
+    for guard in guards:
+        event = "Stop" if guard.when == "done" else "PreToolUse"
+        hooks.setdefault(event, []).append(antigravity_hook(guard, harness, home))
+    document = (
+        json.dumps({ANTIGRAVITY_HOOK: hooks}, indent=2, ensure_ascii=False) + "\n"
     )
     return {
         home / ANTIGRAVITY_GUARDS: Rendered(document, verbatim=True, assumed=True),
         home / ANTIGRAVITY_BRIDGE: Rendered(ANTIGRAVITY_BRIDGE_TEXT, verbatim=True),
     }
-
-
-def antigravity_hooks(
-    guards: list[Guard], harness: str, bridge: str, command: Callable[[Guard], str]
-) -> str:
-    """Antigravity's hooks document, each guard handed its call through *bridge*."""
-    hooks: dict[str, list[dict[str, Any]]] = {}
-    for guard in guards:
-        event = "Stop" if guard.when == "done" else "PreToolUse"
-        hooks.setdefault(event, []).append(
-            antigravity_hook(guard, harness, bridge, command(guard))
-        )
-    return json.dumps({ANTIGRAVITY_HOOK: hooks}, indent=2, ensure_ascii=False) + "\n"
 
 
 def guard_files(config: HomeConfig, home: Path) -> dict[Path, Rendered]:

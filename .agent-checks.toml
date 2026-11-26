@@ -72,10 +72,10 @@ stops a run's process group with os.killpg, sending SIGTERM and then SIGKILL. Ex
 "core/stablemate_core/schema/home.py" = 435
 "core/stablemate_core/schema/manifest.py" = 498
 "core/tests/test_config_unified.py" = 790
-"farrier/farrier/cli.py" = 1333
+"farrier/farrier/cli.py" = 1331
 "farrier/farrier/eject.py" = 425
 "farrier/farrier/home_entries.py" = 441
-"farrier/farrier/home_guards.py" = 454
+"farrier/farrier/home_guards.py" = 443
 "farrier/farrier/outputs.py" = 742
 "farrier/farrier/renderer.py" = 890
 "farrier/tests/test_eject.py" = 634

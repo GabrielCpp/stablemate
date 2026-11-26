@@ -488,7 +488,5 @@ names a profile may map a tier to, such as `gemini-4-hydrogen-high` or
 - agy reports tokens and no dollar cost. groom's rate card has no Gemini prices, so groom
   shows the tokens and leaves the cost blank until `GROOM_PRICES` names a price.
 - groom shows each turn's answers and tool calls, mapped from the stream as the turn runs.
-- A `workhorse-*` command started from the agy plugin's `bin/` drives `antigravity` unless
-  `AGENT_CLI` or `--cli` names another CLI.
 - A quota or `RESOURCE_EXHAUSTED` error reads as a usage cap, and the run sleeps on it the
   way it does for other CLIs.

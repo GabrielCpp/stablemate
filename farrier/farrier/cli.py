@@ -69,7 +69,6 @@ from farrier.library_check import check_library, format_findings
 from farrier.library_view import KINDS, find, format_list, layer_label, stack
 from farrier.manifest import excluded, find_manifest, locate_manifest, read_manifest
 from farrier.naming import repo_prefix
-from farrier.plugin_build import add_plugin_parser, run_plugin
 from farrier.home_guards import (
     APPROVE,
     check_pending,
@@ -970,7 +969,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     sub.add_parser("version", help="Print the installed farrier version")
-    add_plugin_parser(sub)
 
     return parser
 
@@ -1002,6 +1000,8 @@ def _run_hooks_install(args: argparse.Namespace) -> int:
             ]
         except SystemExit:
             runner_hooks = None
+    else:
+        runner_hooks = None
 
     messages = list(install_manager(repo, manager, dry_run=dry_run))
     if manager != "none":
@@ -1267,7 +1267,6 @@ def _main(argv: list[str] | None) -> int:
         "checks",
         "sync",
         "worktrees",
-        "plugin",
     }
     if not argv or argv[0] in ("-h", "--help"):
         parser.print_help()
@@ -1320,8 +1319,6 @@ def _main(argv: list[str] | None) -> int:
 
     if args.command == "worktrees":
         return _run_worktrees(args)
-    if args.command == "plugin":
-        return run_plugin(args)
 
     return _run_install(args)
 
