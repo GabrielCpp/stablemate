@@ -38,6 +38,10 @@ groom feed --run <run_id> --every 30m            # from a shell: a digest every 
   `EXAMINED.md`. An `event` frame of kind `blocked` is a gate: read, fix,
   answer. Monitor expires after 30 minutes. Re-arm it with `since=<ts of the last frame>`
   so the gap replays.
+- **From an Antigravity session, poll with the shell clients.** groom's channel pushes only
+  to Claude Code, so its `watch` tool delivers nothing to agy. Start
+  `timeout 1900 groom feed --run <run_id> --every 30m` through `run_command` as a background
+  task, read its output when it exits, and start it again with `--since`.
 - **From a shell, use the two clients of the same feed.**
   `groom feed --run <run_id> --every 30m` prints every event and a digest every half
   hour, and never exits. The digest comes even when nothing happened, so a run that went
