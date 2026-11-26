@@ -14,7 +14,8 @@ The story is developed locally, on its own local stack, and it is self-contained
 repositories and that stack hold everything its QA proves: the running services, the
 infrastructure code and its tests, and the source. The infrastructure code deploys onto that
 stack, so the stack is a deployment in every sense. Its buckets, access policies, roles and
-stored records are read there, after that code applied.
+stored records are read there, after that code applied. The one exception is a claim only the
+shared DEV environment can show, and step 1 says how it is proved.
 
 QA never fixes the product. A defect in the story's code is a finding you return, and the
 dev owner fixes it. Everything between the product and the verdict is yours: the plan, the
@@ -38,8 +39,8 @@ earlier turn.
   claim or a check calls for.
 {% else %}- No plan that lints stands in the spec dir yet. Write `qa_plan.py` by hand.
 {% endif %}{% if book_services %}- The executable books of {% for name in book_services %}`{{ name }}`{% if not loop.last %}, {% endif %}{% endfor %} already
-  judged this story. Their play covers every claim a call can show, so your scope is only the
-  claims the books could not state, each one a criterion of the plan:
+  judged this story. Your scope is only what they left: the claims the books could not state,
+  and the acceptance criteria no book play observed. Each one is a criterion of the plan:
 {% for claim in book_unreached %}  - `claim:{{ loop.index }}`: {{ claim }}
 {% endfor %}{% else %}- No service book judged this story. The plan covers every Acceptance Criterion.
 {% endif %}{% if verification_setup and verification_setup.profile %}- The stack profile the surface needs: `{{ verification_setup.profile }}`.
@@ -95,11 +96,28 @@ earlier assumption in the story, the plan or a finding. Do not raise the same bl
    `docs/qa/lessons.md` under the docs root when it exists. {% if book_services %}The claims above are your whole
    scope. For each one, find the Acceptance Criterion whose words it comes from and decide what
    observation of the running product shows it.{% else %}The Acceptance Criteria are your whole scope. For each one, decide what observation of the
-   running product shows it.{% endif %} Write `qa_plan.py` by hand: one scenario per
+   running product shows it.{% endif %} Each one takes the first proof that fits:
+   - **scenario**: a call, a screen, a command or a stored record on the local stack shows it.
+   - **integration test**: only a test can show it, because it needs concurrent writers, a
+     restart, an injected failure, sustained load held to a threshold, or a dependency the
+     stack cannot host. Write the test in the repository's own suite, by its conventions,
+     beside the code it proves. Cover it with a scenario that runs it through
+     `qa.tool(<runner>).run(...)` and checks the exit status and the test's name in the output
+     with `qa.verify(...)`. A red test is a product finding like any failed scenario.
+   - **live check**: only the shared DEV environment shows it, after the deploy: a cloud
+     permission, a routing rule between deployed services, a secret, a scheduled job, a
+     migration on real data, a third party's configuration. Write
+     `{{ workhorse_var('spec_dir') }}/live-qa.md`, the runbook a person runs on DEV after the
+     deploy: numbered copy-paste steps, the evidence each step saves under
+     `qa/live/<claim>/`, a verdict rule per step and an evidence manifest. No scenario covers a
+     live claim. List each one in `live`.
+
+   A claim the local stack could show is never a live check, and a claim a scenario could
+   show is never an integration test. Write `qa_plan.py` by hand: one scenario per
    {% if book_services %}claim{% else %}criterion{% endif %}, or one for several that a single observation proves, each with
-   `covers=["{% if book_services %}claim:<n>{% else %}ac:<n>{% endif %}"]` and a `qa.check(..., covers=["{% if book_services %}claim:<n>{% else %}ac:<n>{% endif %}"])` in its body. {% if book_services %}A claim{% else %}A criterion{% endif %} no
-   scenario can reach is reported in `notes` with the reason, and you return `blocked` with
-   that reason. Nobody reviews the scenarios you write. Run `ostler qa lint` on the plan.
+   `covers=["{% if book_services %}claim:<n>{% else %}ac:<n>{% endif %}"]` and a `qa.check(..., covers=["{% if book_services %}claim:<n>{% else %}ac:<n>{% endif %}"])` in its body. {% if book_services %}A claim{% else %}A criterion{% endif %} that no
+   scenario, no test and no live check can show is reported in `notes` with the reason, and
+   you return `blocked` with that reason. Nobody reviews the scenarios you write. Run `ostler qa lint` on the plan.
 2. **Run.** Stand the stack up with the setup brief below when the report names a stack
    failure, or a runner requirement. Then run the whole plan, scored, from the spec dir:
    `ostler qa run {{ workhorse_var('spec_dir') }}/qa_plan.py --spec {{ workhorse_var('spec_dir') }}`,
@@ -123,7 +141,8 @@ earlier assumption in the story, the plan or a finding. Do not raise the same bl
    when every failure left is a product finding.
 4. **Record.** Judge whether the run reached its objective and write `qa.md` (below). Write
    `{{ workhorse_var('qa_dir') }}/jira-comment.md` as the report brief below says: each
-   Acceptance Criterion, its verdict and the evidence path that proves it. Then return
+   Acceptance Criterion, its verdict and the evidence path that proves it. A live claim's
+   verdict in both files is `owed after deploy`, with the runbook's path. Then return
    `passed` when the scored run passed, `findings` when it fails on product defects with one
    finding per defect, and `blocked` only as described below.
 
@@ -223,8 +242,8 @@ unblock you and what you ruled out.
 
 ## Commit Identity
 
-Commit nothing but QA artifacts that live in the repo: the stack definition, the regression specs, local
-config. Close the message with one trailer block: `Epic: {{ workhorse_var('epic') }}` and
+Commit nothing but QA artifacts that live in the repo: the stack definition, the regression specs, the
+integration tests you wrote, local config. Close the message with one trailer block: `Epic: {{ workhorse_var('epic') }}` and
 `Story: {{ workhorse_var('story_id') }}`, then every other trailer such as Co-Authored-By, as one
 last paragraph with no blank line between them. Never put a blank line after `Story:`. Spell them exactly so. Do not push.
 

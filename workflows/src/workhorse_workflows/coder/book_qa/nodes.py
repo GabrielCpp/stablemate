@@ -16,7 +16,7 @@ from ostler.book.index import parse as parse_index
 from ostler.book.sources import story_commits
 from workhorse._vendor.stablemate_core import books
 from workhorse_workflows.coder.book_qa.apps import ServiceApp, book_dir, book_modules, booked_services, service_app
-from workhorse_workflows.coder.book_qa.review import by_criterion
+from workhorse_workflows.coder.book_qa.review import by_criterion, owed_claims
 from workhorse_workflows.coder.shared import commits, paths
 from workhorse_workflows.coder.shared.blueprint import blueprint
 from workhorse_workflows.coder.shared.provenance import story_base
@@ -843,17 +843,16 @@ def write_qa_review(
 
 @blueprint.node
 def write_unreached_claims(
-    logger: logging.Logger, spec_dir: str, repo_dir: str = ""
+    logger: logging.Logger, spec_dir: str, criteria: list[str] | None = None, repo_dir: str = ""
 ) -> UnreachedClaims:
-    """Write `qa-unreached.json` in the spec dir: the claims a clean book record could not state, which are all the scenario seat owes."""
+    """Write `qa-unreached.json` in the spec dir: the claims a clean book record could not state and the criteria no play observed, which are all the scenario seat owes."""
     root = find_docs_root(repo_dir)
     spec = root / spec_dir
     target = spec / UNREACHED_FILE
-    record = _load_record(spec)
-    claims = [] if record.findings else list(record.unreached)
+    claims = owed_claims(_load_record(spec), criteria or [])
     spec.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(claims, indent=2) + "\n", encoding="utf-8")
-    logger.info("the scenario seat owes %d unreached claim(s)", len(claims))
+    logger.info("the scenario seat owes %d claim(s) the books left", len(claims))
     return UnreachedClaims(claims=claims)
 
 

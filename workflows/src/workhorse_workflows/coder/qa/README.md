@@ -1,6 +1,6 @@
 # qa
 
-The QA lane of the coder workflow. One QA owner session owns a story's QA end to end. It selects the scenarios from the claims the books could not state, runs them, debugs each failure and records the result in `qa.md` and `jira-comment.md`, with no subagent seat and no audit. The scored run is the verdict, and the run then refuses to believe a pass it cannot check.
+The QA lane of the coder workflow. One QA owner session owns a story's QA end to end. It selects the scenarios from the claims the books could not state and the criteria no book play observed, runs them, debugs each failure and records the result in `qa.md` and `jira-comment.md`, with no subagent seat and no audit. The scored run is the verdict, and the run then refuses to believe a pass it cannot check.
 
 QA never fixes the product. A defect the owner proves goes back to the main loop as a finding, and the dev owner fixes it.
 

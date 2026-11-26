@@ -10,6 +10,7 @@ from workhorse.pyflow import AgentTimeout, Await, Continue, Done
 
 from workhorse_workflows.kit import find_book_package, find_book_root, find_docs_root
 from workhorse_workflows.coder.book_qa.nodes import read_book_record, write_unreached_claims
+from workhorse_workflows.coder.book_qa.review import owed_claims
 from workhorse_workflows.coder.qa.nodes import (
     QA_SCRATCH_DIRNAME,
     check_sentinel_ids,
@@ -54,6 +55,7 @@ from workhorse_workflows.coder.shared.owner import cut_notes
 from workhorse_workflows.coder.shared.qa_owner import QaOwner
 from workhorse_workflows.coder.shared.reach import resolve_check_set
 from workhorse_workflows.coder.shared.review import check_feedback
+from workhorse_workflows.coder.shared.walk import story_criteria
 from workhorse_workflows.coder.shared.schemas.qa import (
     QaFinding,
     QaFlowResult,
@@ -102,9 +104,9 @@ class Qa(QaOwner):
         return Continue(target, self.work, report="\n\n".join(failures))
 
     def _all_judged_by_books(self) -> bool:
-        """Does a clean book record name services and hold no unreached claim?"""
+        """Does a clean book record name services and leave no claim unstated or unobserved?"""
         record = self.call(read_book_record, self.ctx.spec_dir)
-        return bool(record.services) and not record.findings and not record.unreached
+        return bool(record.services) and not record.findings and not record.unreached and not record.unobserved
 
     def _finish_judged(self) -> Done:
         """Pass a story whose every obligation a service book judged, with no seat turn and no plan."""
@@ -112,11 +114,15 @@ class Qa(QaOwner):
         return self._finish("passed", QaPlanRun(status="passed", notes=JUDGED_NOTE))
 
     def _preflight(self) -> list[str]:
-        """The unreached-claims file and the QA stack, as failures the owner repairs."""
-        self.call(write_unreached_claims, self.ctx.spec_dir)
+        """The owed-claims file and the QA stack, as failures the owner repairs."""
+        self.call(write_unreached_claims, self.ctx.spec_dir, self._criteria())
         target = self.output(stack_target)
         stack = self.call(ensure_stack, near=target.near, lease=target.lease)
         return stack_failures(stack)
+
+    def _criteria(self) -> list[str]:
+        """The story's acceptance criteria, numbered as the end review of the books numbered them."""
+        return self.call(story_criteria, self.ctx.story_path).criteria
 
     def _owner_args(self) -> dict[str, Any]:
         """What the owner reads about its story, its plan and the tools it may drive."""
@@ -152,7 +158,7 @@ class Qa(QaOwner):
             "qa_only_scenarios": qa_only_arg(spec_dir),
             "standing_plan": self._standing_plan(),
             "book_services": [s.service for s in record.services] if judged else [],
-            "book_unreached": list(record.unreached) if judged else [],
+            "book_unreached": owed_claims(record, self._criteria()) if judged else [],
             "lease": self.output(stack_target).lease,
         }
 
@@ -195,6 +201,13 @@ class Qa(QaOwner):
         self.call(sync_story_fixtures, self.ctx.story_id)
         if result.status == "blocked":
             return self._block(result, result.notes, "the QA turn", blocks)
+        if result.live:
+            self.logger.warning(
+                "QA of %s owes %d live check(s) on DEV after the deploy, in live-qa.md: %s",
+                self.ctx.story_slug,
+                len(result.live),
+                "; ".join(result.live),
+            )
         return Continue(
             result,
             self.check,

@@ -8,7 +8,7 @@ import subprocess
 from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 import pytest
@@ -38,6 +38,9 @@ from workhorse_workflows.coder.qa.nodes.qa import QA_SCRATCH_DIRNAME
 from workhorse_workflows.kit.qa import evidence as qa_evidence_mod
 from workhorse_workflows.kit.qa import runner as qa_runner_mod
 from _epics import epics_root
+
+if TYPE_CHECKING:
+    from coder.qa.conftest import BooksLeft
 
 STORY = "STORY-1"
 EPIC = "EPIC-1"
@@ -1128,21 +1131,11 @@ def test_a_standing_valid_plan_is_handed_to_the_owner_to_adopt(
 BOOK_CALLS = [{"service": "api", "calls": ["ListX"]}]
 
 def test_the_owner_is_told_which_books_judged_and_which_claims_they_left(
-    docs: Path,
-    ostler: Callable[..., _Ostler],
-    write_json: Callable[[Path, Any], Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
+    qa_after_books: Callable[[dict[str, Any]], BooksLeft],
 ) -> None:
     """The seat covers each unreached claim by a scenario or reports it out of reach."""
-    ostler()
     unreached = ["no request reaches the report service"]
-    write_json(
-        docs / spec_dir() / "book-qa.json", {"services": BOOK_CALLS, "unreached": unreached}
-    )
-    agent = _Agent(docs)
-
-    drive_flow(Qa(story=STORY), env(), agent)
+    agent = qa_after_books({"unreached": unreached}).agent
 
     assert agent.args[0]["book_services"] == ["api"]
     assert agent.args[0]["book_unreached"] == unreached
@@ -1153,17 +1146,10 @@ JUDGED_NOTE = "every obligation of this story was judged by a service book"
 
 def test_a_story_every_obligation_of_which_a_book_judged_passes_with_no_seat_turn(
     docs: Path,
-    ostler: Callable[..., _Ostler],
-    write_json: Callable[[Path, Any], Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
+    qa_after_books: Callable[[dict[str, Any]], BooksLeft],
 ) -> None:
     """With nothing left for a scenario to prove, a seat turn buys nothing."""
-    okf = ostler()
-    write_json(docs / spec_dir() / "book-qa.json", {"services": BOOK_CALLS})
-    agent = _Agent(docs)
-
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    agent, _, result, okf = qa_after_books({})
 
     assert result.status == "passed", result
     assert result.qa.notes == JUDGED_NOTE, result.qa
@@ -1202,21 +1188,10 @@ def test_a_reprove_of_a_fully_book_judged_story_passes_with_no_plan_and_no_lint(
 
 
 def test_one_unreached_claim_keeps_the_seat_turn(
-    docs: Path,
-    ostler: Callable[..., _Ostler],
-    write_json: Callable[[Path, Any], Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
+    qa_after_books: Callable[[dict[str, Any]], BooksLeft],
 ) -> None:
     """A claim the book could not state is the scenario lane's even when every obligation is deferred."""
-    ostler()
-    write_json(
-        docs / spec_dir() / "book-qa.json",
-        {"services": BOOK_CALLS, "unreached": ["no request reaches the report service"]},
-    )
-    agent = _Agent(docs)
-
-    result = drive_flow(Qa(story=STORY), env(), agent)
+    agent, _, result, _ = qa_after_books({"unreached": ["no request reaches the report service"]})
 
     assert result.status == "passed", result
     assert agent.calls == ["qa-story"], agent.calls
@@ -1541,42 +1516,21 @@ UNREACHED_CLAIMS = ["no request reaches the report service", "the audit line nam
 
 
 def test_a_story_whose_services_all_have_a_book_owes_the_scenario_seat_only_the_unreached_claims(
-    docs: Path,
-    ostler: Callable[..., _Ostler],
-    write_json: Callable[[Path, Any], Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
+    qa_after_books: Callable[[dict[str, Any]], BooksLeft],
 ) -> None:
-    ostler()
-    write_json(
-        docs / spec_dir() / "book-qa.json", {"services": BOOK_CALLS, "unreached": UNREACHED_CLAIMS}
-    )
-    agent = _Agent(docs)
+    agent, owed, _, _ = qa_after_books({"unreached": UNREACHED_CLAIMS})
 
-    drive_flow(Qa(story=STORY), env(), agent)
-
-    assert json.loads((docs / spec_dir() / "qa-unreached.json").read_text(encoding="utf-8")) == UNREACHED_CLAIMS
+    assert owed == UNREACHED_CLAIMS
     assert agent.args[0]["lease"]
     assert agent.args[0]["book_unreached"] == UNREACHED_CLAIMS
 
 
 def test_the_claims_file_of_a_book_judged_story_with_a_defect_holds_no_claim(
-    docs: Path,
-    ostler: Callable[..., _Ostler],
-    write_json: Callable[[Path, Any], Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
+    qa_after_books: Callable[[dict[str, Any]], BooksLeft],
 ) -> None:
-    ostler()
     finding = {"id": "f", "target": "acme/x:1", "issue": "the list drops the token", "repair": "keep it"}
-    write_json(
-        docs / spec_dir() / "book-qa.json",
-        {"services": BOOK_CALLS, "findings": [finding], "unreached": UNREACHED_CLAIMS},
-    )
 
-    drive_flow(Qa(story=STORY), env(), _Agent(docs))
-
-    assert json.loads((docs / spec_dir() / "qa-unreached.json").read_text(encoding="utf-8")) == []
+    assert qa_after_books({"findings": [finding], "unreached": UNREACHED_CLAIMS}).owed == []
 
 
 def test_a_story_naming_no_service_gets_a_seat_turn_and_an_empty_claims_file(

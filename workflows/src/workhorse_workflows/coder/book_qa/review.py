@@ -1,7 +1,7 @@
 """The end review's verdicts, read against the story's criteria."""
 from __future__ import annotations
 
-from workhorse_workflows.coder.shared.schemas.book_qa import ReviewVerdict
+from workhorse_workflows.coder.shared.schemas.book_qa import BookQaRecord, ReviewVerdict
 from workhorse_workflows.coder.shared.schemas.qa import QaFinding
 
 REVIEW_LAPS = 1
@@ -51,4 +51,18 @@ def unobserved(verdicts: list[ReviewVerdict], count: int) -> list[ReviewVerdict]
     return [verdict for _, verdict in sorted(held.items()) if verdict.verdict == "unobserved"]
 
 
-__all__ = ["REVIEW_LAPS", "by_criterion", "missing_criteria", "missing_text", "unmet_findings", "unobserved"]
+def owed_claims(record: BookQaRecord, criteria: list[str]) -> list[str]:
+    """The claims the scenario seat owes: the ones the books could not state, then each criterion no play observed. A record with a finding owes none, because the story goes back to its developer."""
+    if record.findings:
+        return []
+    return [*record.unreached, *(_unseen_claim(v, criteria) for v in record.unobserved)]
+
+
+def _unseen_claim(verdict: ReviewVerdict, criteria: list[str]) -> str:
+    n = verdict.criterion
+    text = criteria[n - 1] if 1 <= n <= len(criteria) else f"criterion {n} of the story"
+    why = f": {verdict.evidence}" if verdict.evidence else ""
+    return f"{text} (acceptance criterion {n}, which no book play observed{why})"
+
+
+__all__ = ["REVIEW_LAPS", "by_criterion", "missing_criteria", "missing_text", "owed_claims", "unmet_findings", "unobserved"]

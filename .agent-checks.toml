@@ -205,7 +205,7 @@ stops a run's process group with os.killpg, sending SIGTERM and then SIGKILL. Ex
 "workflows/tests/coder/dev/test_flow.py" = 1165
 "workflows/tests/coder/docs/test_flow.py" = 645
 "workflows/tests/coder/fix_ci/test_flow.py" = 581
-"workflows/tests/coder/qa/test_flow.py" = 1613
+"workflows/tests/coder/qa/test_flow.py" = 1567
 "workflows/tests/coder/shared/test_follow_up_backlog.py" = 428
 "workflows/tests/coder/shared/test_story_commit.py" = 552
 "workflows/tests/coder/test_workflow.py" = 1283

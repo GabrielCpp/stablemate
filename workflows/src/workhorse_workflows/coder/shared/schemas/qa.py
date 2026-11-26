@@ -156,6 +156,11 @@ class QaOwnerResult(CoderResult):
         "with the scenario and assertion that failed and the smallest product change that "
         "would pass it. Empty on `passed` and on `blocked`.",
     )
+    live: list[str] = Field(
+        default=[],
+        description="Each claim only the shared DEV environment can show, as `<claim id>: <what the "
+        "runbook proves>`. Its proof is `live-qa.md` in the spec dir, run after the deploy.",
+    )
 
 
 class QaFlowResult(CoderResult):

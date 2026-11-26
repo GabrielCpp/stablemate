@@ -6,8 +6,8 @@ enforce it.
 ### What you owe
 
 {% if book_services %}Every service of this story has an executable book, and the book's own play judged the
-story. The claims listed above are the ones no call of a book can show, so they are the
-whole scope of this plan. Each claim is a criterion named `claim:<n>`, and the plan covers
+story. The claims listed above are what the books left: the claims no call of a book can
+show and the criteria no play observed. They are the whole scope of this plan. Each claim is a criterion named `claim:<n>`, and the plan covers
 each one with an executable assertion.{% else %}No service book judged this story, so the story's Acceptance Criteria are the whole
 scope of this plan. Each Acceptance Criterion is a criterion named `ac:<n>`, numbered from 1 in
 the order the story lists them, and the plan covers each one with an executable assertion.{% endif %} A {% if book_services %}claim{% else %}criterion{% endif %} the story's own words make universal (`every`,
@@ -16,7 +16,8 @@ list each named category in `qa-plan.md` and map each to an assertion. A represe
 sample proves only the category it exercises.
 
 Read the story for the wording of each {% if book_services %}claim{% else %}criterion{% endif %}. Write no scenario against anything the {% if book_services %}claims{% else %}criteria{% endif %}
-do not name, and leave no {% if book_services %}claim{% else %}criterion{% endif %} uncovered.
+do not name, and leave no {% if book_services %}claim{% else %}criterion{% endif %} uncovered. A live check is the one exception: its runbook
+covers it, and no scenario does.
 
 ### The two files
 
