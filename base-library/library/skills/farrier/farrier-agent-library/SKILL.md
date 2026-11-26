@@ -209,7 +209,9 @@ policy a `localInstructions` mapping names. It then splices one fenced entry int
 the repo's hook manager. `hooks.manager` in `agents.yml` names it: `pre-commit`,
 `lefthook`, `husky`, `githooks` or `none`. Without that key, farrier picks the
 manager from the repo's marker files and falls back to `githooks`, which sets
-`core.hooksPath`. The pre-commit entry calls `make farrier-run-hook`. Farrier owns
+`core.hooksPath`. The fenced entry runs the tracked runner for its stage. A policy hook in a runner asks
+`farrier policies path <name>` where the policy lives and runs its script from there,
+so no policy script is copied into the repo. Farrier owns
 only the fenced region, so the repo's own hooks around it survive a reinstall.
 `none` strips the fence and leaves the runners unwired.
 

@@ -16,6 +16,7 @@ from ostler import path as okf_path
 from ostler.model import find_root
 from ruamel.yaml.error import YAMLError
 from workhorse._vendor.stablemate_core.harness import repo_harnesses
+from workhorse.manifest import context_dir
 from workhorse_workflows.kit import commit_all, head_sha, load_json, run_tool
 from workhorse_workflows.kit.manifest import read_manifest
 from workhorse_workflows.coder.shared.contract import declared_service_paths, service_problems
@@ -344,7 +345,7 @@ def install_farrier(
         if result.returncode != 0:
             detail = (result.stderr or result.stdout).strip()
             return FarrierInstall(note=f"farrier install failed: {detail}")
-        notes.append("farrier install: adapters + .agents/agents-context.json rendered")
+        notes.append("farrier install: adapters + agents-context.json rendered")
 
     rendered: list[str] = []
     for entry in (part.strip() for part in scaffolds if part.strip()):
@@ -430,14 +431,13 @@ def validate_genesis(
             _declared_paths(target),
         ))
 
-    ctx_path = target / ".agents" / "agents-context.json"
+    ctx_path = context_dir(target) / "agents-context.json"
     if not ctx_path.is_file():
-        errors.append(f"no {ctx_path.relative_to(target)} — farrier install did not run, so "
-                      f"the repo advertises no standards for an implementing turn to load")
+        errors.append(f"no {ctx_path} — farrier install did not run, so the repo advertises no standards to load")
     elif not load_json(ctx_path, "agents-context", logger).get("instructions"):
         errors.append(
-            f"{ctx_path.relative_to(target)} has an empty 'instructions' map — the "
-            f"implementation stage would run with no skills and still report success"
+            f"{ctx_path} has an empty 'instructions' map — the implementation "
+            f"stage would run with no skills and still report success"
         )
 
     epics_root = okf_path.epics_root_in(target)

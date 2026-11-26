@@ -109,7 +109,7 @@ def test_every_manager_gets_the_command_and_keeps_the_users_lines(
     text = _read(repo, rel)
     assert "# mine" in text
     assert FENCE_START in text and FENCE_END in text
-    assert HOOK_COMMAND in text or LEFTHOOK_INCLUDE in text
+    assert HOOK_RUNNER in text or LEFTHOOK_INCLUDE in text
 
 
 def test_installing_twice_changes_nothing(repo: Path):
@@ -443,7 +443,7 @@ def test_githooks_wires_the_commit_msg_stage(repo: Path):
     install_manager(repo, "githooks")
 
     text = (repo / ".githooks/commit-msg").read_text(encoding="utf-8")
-    assert '"$root/.agents/hooks/commit-msg" "$1"' in text
+    assert '"$root/.agents/hooks/commit-msg" "$@"' in text
 
 
 def test_husky_wires_the_commit_msg_stage(repo: Path):

@@ -21,6 +21,7 @@ class SkillHook:
     stage: str
     run: str
     roots: tuple[str, ...] = SKILL_ROOTS
+    policy: bool = False
 
 
 @dataclass(frozen=True)

@@ -121,3 +121,26 @@ def test_cache_dir_override(monkeypatch, tmp_path):
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-q"]))
+
+
+def test_farrier_state_dir_lives_under_the_cache_dir(tmp_path):
+    assert bc.farrier_state_dir("acme") == tmp_path / "cache" / "farrier" / "acme"
+
+
+def test_state_name_prefers_the_configured_name(tmp_path):
+    assert bc.repo_state_name(tmp_path, "acme") == "acme"
+
+
+def test_state_name_falls_back_to_the_main_worktree_folder(tmp_path):
+    import subprocess
+
+    main = tmp_path / "main-repo"
+    main.mkdir()
+    git = ["git", "-c", "user.email=a@b", "-c", "user.name=a"]
+    subprocess.run([*git, "init", "-q"], cwd=main, check=True)
+    subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "x"], cwd=main, check=True)
+    linked = tmp_path / "linked"
+    subprocess.run([*git, "worktree", "add", "-q", str(linked)], cwd=main, check=True)
+
+    assert bc.repo_state_name(linked) == "main-repo"
+    assert bc.repo_state_name(main) == "main-repo"

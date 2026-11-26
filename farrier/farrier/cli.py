@@ -106,6 +106,7 @@ from farrier.scaffolds import (
     resolve_scaffold_params,
     substitute_scaffold_path,
 )
+from farrier.lookup_cli import LOOKUP_COMMANDS, add_lookup_parsers, run_lookup
 from farrier.sync import SYNC_BUDGET, in_work_tree, sync, sync_command
 from farrier.sources import (
     collect_selection,
@@ -968,6 +969,7 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Leave a worktree whose git state changed more recently than this (default: 7)",
     )
 
+    add_lookup_parsers(sub)
     sub.add_parser("version", help="Print the installed farrier version")
 
     return parser
@@ -1265,8 +1267,7 @@ def _main(argv: list[str] | None) -> int:
         "doctor",
         "hooks",
         "checks",
-        "sync",
-        "worktrees",
+        *("sync", "worktrees", *LOOKUP_COMMANDS),
     }
     if not argv or argv[0] in ("-h", "--help"):
         parser.print_help()
@@ -1320,7 +1321,7 @@ def _main(argv: list[str] | None) -> int:
     if args.command == "worktrees":
         return _run_worktrees(args)
 
-    return _run_install(args)
+    return run_lookup(args) if args.command in LOOKUP_COMMANDS else _run_install(args)
 
 
 if __name__ == "__main__":

@@ -97,7 +97,7 @@ def sweep(directory: Path, links: Mapping[Path, Path] | None = None) -> None:
     for path in sorted(
         (
             item
-            for item in directory.rglob("*")
+            for item in [directory, *directory.rglob("*")]
             if item.is_dir() and not item.is_symlink()
         ),
         reverse=True,

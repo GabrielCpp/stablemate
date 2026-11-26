@@ -42,8 +42,6 @@ from farrier.banners import (
 )
 from farrier.launcher import (
     LAUNCHER_AGENTS_MK,
-    LAUNCHER_CONTEXT_MANIFEST,
-    LAUNCHER_CONTEXT_MANIFEST_FMT,
     LAUNCHER_ROOT_MAKEFILE,
     render_agents_mk,
 )
@@ -62,8 +60,12 @@ from farrier.prompt_render import (
     strip_arguments_placeholder,
 )
 from farrier.selection_errors import unknown_selection_error
+from farrier.state import (
+    CONTEXT_MANIFEST_FILE,
+    CONTEXT_MANIFEST_FILE_FMT,
+    repo_state_dir,
+)
 from farrier.sources import (
-    POLICY_ROOT,
     Asset,
     Source,
     build_lookup,
@@ -202,6 +204,7 @@ class Renderer:
             else "`farrier install --user`"
         )
         self.prefix = prefix
+        self.repo_config = dict(repo_config)
         self.repo_context = dict(repo_config)
         self.repo_context["name"] = repo_prefix(repo, repo_config)
         self.repo_context["prefix"] = prefix
@@ -434,6 +437,16 @@ class Renderer:
                 "`[user_library.template]` for a user-scope install — or guard the "
                 'reference in the library source with `| default("…")`.'
             ) from exc
+
+    @property
+    def state_dir(self) -> Path:
+        """The per-user folder this repo's manifests install into."""
+        return repo_state_dir(self.repo, self.repo_config)
+
+    def manifest_text(self, target: str) -> Rendered:
+        """The context manifest for *target*, as the file it installs as."""
+        text = json.dumps(self.context_manifest(target), indent=2, sort_keys=True)
+        return Rendered(text + "\n", assumed=True)
 
     def context_manifest(self, target: str) -> dict[str, Any]:
         """Per-repo manifest consumed by workhorse at run time (see workhorse/templates.py)."""
@@ -709,13 +722,11 @@ class Renderer:
         ]
         manifest_target = enabled_assistants[0] if enabled_assistants else "claude"
         for assistant in enabled_assistants:
-            outputs[self.repo / LAUNCHER_CONTEXT_MANIFEST_FMT.format(assistant)] = (
-                json.dumps(self.context_manifest(assistant), indent=2, sort_keys=True)
-                + "\n"
+            outputs[self.state_dir / CONTEXT_MANIFEST_FILE_FMT.format(assistant)] = (
+                self.manifest_text(assistant)
             )
-        outputs[self.repo / LAUNCHER_CONTEXT_MANIFEST] = (
-            json.dumps(self.context_manifest(manifest_target), indent=2, sort_keys=True)
-            + "\n"
+        outputs[self.state_dir / CONTEXT_MANIFEST_FILE] = self.manifest_text(
+            manifest_target
         )
 
         root_makefile = self.repo / LAUNCHER_ROOT_MAKEFILE
@@ -795,24 +806,6 @@ class Renderer:
             + [self.instruction_skill(name) for name in skill_names]
             + [self.prompt_source(name) for name in prompt_names or []]
         )
-
-    def policy_bundles(self, names: Sequence[str]) -> dict[Path, Rendered]:
-        """Each named policy that bundles scripts, installed under ``.agents/policies``."""
-        outputs: dict[Path, Rendered] = {}
-        for source in dict.fromkeys(self.policy_source(name) for name in names):
-            scripts = [asset for asset in skill_assets(source) if asset.is_script]
-            if not scripts:
-                continue
-            folder = self.repo / POLICY_ROOT / library_name(source)
-            head = folder / "POLICY.md"
-            _, body = split_front_matter(source.path.read_text(encoding="utf-8"))
-            banner = root_banner(library_source_path(source), self.dest_rel(head))
-            outputs[head] = Rendered(banner + body.strip() + "\n")
-            for asset in scripts:
-                outputs[folder / asset.rel] = Rendered(
-                    read_asset_text(asset), executable=True, verbatim=True
-                )
-        return outputs
 
     def instruction_part(self, source: Source, target: str, output_path: Path) -> str:
         """One source's body as it lands in a generated AGENTS.md."""

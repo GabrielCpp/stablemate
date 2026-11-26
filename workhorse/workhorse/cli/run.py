@@ -51,7 +51,8 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         default=None,
         metavar="PATH",
         help="Per-repo farrier context manifest (JSON). Default: "
-        "$AGENT_REPO_DIR/.agents/agents-context.json. Provides the template "
+        "agents-context.json in the repo's farrier state folder "
+        "(`farrier state-dir`). Provides the template "
         "values, instruction/prompt path maps, and selected-skills set the "
         "library prompts render against. Required.",
     )

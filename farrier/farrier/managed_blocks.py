@@ -60,12 +60,7 @@ def ensure_gitignore_entry(repo: Path, entry: str) -> bool:
 AGENTS_GITIGNORE_BLOCK = (
     ".agents/runs/",
     ".agents/worktrees/",
-    ".agents/workflows/",
     ".agents/operator/",
-    ".agents/local.compose.yaml",
-    ".agents/agents-context.json",
-    ".agents/agents-context.*.json",
-    ".agents/agents.mk",
 )
 
 
@@ -76,6 +71,11 @@ _SUPERSEDED_GITIGNORE_LINES = (
     "/.agents/*",
     "!/.agents/agents.mk",
     "!/.agents/flavors/",
+    ".agents/workflows/",
+    ".agents/local.compose.yaml",
+    ".agents/agents-context.json",
+    ".agents/agents-context.*.json",
+    ".agents/agents.mk",
     ".agents/runs",
     ".agents/skills/",
     ".agents/prompts/",
@@ -88,6 +88,7 @@ _SUPERSEDED_GITIGNORE_LINES = (
     "/.agents/local.compose.yaml",
     "/.agents/agents-context.json",
     "/.agents/agents-context.*.json",
+    "/.agents/agents.mk",
 )
 
 
