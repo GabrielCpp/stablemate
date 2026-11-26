@@ -159,8 +159,10 @@ def test_each_agent_lands_inheriting_the_model_unless_it_names_flash_or_pro(
     assert yaml.safe_load(lookup.split("---\n")[1]) == {
         "name": "lookup",
         "description": "Read-only lookup.",
-        "tools": ["Read", "Grep", "Glob", "Bash"],
+        "tools": ["read_file", "run_command", "manage_task"],
         "model": "flash",
+        "mainAgent": False,
+        "subagent": True,
     }
     assert lookup.endswith("You answer one question.\n")
     worker = yaml.safe_load(
@@ -169,7 +171,53 @@ def test_each_agent_lands_inheriting_the_model_unless_it_names_flash_or_pro(
         .split("---\n")[1]
     )
     assert worker["model"] == "inherit"
-    assert worker["tools"] == ["Read", "Grep", "Glob", "Bash", "Edit", "Write"]
+    assert worker["tools"] == ["read_file", "run_command", "manage_task", "edit_file", "write_file"]
+
+
+def agent_head(home: Path, name: str) -> dict:
+    text = (home / f".gemini/config/agents/{name}.md").read_text(encoding="utf-8")
+    return yaml.safe_load(text.split("---\n")[1])
+
+
+def test_a_delegating_agent_is_a_main_agent_that_can_invoke_subagents(
+    home: Path, library: Path
+) -> None:
+    (library / "library/agents/orchestrator.md").write_text(
+        "---\ndescription: Coordinates.\nread_only: true\ndelegates: [lookup, worker]\n---\n\nYou coordinate.\n",
+        encoding="utf-8",
+    )
+    config = (
+        PROFILES
+        + '[profiles.antigravity.delegates.orchestrator]\nmodel = "pro"\n\n'
+        + '[user_library.antigravity]\nagents = ["orchestrator", "lookup"]\n'
+    )
+    assert install(home, library, config) == 0
+    head = agent_head(home, "orchestrator")
+    assert head["tools"][-1] == "invoke_subagent"
+    assert (head["mainAgent"], head["subagent"]) == (True, False)
+    assert "invoke_subagent" not in agent_head(home, "lookup")["tools"]
+
+
+def test_an_agent_server_is_listed_inside_that_agent_only(
+    home: Path, library: Path
+) -> None:
+    add_search_server(library)
+    (library / "library/agents/browser.md").write_text(
+        "---\ndescription: Browses.\nread_only: true\nmcp: [search]\nsession_mcp: [groom]\n---\n\nYou browse.\n",
+        encoding="utf-8",
+    )
+    config = (
+        PROFILES
+        + '[profiles.antigravity.delegates.browser]\nmodel = "flash"\n\n'
+        + '[user_library.antigravity]\nagents = ["browser", "worker"]\n'
+    )
+    assert install(home, library, config) == 0
+    head = agent_head(home, "browser")
+    assert head["mcpServers"] == [{"name": "search", "command": "ostler", "args": ["mcp"]}]
+    assert head["inheritMcp"] is True
+    assert "mcpServers" not in agent_head(home, "worker")
+    assert "inheritMcp" not in agent_head(home, "worker")
+    assert not (home / ".gemini/config/mcp_config.json").exists()
 
 
 def test_a_guard_lands_as_hooks_json_and_a_bridge(home: Path, library: Path) -> None:

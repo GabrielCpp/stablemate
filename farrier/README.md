@@ -120,6 +120,9 @@ Codex cannot enforce a read-only agent, so its prompt asks for it instead.
 A Claude agent may call only the tools its file lists. An agent record's `session_mcp` names
 servers the session runs, such as a channel, and the agent may call their tools. Codex and
 OpenCode agents already reach every server the session runs, so they ignore it.
+An Antigravity agent gets Antigravity's own tool names. An agent that names `delegates` becomes a
+main agent that may call `invoke_subagent`, and Antigravity lets it call any subagent, not only those
+it names. An agent's `mcp` servers are listed inside the agent, and `session_mcp` turns on `inheritMcp`.
 
 A `[user_library.opencode]` table takes the same `roots`, `mcp`, `hooks` and `agents`.
 They land in `~/.config/opencode`: rules in `AGENTS.md`, servers in `opencode.json`, helper

@@ -26,6 +26,8 @@ STRONGEST_CODEX_EFFORT = {"xhigh": "high", "max": "high"}
 COPILOT_READ_ONLY_TOOLS = ("read", "search", "execute")
 COPILOT_WRITE_TOOLS = ("edit",)
 ANTIGRAVITY_MODELS = ("flash", "pro")
+ANTIGRAVITY_READ_ONLY_TOOLS = ("read_file", "run_command", "manage_task")
+ANTIGRAVITY_WRITE_TOOLS = ("edit_file", "write_file")
 OPENCODE_VARIANT = {"low": "minimal", "medium": "", "high": "high", "xhigh": "max", "max": "max"}
 
 
@@ -47,12 +49,12 @@ def refuse_delegates_and_servers(agent: HelperAgent, harness: str) -> None:
     if agent.delegates:
         raise SystemExit(
             f"error: agent {agent.name!r} names `delegates`, and farrier writes delegating "
-            f"agents only for claude and copilot, not {harness}."
+            f"agents only for claude, copilot and antigravity, not {harness}."
         )
     if agent.servers:
         raise SystemExit(
             f"error: agent {agent.name!r} names `mcp`, and farrier writes agents with their "
-            f"own MCP servers only for claude and copilot, not {harness}."
+            f"own MCP servers only for claude, copilot and antigravity, not {harness}."
         )
 
 
@@ -131,16 +133,30 @@ def opencode_agent(agent: HelperAgent, role: PowerMapping) -> str:
     return f"---\n{AGENT_MARK}{front}---\n\n{agent.prompt}\n"
 
 
+def antigravity_server(server: ToolServer) -> dict[str, object]:
+    spelled: dict[str, object] = {"name": server.name, "command": server.command, "args": server.args}
+    if server.env:
+        spelled["env"] = server.env
+    return spelled
+
+
 def antigravity_agent(agent: HelperAgent, role: PowerMapping) -> str:
     """The Antigravity agent file, whose model is `inherit` unless the profile names flash or pro."""
-    refuse_delegates_and_servers(agent, "antigravity")
-    tools = READ_ONLY_TOOLS if agent.read_only else READ_ONLY_TOOLS + WRITE_TOOLS
+    tools = ANTIGRAVITY_READ_ONLY_TOOLS if agent.read_only else ANTIGRAVITY_READ_ONLY_TOOLS + ANTIGRAVITY_WRITE_TOOLS
+    if agent.delegates:
+        tools = (*tools, "invoke_subagent")
     head: dict[str, object] = {
         "name": agent.name,
         "description": agent.description,
         "tools": list(tools),
         "model": role.model if role.model in ANTIGRAVITY_MODELS else "inherit",
+        "mainAgent": bool(agent.delegates),
+        "subagent": not agent.delegates,
     }
+    if agent.servers:
+        head["mcpServers"] = [antigravity_server(server) for server in agent.servers]
+    if agent.session_servers:
+        head["inheritMcp"] = True
     front = yaml.safe_dump(head, sort_keys=False, allow_unicode=True, width=10**6)
     return f"---\n{AGENT_MARK}{front}---\n\n{agent.prompt}\n"
 
