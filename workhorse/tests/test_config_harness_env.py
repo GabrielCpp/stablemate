@@ -133,7 +133,7 @@ def _with_config(cfg):
 
 
 OPENCODE_OWN = {"OPENCODE_EXPERIMENTAL_OUTPUT_TOKEN_MAX": "131072"}
-CLAUDE_OWN = {"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1"}
+CLAUDE_OWN = {"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1", "DISABLE_AUTOUPDATER": "1"}
 
 
 def test_configured_env_reaches_the_spawn():
@@ -191,7 +191,15 @@ def test_compaction_runs_under_the_same_env():
                 timeout=RESILIENCE.result_timeout_s,
                 resilience=RESILIENCE,
             ) is True
-    assert seen.get("env_extra") == {"MAX_THINKING_TOKENS": "31999"}
+    assert seen.get("env_extra") == {"DISABLE_AUTOUPDATER": "1", "MAX_THINKING_TOKENS": "31999"}
+
+
+def test_claude_never_updates_itself_mid_run_unless_the_config_says_so():
+    with _with_config(_home({})):
+        assert (_spawn_env(ClaudeBackend()) or {}).get("DISABLE_AUTOUPDATER") == "1"
+    cfg = _home({"cli": {"claude": {"env": {"DISABLE_AUTOUPDATER": "0"}}}})
+    with _with_config(cfg):
+        assert (_spawn_env(ClaudeBackend()) or {}).get("DISABLE_AUTOUPDATER") == "0"
 
 
 def test_harness_env_wins_over_the_inherited_shell():

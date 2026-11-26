@@ -26,7 +26,8 @@ from workhorse.runner.backends.policy import confined_policy
 
 
 OUTLIVING_TOOLS = ("Workflow", "Monitor", "ScheduleWakeup", "CronCreate", "RemoteTrigger")
-_FOREGROUND_ENV = {"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1"}
+_NO_SELF_UPDATE_ENV = {"DISABLE_AUTOUPDATER": "1"}
+_FOREGROUND_ENV = {"CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1", **_NO_SELF_UPDATE_ENV}
 _READ_ONLY_TOOLS = ("Read", "Grep", "Glob", "Bash")
 
 
@@ -158,7 +159,7 @@ class ClaudeBackend(AgentBackend):
                 on_line,
                 resilience=resilience,
                 stdin_data="/compact",
-                env_extra=self.harness_env(),
+                env_extra={**_NO_SELF_UPDATE_ENV, **self.harness_env()},
             )
         except reload.ReloadRequested:
             raise
