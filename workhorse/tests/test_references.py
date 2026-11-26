@@ -199,6 +199,13 @@ def test_format_missing_names_the_cost_and_the_fix() -> None:
     assert "farrier install" in report
 
 
+def test_format_missing_names_the_home_install_a_fresh_machine_needs() -> None:
+    report = format_missing([MissingReference("skill", "ostler-book", "prompts/write.md")])
+    assert "farrier install --user" in report
+    assert "[user_library." in report
+    assert "farrier init" in report
+
+
 def test_format_missing_of_nothing_is_empty() -> None:
     assert format_missing([]) == ""
 

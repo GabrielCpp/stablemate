@@ -266,7 +266,7 @@ def run_pyflow(invocation: RunInvocation) -> int:
     name = registry.name or "workflow"
     workspace = Path(config.workspace or os.getcwd()).resolve()
     unresolved_refs = missing_references(registry.directory(), turn_catalog(workspace))
-    if unresolved_refs:
+    if unresolved_refs and not dry_run:
         print(f"[workhorse] WARNING: {format_missing(unresolved_refs)}")
 
     if dry_run:

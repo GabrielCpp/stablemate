@@ -124,6 +124,9 @@ def format_missing(missing: Iterable[MissingReference]) -> str:
     return (
         f"{len(items)} skill reference(s) will fail to render:\n{lines}\n"
         "  A turn whose prompt makes one stops with an error.\n"
-        "  Install the skill in this repo or at home with `farrier install`, "
-        "and move a retired helper to the one its error names."
+        "  Install the skill at home: list the packs that carry it under "
+        "[user_library.claude] in the stablemate config, then run `farrier install --user`. "
+        "`farrier init` prints that table for the base library's packs.\n"
+        "  Or select its pack under `packs:` in this repo's agents.yml and run `farrier install`.\n"
+        "  Move a retired helper to the one its error names."
     )
