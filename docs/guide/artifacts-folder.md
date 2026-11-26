@@ -1,8 +1,10 @@
 # The artifacts folder
 
 The artifacts folder is the one place agents write what you do not review beside the code. It is a
-git repository on your machine, `~/Documents/ai-artifacts` unless the home config names another.
-`ostler` creates it on first use and never adds a remote.
+git repository on your machine. The home config's `artifacts_dir` names it. Unset, it is
+`stablemate/artifacts` under your user data folder, `~/.local/share/stablemate/artifacts` on Linux.
+A workflow run started in a repository whose book lives there creates it on first use, and so does
+`ostler book branch`. Neither adds a remote.
 
 Every path below is printed by a command. An agent asks the command and never builds the path by
 hand.
