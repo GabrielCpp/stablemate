@@ -612,10 +612,7 @@ def play(
             tried.sent.append(sent)
             held = arranged if sent.clean else None
         for twin in [] if passed_on(endpoint) else twin_classes(base.call, base.before):
-            weighed = weigh(endpoint, twin, base, surface, fresh, held)
-            tried.twins.append(weighed)
-            if weighed.played or weighed.skipped or not weighed.ok:
-                held = None
+            tried.twins.append(weigh(endpoint, twin, base, surface, fresh))
     return tried
 
 
@@ -800,13 +797,11 @@ def _shown(said: tuple[Any, ...]) -> str:
     return "ok " + ", ".join(str(v) for v in said[1]) if said[1] else "ok"
 
 
-def weigh(endpoint: type[Any], twin: Twin, base: Base, surface: Surface, fresh: Callable[[], Model],
-          held: tuple[Model, Endpoint] | None = None) -> Twinned:
+def weigh(endpoint: type[Any], twin: Twin, base: Base, surface: Surface, fresh: Callable[[], Model]) -> Twinned:
     """Plays one pair. A pair the model predicts differently is not sent: the model already reasons on
     that dimension. A pair it predicts alike is sent from the base, each value from a world arranged
     anew, and the app's two answers, with the rows the call made, changed or removed in the list the
-    watch reads, are compared. A world the last class left as it found it, both sides having refused, is
-    `held` and taken for the first value."""
+    watch reads, are compared."""
     found = Twinned(endpoint, twin)
     if twin.ignored:
         found.ignored = True
@@ -826,8 +821,7 @@ def weigh(endpoint: type[Any], twin: Twin, base: Base, surface: Surface, fresh: 
     got: list[tuple[Any, ...]] = []
     try:
         for value in (twin.left, twin.right):
-            model, call = held if held is not None else base.arrange(surface, fresh)
-            held = None
+            model, call = base.arrange(surface, fresh)
             sent = vary(call, InputClass(twin.place, twin.name, twin.dimension, value, True))
             before = _blind_rows(surface, _plain(tuple(surface.rows())))
             said_by_app = _app_said(surface, sent, surface.perform(sent), before)
