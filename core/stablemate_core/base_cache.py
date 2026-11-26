@@ -28,6 +28,18 @@ def cache_root() -> Path:
     return Path(user_cache_dir("stablemate"))
 
 
+def repo_state_name(repo: Path, configured: str | None = None) -> str:
+    """The name one repository keeps its state under: its configured name, else its main worktree folder's."""
+    from .config import repository_identity
+
+    return configured or repository_identity(repo).main_folder.name
+
+
+def farrier_state_dir(repo_name: str) -> Path:
+    """The per-user folder farrier keeps one repository's generated machine state in."""
+    return cache_root() / "farrier" / repo_name
+
+
 def cached_library_dir() -> Path:
     return cache_root() / "library"
 
