@@ -135,6 +135,23 @@ def test_scripts_install_beside_their_record_and_tests_stay_behind(
     assert not (folder / "comments" / "tests").exists()
 
 
+def test_a_tool_cache_in_a_guard_folder_stays_behind(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, home: Path, library: Path
+) -> None:
+    configure(tmp_path, monkeypatch, BOTH)
+    guard = library / "library" / "hooks" / "comments"
+    (guard / ".ruff_cache" / "0.15").mkdir(parents=True)
+    (guard / ".ruff_cache" / "0.15" / "123").write_bytes(b"\xfd\x00binary")
+    (guard / ".DS_Store").write_bytes(b"\xfd")
+
+    assert run(home, library) == 0
+
+    folder = home / ".agents" / "hooks" / "comments"
+    assert (folder / "check.py").exists()
+    assert not (folder / ".ruff_cache").exists()
+    assert not (folder / ".DS_Store").exists()
+
+
 def test_a_guard_the_record_excepts_is_left_out_with_a_note(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
