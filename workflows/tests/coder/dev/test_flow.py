@@ -25,7 +25,7 @@ from workhorse.runner.backends.null import NullBackend
 
 from workhorse_workflows.coder.dev import flow as dev_flow
 from workhorse_workflows.coder.dev.flow import Dev
-from workhorse_workflows.coder.shared.owner import MAX_LAPS
+from workhorse_workflows.coder.shared.owner import CUT_CONTINUE_NOTE, MAX_LAPS
 from workhorse_workflows.coder.shared import work
 from workhorse_workflows.coder.shared.schemas.dev import DispatchEntry
 from workhorse_workflows.coder.shared.schemas.dev_story import DevOutcome
@@ -1274,7 +1274,32 @@ def test_the_first_review_turn_writes_the_reviewer_files_beside_its_brief(
     assert str(answer) in text, text
 
 
-def test_a_build_turn_cut_at_its_deadline_parks_and_resumes_on_the_same_session(
+def test_a_build_turn_cut_twice_at_its_deadline_parks_and_resumes_on_the_same_session(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = FakeAgent(workspace, cut=("dev-build", "dev-follow-up"), session=lambda n: "sid-1")
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
+        result = drive_flow(_dev(docs), env(), agent)
+
+    assert result.status == "ready", result
+    (gate,) = seen
+    assert "was cut after 180 minutes" in gate, gate
+    assert "Its session is kept" in gate, gate
+    assert "resolve-operator" not in agent.calls, agent.calls
+    builds = [i for i, c in enumerate(agent.calls) if c in ("dev-build", "dev-follow-up")]
+    first, second = builds[0], builds[-1]
+    assert agent.kwargs[first]["session_chain"] == agent.kwargs[second]["session_chain"]
+    assert agent.kwargs[second]["resume_session"] is True
+    assert OPERATOR_ANSWER in str(agent.args[second]["operator_context"]), agent.args[second]
+    assert agent.nodes[first].deadline == agent.nodes[first].timeout == 10800.0
+
+
+def test_a_first_deadline_cut_of_the_build_continues_without_a_gate(
     docs: Path,
     workspace: dict[str, Path],
     env: Callable[..., RunEnv],
@@ -1287,16 +1312,98 @@ def test_a_build_turn_cut_at_its_deadline_parks_and_resumes_on_the_same_session(
         result = drive_flow(_dev(docs), env(), agent)
 
     assert result.status == "ready", result
+    assert seen == [], seen
+    builds = [i for i, c in enumerate(agent.calls) if c in ("dev-build", "dev-follow-up") and agent.args[i].get("phase", "build") == "build"]
+    second = builds[1]
+    assert agent.calls[second] == "dev-follow-up", agent.calls
+    assert agent.kwargs[second]["resume_session"] is True
+    assert CUT_CONTINUE_NOTE in str(agent.args[second]["note"]), agent.args[second]
+    assert agent.kwargs[builds[0]]["session_chain"] == agent.kwargs[second]["session_chain"]
+
+
+def test_a_second_consecutive_cut_of_the_build_gates_the_operator(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = FakeAgent(workspace, cut=("dev-build", "dev-build"))
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
+        result = drive_flow(_dev(docs), env(), agent)
+
+    assert result.status == "ready", result
     (gate,) = seen
     assert "was cut after 180 minutes" in gate, gate
-    assert "Its session is kept" in gate, gate
-    assert "resolve-operator" not in agent.calls, agent.calls
-    builds = [i for i, c in enumerate(agent.calls) if c in ("dev-build", "dev-follow-up")]
-    first, second = builds[0], builds[1]
-    assert agent.kwargs[first]["session_chain"] == agent.kwargs[second]["session_chain"]
-    assert agent.kwargs[second]["resume_session"] is True
-    assert OPERATOR_ANSWER in str(agent.args[second]["operator_context"]), agent.args[second]
-    assert agent.nodes[first].deadline == agent.nodes[first].timeout == 10800.0
+    assert "Escalation #1 " in gate, gate
+
+
+def test_a_silence_cut_of_the_build_gates_on_the_first_cut(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = FakeAgent(workspace, silent=("dev-build",), session=lambda n: "sid-1")
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
+        result = drive_flow(_dev(docs), env(), agent)
+
+    assert result.status == "ready", result
+    (gate,) = seen
+    assert "went quiet" in gate, gate
+
+
+def test_a_first_deadline_cut_of_the_review_continues_without_a_gate(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = FakeAgent(workspace, cut=("dev-review",))
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
+        result = drive_flow(_dev(docs), env(), agent)
+
+    assert result.status == "ready", result
+    assert seen == [], seen
+    assert any(CUT_CONTINUE_NOTE in str(a.get("note", "")) for a in agent.args), agent.args
+
+
+def test_a_second_consecutive_cut_of_the_review_gates_the_operator(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = FakeAgent(workspace, cut=("dev-review", "dev-review"))
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
+        result = drive_flow(_dev(docs), env(), agent)
+
+    assert result.status == "ready", result
+    (gate,) = seen
+    assert "The review turn was cut" in gate, gate
+
+
+def test_a_first_deadline_cut_of_the_plan_continues_without_a_gate(
+    docs: Path,
+    workspace: dict[str, Path],
+    env: Callable[..., RunEnv],
+    drive_flow: Callable[..., Any],
+) -> None:
+    agent = FakeAgent(workspace, cut=("dev-plan",), session=lambda n: "sid-1")
+    seen: list[str] = []
+
+    with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
+        result = drive_flow(_dev(docs), env(), agent)
+
+    assert result.status == "ready", result
+    assert seen == [], seen
 
 
 def test_a_cut_resolver_turn_lands_on_the_gate(

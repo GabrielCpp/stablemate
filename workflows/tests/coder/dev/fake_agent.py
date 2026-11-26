@@ -9,7 +9,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from workhorse.runner.failure import TurnDeadlineExceeded
+from workhorse.runner.failure import BackendInvocationError, TurnDeadlineExceeded
 
 from workhorse_workflows.coder.shared import commits
 from workhorse_workflows.coder.shared.review import ANSWERS_FILE
@@ -82,8 +82,10 @@ class FakeAgent:
         consult_from: int = 1,
         session: Callable[[int], str] | None = None,
         cut: tuple[str, ...] = (),
+        silent: tuple[str, ...] = (),
     ) -> None:
-        self.cut = set(cut)
+        self.cut = list(cut)
+        self.silent = set(silent)
         self.nodes: list[Any] = []
         self.kwargs: list[dict[str, Any]] = []
         self.blocked_in = blocked_in
@@ -117,8 +119,11 @@ class FakeAgent:
         self.rebriefs.append(kwargs.get("rebrief"))
         self.nodes.append(node)
         self.kwargs.append(kwargs)
+        if stem in self.silent:
+            self.silent.discard(stem)
+            raise BackendInvocationError(f"turn '{stem}' went quiet", timed_out=True)
         if stem in self.cut:
-            self.cut.discard(stem)
+            self.cut.remove(stem)
             raise TurnDeadlineExceeded(stem, node.deadline, node.deadline + 1.0)
         if self.session is not None and len(args) > 1:
             chain = Path(args[1])

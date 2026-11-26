@@ -13,7 +13,7 @@ The work item is a story or one of its follow-ups. The worklist holds both, and 
 5. Anything that failed goes back to `review` as one report. A repair turn fixes only what the report names and runs no new review.
 6. Checks that still fail after three repair turns park the run at the operator gate.
 
-Each phase writes its full brief to the run's state before its turn. A phase that continues on the conversation it last ran on gets the follow-up note instead, which points at that file. Each phase turn runs for at most `turn_minutes` minutes (180 by default). A turn still running then is cut and asks the operator, and the answer resumes the phase on the same conversation. The silence bound and the command cap bound the turn within that. A compacted session reads the worklist's resume note and the brief's path on its next turn.
+Each phase writes its full brief to the run's state before its turn. A phase that continues on the conversation it last ran on gets the follow-up note instead, which points at that file. Each phase turn runs for at most `turn_minutes` minutes (180 by default). A turn still running then is cut. The first cut of a phase visit resumes the phase on the same conversation with a note to finish what remains, and asks nobody. A second consecutive cut, or a cut after the silence bound, asks the operator, and the answer resumes the phase on the same conversation. The silence bound and the command cap bound the turn within that. A compacted session reads the worklist's resume note and the brief's path on its next turn.
 
 An older open finding of the same cause as a newer one is merged into the newest.
 

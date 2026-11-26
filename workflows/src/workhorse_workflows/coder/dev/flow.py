@@ -50,6 +50,7 @@ from workhorse_workflows.coder.shared.owner import (
     MAX_LAPS,
     SILENCE_S,
     TURN_MINUTES,
+    CUT_CONTINUE_NOTE,
     cut_notes,
     owner_profile,
     turn_seconds,
@@ -302,7 +303,7 @@ class Dev(Resolving):
         return result
 
     def plan(
-        self, note: str = "", operator_context: str = "", blocks: int = 0
+        self, note: str = "", operator_context: str = "", blocks: int = 0, cuts: int = 0
     ) -> Continue | Await:
         """Run the plan turn on the profile's highest tier: the plan files, before any product code."""
         self.logger.info("planning %s", self._work_id, extra={"activity": True})
@@ -310,6 +311,15 @@ class Dev(Resolving):
         try:
             result = self._turn("plan", PlanResult, said)
         except AgentTimeout as exc:
+            if self._first_cut(exc, cuts, "The plan turn"):
+                return Continue(
+                    None,
+                    self.plan,
+                    note=CUT_CONTINUE_NOTE,
+                    operator_context=operator_context,
+                    blocks=blocks,
+                    cuts=cuts + 1,
+                )
             return self._ask(cut_notes("The plan turn", exc), "the plan turn", blocks, phase="plan")
         if result.status == "blocked":
             return self._block(result, result.notes, "the plan turn", blocks, phase="plan")
@@ -322,6 +332,7 @@ class Dev(Resolving):
         report: str = "",
         laps: int = 0,
         blocks: int = 0,
+        cuts: int = 0,
     ) -> Continue | Await:
         """Run the build turn on the plan's conversation, and hold every departure to the advisor's word."""
         self.logger.info("building %s", self._work_id, extra={"activity": True})
@@ -329,6 +340,17 @@ class Dev(Resolving):
         try:
             result = self._turn("build", BuildResult, said)
         except AgentTimeout as exc:
+            if self._first_cut(exc, cuts, "The build turn"):
+                return Continue(
+                    None,
+                    self.build,
+                    note=CUT_CONTINUE_NOTE,
+                    operator_context=operator_context,
+                    report=report,
+                    laps=laps,
+                    blocks=blocks,
+                    cuts=cuts + 1,
+                )
             return self._ask(
                 cut_notes("The build turn", exc), "the build turn", blocks, phase="build"
             )
@@ -355,6 +377,7 @@ class Dev(Resolving):
         blocks: int = 0,
         number: int = 1,
         rechecked: bool = False,
+        cuts: int = 0,
     ) -> Continue | Await:
         """Run the review turn: review, triage, fix and answer, and every repair lap the checks send back."""
         self.logger.info("reviewing %s", self._work_id, extra={"activity": True})
@@ -374,6 +397,19 @@ class Dev(Resolving):
         try:
             result = self._turn("review", DevResult, said, REVIEW_REFERENCES)
         except AgentTimeout as exc:
+            if self._first_cut(exc, cuts, "The review turn"):
+                return Continue(
+                    None,
+                    self.review,
+                    note=CUT_CONTINUE_NOTE,
+                    operator_context=operator_context,
+                    report=report,
+                    laps=laps,
+                    blocks=blocks,
+                    number=number,
+                    rechecked=rechecked,
+                    cuts=cuts + 1,
+                )
             return self._ask(
                 cut_notes("The review turn", exc), "the review turn", blocks, phase="review"
             )
@@ -636,6 +672,12 @@ class Dev(Resolving):
                 declined=[it.id for it in mine if it.status == work.DECLINED],
             )
         )
+
+    def _first_cut(self, exc: AgentTimeout, cuts: int, turn: str) -> bool:
+        if exc.deadline_s is None or cuts >= 1:
+            return False
+        self.logger.info("%s was cut at its allowance; continuing once on its session", turn)
+        return True
 
     def _block(
         self, result: object, notes: str, where: str, blocks: int, phase: str

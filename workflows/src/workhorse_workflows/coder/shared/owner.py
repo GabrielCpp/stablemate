@@ -18,6 +18,12 @@ MAX_BLOCKS = 3
 
 MAX_LAPS = 3
 
+CUT_CONTINUE_NOTE = (
+    "Your last turn was cut at its time allowance. Your session is kept. "
+    "Finish only what remains of this phase, run its checks once, commit, and hand off. "
+    "Do not widen the scope."
+)
+
 
 def turn_seconds(minutes: int) -> float:
     """The wall-clock allowance of one owner turn, in seconds, from its `turn_minutes`."""
@@ -45,6 +51,7 @@ def owner_profile(lane: str) -> AgentProfile:
 
 
 __all__ = [
+    "CUT_CONTINUE_NOTE",
     "COMMAND_CAP_S",
     "HUMAN_MODES",
     "MAX_BLOCKS",
