@@ -19,10 +19,10 @@ classifiers = [
 ]
 dependencies = [
   "workhorse-workflows>=5.1.0,<6",
-  "farrier>=7.0.0,<8",
-  "stablemate-groom>=2.2.0,<3",
-  "ostler>=7.0.0,<8",
-  "stablemate-saddlebag>=4.0.0,<5",
+  "farrier>=8.0.0,<9",
+  "stablemate-groom>=2.3.0,<3",
+  "ostler>=8.0.0,<9",
+  "stablemate-saddlebag>=5.0.0,<6",
 ]
 
 [project.scripts]
