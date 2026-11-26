@@ -31,18 +31,47 @@ def test_a_relative_artifacts_dir_in_an_override_is_anchored_too(tmp_path: Path)
     assert homeconfig.load(dest)["artifacts_dir"] == str((stage / "repo").resolve())
 
 
-def test_an_absolute_artifacts_dir_is_kept(tmp_path: Path) -> None:
+def test_an_absolute_artifacts_dir_outside_the_stage_becomes_the_stages_sibling(tmp_path: Path) -> None:
     base = write_base(tmp_path, 'artifacts_dir = "/abs/artifacts"\n')
+    stage = tmp_path / "round" / "stage"
 
-    dest = homeconfig.materialize(base, {"other": 1}, tmp_path / "config.toml", stage=tmp_path / "stage")
+    dest = homeconfig.materialize(base, {}, tmp_path / "config.toml", stage=stage)
 
-    assert homeconfig.load(dest)["artifacts_dir"] == "/abs/artifacts"
+    assert homeconfig.load(dest)["artifacts_dir"] == str(tmp_path / "round" / "stage.artifacts")
 
 
-def test_a_base_with_no_override_and_an_absolute_path_is_copied_byte_for_byte(tmp_path: Path) -> None:
-    base = write_base(tmp_path, '# kept\nartifacts_dir   =   "/abs/artifacts"\n')
+def test_an_absolute_artifacts_dir_that_holds_the_stage_is_replaced(tmp_path: Path) -> None:
+    base = write_base(tmp_path, f'artifacts_dir = "{tmp_path}"\n')
+    stage = tmp_path / "round" / "stage"
 
-    dest = homeconfig.materialize(base, {}, tmp_path / "config.toml", stage=tmp_path / "stage")
+    dest = homeconfig.materialize(base, {}, tmp_path / "config.toml", stage=stage)
+
+    assert homeconfig.load(dest)["artifacts_dir"] == str(tmp_path / "round" / "stage.artifacts")
+
+
+def test_a_missing_artifacts_dir_becomes_the_stages_sibling(tmp_path: Path) -> None:
+    base = write_base(tmp_path, 'other = 1\n')
+    stage = tmp_path / "round" / "stage"
+
+    dest = homeconfig.materialize(base, {}, tmp_path / "config.toml", stage=stage)
+
+    assert homeconfig.load(dest)["artifacts_dir"] == str(tmp_path / "round" / "stage.artifacts")
+
+
+def test_an_absolute_artifacts_dir_inside_the_stage_is_kept(tmp_path: Path) -> None:
+    stage = tmp_path / "stage"
+    base = write_base(tmp_path, f'artifacts_dir = "{stage}/books"\n')
+
+    dest = homeconfig.materialize(base, {"other": 1}, tmp_path / "config.toml", stage=stage)
+
+    assert homeconfig.load(dest)["artifacts_dir"] == f"{stage}/books"
+
+
+def test_a_base_with_no_override_and_nothing_to_rewrite_is_copied_byte_for_byte(tmp_path: Path) -> None:
+    stage = tmp_path / "stage"
+    base = write_base(tmp_path, f'# kept\nartifacts_dir   =   "{stage}/books"\n')
+
+    dest = homeconfig.materialize(base, {}, tmp_path / "config.toml", stage=stage)
 
     assert dest.read_bytes() == base.read_bytes()
 

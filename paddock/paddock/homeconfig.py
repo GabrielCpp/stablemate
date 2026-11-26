@@ -49,9 +49,12 @@ def _anchored(value: object, stage: Path) -> str | None:
 
 
 def _anchor_artifacts_dir(config: TomlTable, stage: Path) -> bool:
-    anchored = _anchored(config.get("artifacts_dir"), stage)
+    value = config.get("artifacts_dir")
+    anchored = _anchored(value, stage)
     if anchored is None:
-        return False
+        if isinstance(value, str) and value and Path(expanded_path(value)).resolve().is_relative_to(stage.resolve()):
+            return False
+        anchored = str(stage.with_name(f"{stage.name}.artifacts"))
     config["artifacts_dir"] = anchored
     return True
 
@@ -84,8 +87,11 @@ def _anchor_workspaces(config: TomlTable, stage: Path) -> bool:
 def materialize(base: Path, override: Mapping[str, object], dest: Path, *, stage: Path) -> Path:
     """Write the config a run uses to *dest*: the benchmark's base, with the task's override laid over it.
 
+    A run never uses an artifacts dir outside its own workspace.
     A relative `artifacts_dir`, and a relative path in a `[workspaces]` entry, name a folder inside *stage*
     and are written as that absolute path.
+    A missing `artifacts_dir`, or an absolute one outside *stage*, becomes the folder beside *stage*
+    named `<stage>.artifacts`.
     With no override and nothing to rewrite the base file is copied byte for byte.
     """
     parsed = load(base)

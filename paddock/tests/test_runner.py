@@ -18,9 +18,10 @@ from paddock import loader, names, paths
 from paddock.loader import Benchmark
 from paddock.names import RunName
 from paddock.registry import Task
+from paddock._vendor.stablemate_core.config import ARTIFACTS_DIR_ENV, CONFIG_PATH_ENV
 from paddock.runner import RoundInterrupted, Run, RunError, RunResult, execute, resume
 
-from smoke import BASE_CONFIG, INTERRUPTIBLE_TASKS, SMOKE_TASKS, git
+from smoke import INTERRUPTIBLE_TASKS, SMOKE_TASKS, git
 
 MakeBenchmark = Callable[..., Benchmark]
 
@@ -114,16 +115,17 @@ def test_the_task_override_is_laid_over_the_base_config(
         "default_cli": "claude",
         "profiles": {"claude": {"cli": "claude", "model": "task-model"}},
         "extra": 1,
+        "artifacts_dir": str(result.stage.with_name("stage.artifacts")),
     }
 
 
-def test_no_override_leaves_the_base_config_verbatim(
+def test_a_base_without_artifacts_dir_gets_one_beside_the_stage(
     make_benchmark: MakeBenchmark, root: Path, repo: Path
 ) -> None:
-    base = BASE_CONFIG.replace('library_dir = "/nowhere"', "# kept as written\nlibrary_dir   =   '/nowhere'")
-    benchmark = make_benchmark(base=base)
+    benchmark = make_benchmark()
     result = execute(*smoke(benchmark), root=root, checkout=repo)
-    assert (result.workspace / "config.toml").read_text(encoding="utf-8") == base
+    merged = tomllib.loads((result.workspace / "config.toml").read_text(encoding="utf-8"))
+    assert merged["artifacts_dir"] == str(result.stage.with_name("stage.artifacts"))
 
 
 def test_a_step_gets_the_merged_config_and_nothing_from_the_command_line(
@@ -139,6 +141,34 @@ def test_a_step_gets_the_merged_config_and_nothing_from_the_command_line(
     assert result.ok
     recorded = (result.workspace / "artifacts" / "touch" / "config-path.txt").read_text(encoding="utf-8")
     assert Path(recorded) == result.workspace / "config.toml"
+
+
+def test_a_step_and_the_score_see_the_runs_config_and_no_operator_artifacts(
+    make_benchmark: MakeBenchmark, root: Path, repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = (
+        'import os\n'
+        'def seen():\n'
+        '    return f"{os.environ.get(\'STABLEMATE_CONFIG\')}|{os.environ.get(\'STABLEMATE_ARTIFACTS_DIR\')}"\n'
+    )
+    body = (
+        SMOKE_TASKS.replace(
+            '    run.cli("/bin/sh", "-c", "echo hello", check=True)\n',
+            '    (run.artifacts / "env.txt").write_text(seen(), encoding="utf-8")\n',
+        )
+        .replace("def grade(run):\n", 'def grade(run):\n    (run.artifacts / "env.txt").write_text(seen(), encoding="utf-8")\n')
+        .replace("task(name=", seen + "task(name=", 1)
+    )
+    monkeypatch.setenv(ARTIFACTS_DIR_ENV, "/operator/artifacts")
+    operator_config = os.environ[CONFIG_PATH_ENV]
+
+    result = run(make_benchmark, root, repo, body)
+
+    expected = f"{result.workspace / 'config.toml'}|None"
+    for phase in ("touch", "score"):
+        assert (result.workspace / "artifacts" / phase / "env.txt").read_text(encoding="utf-8") == expected
+    assert os.environ[ARTIFACTS_DIR_ENV] == "/operator/artifacts"
+    assert os.environ[CONFIG_PATH_ENV] == operator_config
 
 
 def test_scratch_and_artifacts_stay_out_of_the_stage(

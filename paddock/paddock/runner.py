@@ -280,13 +280,19 @@ def _check_data(benchmark: Benchmark) -> None:
 
 
 @contextmanager
-def _without_operator_env() -> Iterator[None]:
-    """Drop the operator's artifacts dir from the environment for the run, then restore them."""
-    saved = {name: os.environ.pop(name) for name in (ARTIFACTS_DIR_ENV,) if name in os.environ}
+def run_scope(config: Path) -> Iterator[None]:
+    """Answer this process's config lookups as the run's own config does, then restore the operator's."""
+    saved = {name: os.environ.get(name) for name in (ARTIFACTS_DIR_ENV, CONFIG_PATH_ENV)}
+    _ = os.environ.pop(ARTIFACTS_DIR_ENV, None)
+    os.environ[CONFIG_PATH_ENV] = str(config)
     try:
         yield
     finally:
-        os.environ.update(saved)
+        for name, value in saved.items():
+            if value is None:
+                _ = os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
 
 def execute(
@@ -449,7 +455,7 @@ def _drive(
     try:
         run.write_json(run.workspace / ROUND_FILE, state)
         try:
-            with _without_operator_env(), locks.hold_lock(task.lock):
+            with run_scope(run.config), locks.hold_lock(task.lock):
                 try:
                     outcomes = _run_steps(run, done)
                 finally:

@@ -11,7 +11,8 @@ from fakes import DOCS, PRODUCTS, fake_run, folder_run, init_repo
 
 from ostler.milestones import BOOKS_DIR
 from stablemate_core import config as core_config
-from paddock.runner import CommandResult, RoundInterrupted, Run
+from paddock import homeconfig
+from paddock.runner import CommandResult, RoundInterrupted, Run, run_scope
 from paddock.tasks import greenfield, replay
 from paddock.tasks.stablemate import TrialError, uv_run
 from smoke import git
@@ -47,19 +48,25 @@ def test_the_milestone_is_copied_from_beside_the_tasks_module(tmp_path: Path) ->
     assert (run.stage / BOOKS_DIR / "api").is_dir()
 
 
-def test_the_milestone_finds_its_product_when_the_operators_artifacts_hold_the_round(
+def test_the_milestone_finds_its_product_when_the_round_sits_inside_the_operators_artifacts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     run = fake_run(tmp_path)
+    base = tmp_path / "home-config.toml"
+    base.write_text(f'artifacts_dir = "{tmp_path}"\n', encoding="utf-8")
+    run.config = homeconfig.materialize(base, {}, tmp_path / "config.toml", stage=run.stage)
     monkeypatch.setenv(core_config.ARTIFACTS_DIR_ENV, str(tmp_path))
     (run.stage / "docs").mkdir()
     milestone = run.benchmark.root / "milestones" / "m1"
     milestone.mkdir(parents=True)
     (milestone / greenfield.MILESTONE_FILE).write_text("# m\n", encoding="utf-8")
 
-    greenfield.seed_milestone(run, FIXTURE)
+    with run_scope(run.config):
+        greenfield.seed_milestone(run, FIXTURE)
+        produced = greenfield.produced_milestone(run, FIXTURE)
 
-    assert greenfield.produced_milestone(run, FIXTURE).is_relative_to(greenfield.artifacts_of(run))
+    assert produced.is_relative_to(greenfield.artifacts_of(run))
+    assert produced.is_file()
 
 
 def test_a_missing_milestone_is_named(tmp_path: Path) -> None:
