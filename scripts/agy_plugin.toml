@@ -1,0 +1,5 @@
+config_version = 2
+
+[user_library.antigravity]
+packs = ["general", "stablemate"]
+mcp = ["groom"]

@@ -267,3 +267,7 @@ release: check-vendor check-books ## Open (or refresh) the release-please PR. Me
 # launcher. Re-created by `farrier install`; remove this block to opt out.
 -include .agents/agents.mk
 # <<< farrier: agent launcher include <<<
+
+.PHONY: build-agy-plugin
+build-agy-plugin: ## Build the Antigravity plugin (base library + every stablemate tool) into dist/antigravity
+	uv run --all-packages python scripts/agy_plugin.py $(if $(VERSION),--version "$(VERSION)")

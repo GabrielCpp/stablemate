@@ -259,6 +259,24 @@ A repository that still holds its book moves it to the artifacts folder with
 [The artifacts folder](docs/guide/artifacts-folder.md) draws every folder agents write to, the command
 that prints each path, and how a repository reaches its product.
 
+### Antigravity
+
+Each `stablemate` release on GitHub carries an Antigravity plugin,
+`stablemate-antigravity-<version>.zip`, with its sha256 beside it. The plugin holds the base
+library's skills, the groom MCP server, the wheels of every stablemate package in `wheels/`,
+and a launcher in `bin/` for every stablemate tool. Each launcher runs its tool through `uvx`
+from those wheels, so the plugin needs `uv` on the `PATH`. uv fetches only the third-party
+dependencies. A `workhorse-*` launcher drives `antigravity` unless `AGENT_CLI` or `--cli`
+names another CLI.
+`make build-agy-plugin` builds the same plugin from a checkout into `dist/antigravity`.
+
+```bash
+v=0.2.5
+gh release download "stablemate-v$v" --repo GabrielCpp/stablemate --pattern "stablemate-antigravity-$v.zip*"
+sha256sum -c "stablemate-antigravity-$v.zip.sha256"
+unzip -q "stablemate-antigravity-$v.zip" -d stablemate && agy plugin install "$PWD/stablemate"
+```
+
 ### What the install resolves against
 
 **The base library is content, not a package.** Tools find it on disk. farrier ships a copy
