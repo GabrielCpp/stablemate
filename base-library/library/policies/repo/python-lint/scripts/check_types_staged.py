@@ -21,9 +21,9 @@ from check_ruff_staged import _git, refuse, staged_python
 
 
 def tool_command(root: Path, name: str) -> list[str] | None:
-    venv = root / ".venv" / "bin" / name
-    if venv.is_file():
-        return [str(venv)]
+    for venv in (root / ".venv" / "bin" / name, root / ".venv" / "Scripts" / f"{name}.exe"):
+        if venv.is_file():
+            return [str(venv)]
     found = shutil.which(name)
     if found:
         return [found]
@@ -40,7 +40,8 @@ def export_index(root: Path, target: Path) -> None:
 
 def member_roots(root: Path) -> list[str]:
     found: list[str] = []
-    for pth in sorted((root / ".venv").glob("lib/python*/site-packages/*.pth")):
+    venv = root / ".venv"
+    for pth in sorted([*venv.glob("lib/python*/site-packages/*.pth"), *venv.glob("Lib/site-packages/*.pth")]):
         for line in pth.read_text(encoding="utf-8", errors="replace").splitlines():
             entry = line.strip()
             if not entry or entry.startswith(("#", "import ")):
@@ -49,8 +50,8 @@ def member_roots(root: Path) -> list[str]:
                 relative = (root / entry).resolve().relative_to(root.resolve())
             except ValueError:
                 continue
-            if str(relative) != "." and (root / relative).is_dir() and str(relative) not in found:
-                found.append(str(relative))
+            if str(relative) != "." and (root / relative).is_dir() and relative.as_posix() not in found:
+                found.append(relative.as_posix())
     return found
 
 

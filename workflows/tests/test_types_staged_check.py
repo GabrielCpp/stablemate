@@ -89,6 +89,16 @@ def test_editable_entries_inside_the_repo_become_member_roots(tmp_path: Path) ->
     assert roots == ["lib", "pkgs/src"]
 
 
+def test_editable_entries_in_a_windows_venv_become_member_roots(tmp_path: Path) -> None:
+    root = make_git_repo(tmp_path / "acme")
+    (root / "lib").mkdir()
+    site = root / ".venv" / "Lib" / "site-packages"
+    site.mkdir(parents=True)
+    _ = (site / "_editable_impl_lib.pth").write_text(f"{root}/lib\n", encoding="utf-8")
+
+    assert _load_script().member_roots(root) == ["lib"]
+
+
 def test_a_repository_without_editable_entries_has_no_member_roots(tmp_path: Path) -> None:
     root = make_git_repo(tmp_path / "acme")
 
