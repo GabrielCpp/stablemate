@@ -100,6 +100,13 @@ def test_get_of_a_declared_key_with_no_value_says_so(config: Path):
     assert "not set" in _fails(config, "get", "worktree_dir")
 
 
+def test_get_of_an_unset_key_with_a_computed_default_points_at_its_reference(config: Path):
+    refusal = _fails(config, "get", "artifacts_dir")
+
+    assert "has no default" not in refusal
+    assert "farrier config reference artifacts_dir" in refusal
+
+
 def test_bare_config_prints_every_action(config: Path):
     """A bare group command used to end in an argparse error that named no action."""
     text = _run(config)

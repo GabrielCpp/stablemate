@@ -336,7 +336,8 @@ def _dispatch_config(args: argparse.Namespace) -> int:
         value: Any = load_home_config().model_dump(exclude_none=True)
         for part in args.key.split("."):
             if not isinstance(value, dict) or part not in value:
-                raise SystemExit(f"error: `{args.key}` is not set in {config_path()} and has no default")
+                raise SystemExit(f"error: `{args.key}` is not set in {config_path()}. "
+                                 f"`farrier config reference {args.key}` gives the default it falls back to")
             value = value[part]
         print(_config_value_text(args.key, value))
         return 0
