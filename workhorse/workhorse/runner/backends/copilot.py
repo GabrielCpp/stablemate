@@ -146,17 +146,7 @@ class CopilotTranscript(acp.DiffTrackingMapper):
         args = data.get("arguments") or {}
         call_id = str(data.get("toolCallId", ""))
         kind = _TOOL_KINDS.get(tool, "other")
-        path = args.get("path")
-        diffs = _diffs(tool, args)
-        self._diffs[call_id] = diffs
-        return acp.tool_call(
-            call_id,
-            f"{tool} {acp.summarize(args, _SUMMARY_KEYS)}".rstrip(),
-            kind,
-            content=diffs,
-            locations=[{"path": path}] if path and kind in ("read", "edit") else None,
-            raw_input=args,
-        )
+        return self.open_call(call_id, tool, args, kind, _diffs(tool, args), _SUMMARY_KEYS, args.get("path"))
 
     def _result(self, data: dict[str, Any]) -> acp.Update | None:
         call_id = str(data.get("toolCallId", ""))

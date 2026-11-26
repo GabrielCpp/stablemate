@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from workhorse.config_run import AgentResilience
+from workhorse.runner import acp
 from workhorse.runner.backends import TurnRequest
 from workhorse.runner.backends.jsonl import JsonlBackend
 from workhorse.runner.backends.turn import TurnState
@@ -80,6 +81,82 @@ def event_reader():
     return on_event
 
 
+_TOOL_KINDS = {
+    "read_file": "read",
+    "list_dir": "read",
+    "edit_file": "edit",
+    "write_file": "edit",
+    "run_command": "execute",
+    "grep_search": "search",
+    "find_by_name": "search",
+    "search_web": "fetch",
+    "read_url_content": "fetch",
+}
+_SUMMARY_KEYS = ("Path", "CommandLine", "Query", "Pattern", "Url", "Action")
+_FAILED = ("ERROR", "FAILED", "CANCELED", "CANCELLED")
+
+
+def _diffs(tool: str, args: dict[str, Any]) -> list[dict[str, Any]]:
+    path = str(args.get("Path") or "")
+    if tool == "edit_file" and "Target" in args and "Replacement" in args:
+        return [acp.diff_item(path, str(args["Target"]), str(args["Replacement"]))]
+    if tool == "write_file" and "Content" in args:
+        return [acp.diff_item(path, None, str(args["Content"]))]
+    return []
+
+
+class AntigravityTranscript(acp.DiffTrackingMapper):
+    def __init__(self) -> None:
+        super().__init__()
+        self._text: dict[int, str] = {}
+
+    def updates(self, event: dict[str, Any]) -> list[acp.MappedUpdate]:
+        self.session_id = event.get("conversation_id") or self.session_id
+        step = event.get("step_update")
+        if event.get("event") != "step_update" or not isinstance(step, dict):
+            return []
+        self.session_id = step.get("conversation_id") or self.session_id
+        kind = step.get("step_type")
+        if kind == "agent_response":
+            return self._response(step)
+        if kind in ("tool", "subagent"):
+            return self._tool(step)
+        return []
+
+    def _response(self, step: dict[str, Any]) -> list[acp.MappedUpdate]:
+        index = int(step.get("step_index") or 0)
+        self._text[index] = self._text.get(index, "") + str(step.get("text_delta") or "")
+        if step.get("state") != "DONE":
+            return []
+        text = self._text.pop(index).strip()
+        return [acp.MappedUpdate(acp.agent_message_chunk(text))] if text else []
+
+    def _tool(self, step: dict[str, Any]) -> list[acp.MappedUpdate]:
+        call_id = f"{step.get('conversation_id') or self.session_id}:{step.get('step_index')}"
+        updates: list[acp.MappedUpdate] = []
+        if call_id not in self._diffs:
+            updates.append(acp.MappedUpdate(self._call(call_id, step)))
+        state = str(step.get("state") or "")
+        if state == "DONE" or state in _FAILED:
+            diffs = self._diffs.pop(call_id, [])
+            output = str((step.get("tool_info") or {}).get("output") or "")
+            content = [*diffs, acp.text_item(output)] if output else diffs
+            status = "completed" if state == "DONE" else "failed"
+            updates.append(acp.MappedUpdate(acp.tool_call_update(call_id, status=status, content=content or None)))
+        return updates
+
+    def _call(self, call_id: str, step: dict[str, Any]) -> acp.Update:
+        tool = str(step.get("tool_name") or "tool")
+        if step.get("step_type") == "subagent":
+            agents = (step.get("subagent_info") or {}).get("subagents") or []
+            names = ", ".join(str(agent.get("type_name") or "?") for agent in agents)
+            self._diffs[call_id] = []
+            return acp.tool_call(call_id, f"{tool} {names}".rstrip(), "other", raw_input=agents)
+        args = (step.get("tool_info") or {}).get("parameters") or {}
+        kind = _TOOL_KINDS.get(tool, "other")
+        return self.open_call(call_id, tool, args, kind, _diffs(tool, args), _SUMMARY_KEYS, args.get("Path"))
+
+
 def command(turn: TurnRequest, argv_prompt: str, sid: str | None) -> list[str]:
     cmd = [
         "agy",
@@ -105,6 +182,9 @@ def command(turn: TurnRequest, argv_prompt: str, sid: str | None) -> list[str]:
 class AntigravityBackend(JsonlBackend):
     name = "antigravity"
     default_model = None
+
+    def transcript_mapper(self) -> acp.TranscriptMapper:
+        return AntigravityTranscript()
 
     def execute(self, turn: TurnRequest) -> str:
         return self.execute_argv(

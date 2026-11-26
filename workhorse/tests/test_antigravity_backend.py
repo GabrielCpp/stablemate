@@ -6,7 +6,7 @@ from pathlib import Path
 from workhorse.config_run import AgentResilience
 from workhorse.runner import failure
 from workhorse.runner.backends import AgentProfile, turn
-from workhorse.runner.backends.antigravity import AntigravityBackend, event_reader
+from workhorse.runner.backends.antigravity import AntigravityBackend, AntigravityTranscript, event_reader
 from workhorse.runner.backends.registry import get_backend
 
 RESILIENCE = AgentResilience()
@@ -135,3 +135,41 @@ def test_compaction_sends_compact_on_the_conversation(tmp_path: Path) -> None:
 
 def test_compaction_without_a_conversation_does_nothing(tmp_path: Path) -> None:
     assert not AntigravityBackend().compact(tmp_path / ".sid", "n", timeout=60, resilience=RESILIENCE)
+
+
+def _mapped(lines: list[str]) -> list[dict]:
+    mapper = AntigravityTranscript()
+    return [each.update for line in lines for each in mapper.updates(json.loads(line))]
+
+
+def _step(index: int, state: str, tool: str, parameters: dict, output: str = "") -> str:
+    info: dict = {"name": tool, "parameters": parameters}
+    if output:
+        info["output"] = output
+    step = {"conversation_id": "c", "step_index": index, "state": state, "step_type": "tool", "tool_name": tool, "tool_info": info}
+    return json.dumps({"event": "step_update", "step_update": step})
+
+
+def test_the_recorded_turn_maps_to_its_command_and_its_answers() -> None:
+    updates = _mapped(FIXTURE.read_text().splitlines())
+    call, done = (u for u in updates if u["sessionUpdate"].startswith("tool_call"))
+    assert (call["title"], call["kind"]) == ("run_command echo hi", "execute")
+    assert done["toolCallId"] == call["toolCallId"]
+    assert done["status"] == "completed"
+    texts = [u["content"]["text"] for u in updates if u["sessionUpdate"] == "agent_message_chunk"]
+    assert texts[-2:] == ['{"answer": 4}', '{"answer":4}']
+
+
+def test_an_edit_carries_its_diff_and_a_failed_call_reads_as_failed() -> None:
+    edit = {"Path": "/w/a.py", "Target": "x = 1", "Replacement": "x = 2"}
+    updates = _mapped([_step(2, "ACTIVE", "edit_file", edit), _step(2, "ERROR", "edit_file", edit, "no match")])
+    call, done = updates
+    assert call["content"] == [{"type": "diff", "path": "/w/a.py", "oldText": "x = 1", "newText": "x = 2"}]
+    assert call["locations"] == [{"path": "/w/a.py"}]
+    assert done["status"] == "failed"
+    assert done["content"][-1]["content"]["text"] == "no match"
+
+
+def test_a_call_seen_only_when_done_still_opens_before_it_closes() -> None:
+    updates = _mapped([_step(3, "DONE", "read_file", {"Path": "/w/b"}, "2 lines")])
+    assert [u["sessionUpdate"] for u in updates] == ["tool_call", "tool_call_update"]

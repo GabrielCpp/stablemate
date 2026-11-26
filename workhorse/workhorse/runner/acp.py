@@ -38,6 +38,26 @@ class DiffTrackingMapper(TranscriptMapper, ABC):
         super().__init__()
         self._diffs: dict[str, list[dict[str, Any]]] = {}
 
+    def open_call(
+        self,
+        call_id: str,
+        tool: str,
+        args: dict[str, Any],
+        kind: str,
+        diffs: list[dict[str, Any]],
+        summary_keys: tuple[str, ...],
+        path: object = None,
+    ) -> Update:
+        self._diffs[call_id] = diffs
+        return tool_call(
+            call_id,
+            f"{tool} {summarize(args, summary_keys)}".rstrip(),
+            kind,
+            content=diffs,
+            locations=[{"path": path}] if path and kind in ("read", "edit") else None,
+            raw_input=args,
+        )
+
 
 class NullTranscript(TranscriptMapper):
     """A CLI with nothing to show."""
