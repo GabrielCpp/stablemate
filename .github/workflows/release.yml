@@ -331,3 +331,29 @@ jobs:
       # groom publishes as `stablemate-groom` and saddlebag as `stablemate-saddlebag`,
       # because the short names on PyPI are unavailable. The release-please components
       # keep the short names.
+
+  antigravity-plugin:
+    needs: [verify, tag, publish]
+    if: >-
+      !cancelled() && needs.publish.result == 'success' &&
+      (contains(fromJSON(needs.tag.outputs.paths_released || '[]'), 'stablemate') || inputs.force_publish)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --all-packages --locked
+      - name: Build the Antigravity plugin and attach it to the stablemate release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(grep -m1 '^version' stablemate/pyproject.toml | cut -d'"' -f2)
+          stablemate/plugin/build.sh "$version" dist/antigravity
+          gh release upload "stablemate-v$version" --clobber \
+            "dist/antigravity/stablemate-antigravity-$version.zip" \
+            "dist/antigravity/stablemate-antigravity-$version.zip.sha256"
