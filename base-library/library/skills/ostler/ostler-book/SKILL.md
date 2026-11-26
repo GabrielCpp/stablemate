@@ -131,7 +131,9 @@ The model lives once, in `services/<name>/model/`, because a record does not cha
 surface that reaches it. Each surface gets its own `services/<name>/<surface>/service.py`, with
 its own surface, endpoints or screens, journeys, and ostler loads it as
 `services.<name>.<surface>`. In the artifacts folder these paths and modules sit under `<repo>`. A rule two surfaces enforce is one `Rule`, and each surface shows
-its refusal in its own words. A service deployed as two pods, such as an API and a queue
+its refusal in its own words. Each surface reads `decisions/` and `QUESTIONS.md` from its own
+folder and from `services/<name>/`, beside the model. A decision there may name the elements of
+every surface, and a decision in a surface's folder names only that surface's. A service deployed as two pods, such as an API and a queue
 handler built from the same code, is one service and keeps one book. The events the handler
 hears are declared beside the endpoints and share their model, journeys and decisions.
 
