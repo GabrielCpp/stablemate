@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import contextvars
 import functools
-import json
 import logging
 import os
 import sqlite3
@@ -15,9 +14,7 @@ from pathlib import Path
 from typing import Any, ParamSpec, TypeVar
 
 from groom.store.schema import (
-    _SPAN_VALUE_COLUMNS,
     _TABLES,
-    _promoted,
     _Table,
     db_path,
     prepare,
@@ -366,40 +363,3 @@ def health() -> StoreHealth:
 def health_dict() -> dict[str, Any]:
     """:func:`health` as JSON for the dashboard state payload."""
     return asdict(STORE.health())
-
-
-@_noop_on_empty(None)
-@resilient
-def insert_spans(spans: list[dict[str, Any]]) -> None:
-    """Upsert decoded spans (see groom.otlp.parse_traces)."""
-    if not spans:
-        return
-    with STORE.writing() as conn:
-        promoted = ", ".join(_SPAN_VALUE_COLUMNS)
-        placeholders = ", ".join("?" * len(_SPAN_VALUE_COLUMNS))
-        conn.executemany(
-            "INSERT OR REPLACE INTO spans (span_id, trace_id, parent_id, run_id, workflow,"
-            " repo, branch, node, name, run_dir, start_ts, end_ts, status, attrs_json,"
-            f" {promoted})"
-            f" VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, {placeholders})",
-            [
-                (
-                    s["span_id"],
-                    s["trace_id"],
-                    s.get("parent_id", ""),
-                    s.get("run_id", ""),
-                    s.get("workflow", ""),
-                    s.get("repo", ""),
-                    s.get("branch", ""),
-                    s.get("node", ""),
-                    s.get("name", ""),
-                    s.get("run_dir", ""),
-                    s.get("start_ts", 0.0),
-                    s.get("end_ts", 0.0),
-                    s.get("status", "UNSET"),
-                    json.dumps(s.get("attrs") or {}),
-                    *_promoted(s, s.get("attrs") or {}),
-                )
-                for s in spans
-            ],
-        )

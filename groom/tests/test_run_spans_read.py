@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from groom import activity, history, records, store
+from groom import activity, activity_search, history, records, store
 from groom.store import profile as store_profile
 from tests.test_row_figures import _DB
 from tests.test_row_figures import _span as _base
@@ -96,7 +96,7 @@ def test_every_reader_answers_as_it_did_on_the_full_read(monkeypatch: pytest.Mon
             store.run_profile("run-1"),
             store.run_flows("run-1"),
             {**activity.timeline("run-1"), "as_of": 0},
-            activity.search("run-1", "e"),
+            activity_search.search("run-1", "e"),
             records.page("run-1"),
             history.summarize("run-1", now=10_000.0),
         ]

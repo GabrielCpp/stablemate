@@ -5,7 +5,6 @@ import itertools
 import json
 import re
 import time
-import urllib.parse
 import urllib.request
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -214,14 +213,14 @@ def test_a_running_turns_row_and_pane_show_new_messages_and_tool_calls_as_they_a
 def test_an_open_activity_pane_on_a_quiet_run_makes_no_request_and_one_ingest_makes_one(tmp_path):
     with _following(tmp_path, "fol-quiet", filler=3, running=True) as (live, page, name):
         asked: list[str] = []
-        page.on("request", lambda request: asked.append(request.url) if urllib.parse.urlsplit(request.url).path.endswith("/activity") else None)
+        page.on("request", lambda request: asked.append(request.url) if request.url.split("?")[0].endswith("/activity") else None)
         page.wait_for_load_state("networkidle")
         settled = len(asked)
         page.clock.install()
         page.clock.run_for(6000)
         flush(page)
         assert len(asked) == settled
-        with page.expect_request(lambda request: urllib.parse.urlsplit(request.url).path.endswith("/activity")):
+        with page.expect_request(lambda request: request.url.split("?")[0].endswith("/activity")):
             _send(live, name, usd=0.5)
         page.clock.run_for(1500)
         page.wait_for_load_state("networkidle")

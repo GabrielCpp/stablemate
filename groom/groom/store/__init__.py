@@ -17,7 +17,6 @@ from groom.store.connection import (
     _Store,
     health,
     health_dict,
-    insert_spans,
     read_connection,
     reading,
     reading_from,
@@ -51,6 +50,7 @@ from groom.store.ingest import (
     _write_metrics,
     insert_logs,
     insert_metrics,
+    insert_spans,
     query_turns,
 )
 from groom.store.loops import (

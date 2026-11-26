@@ -5,7 +5,6 @@ from __future__ import annotations
 import bisect
 import functools
 import json
-import re
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -820,43 +819,6 @@ def _problem_reading(run_id: str, key: str, item: dict[str, Any], spans: list[di
     }
 
 
-def _answer_after(text: str, asked: str, which: int = -1) -> str:
-    want = asked.strip()
-    if not want:
-        return ""
-    spots = [found.start() for found in re.finditer(re.escape(want), text)]
-    if not spots or which >= len(spots):
-        return ""
-    at = spots[which]
-    end = spots[which + 1] if which != -1 and which + 1 < len(spots) else len(text)
-    rest = text[at + len(want):end]
-    cut = _NEXT_QUESTION.search(rest)
-    return (rest[: cut.start()] if cut else rest).strip()
-
-
-def _asked_of(span: dict[str, Any]) -> str:
-    attrs = span["attrs"]
-    return gates.extract_question(str(attrs.get("workhorse.gate_question") or "")) or str(attrs.get("activity") or "").strip()
-
-
-def _asking(text: str, asked: str, path: str, waits: list[dict[str, Any]], mine: dict[str, Any] | None) -> int | None:
-    same = [
-        one for one in waits
-        if str(one["attrs"].get("workhorse.gate_path") or "") == path and _asked_of(one) == asked
-        and one["attrs"].get("workhorse.wait_outcome") == "completed"
-    ]
-    if mine is not None and mine not in same:
-        return None
-    total = len(re.findall(re.escape(asked.strip()), text)) if asked.strip() else 0
-    askings = len(same) + (1 if mine is None else 0)
-    position = len(same) if mine is None else same.index(mine)
-    index = position - (askings - total)
-    return index if 0 <= index < total else None
-
-
-_NEXT_QUESTION = re.compile(r"^#{1,2}\s+questions?\s+from\s+the\s+agent\s*$", re.IGNORECASE | re.MULTILINE)
-
-
 def _gate_reading(
     run_id: str, key: str, span: dict[str, Any] | None, standing: dict[str, Any] | None, context: dict[str, Any], read: Callable[[str], str | None],
 ) -> dict[str, Any]:
@@ -868,7 +830,7 @@ def _gate_reading(
     else:
         attrs = span["attrs"]
         path = str(attrs.get("workhorse.gate_path") or "")
-        asked = gates.extract_question(str(attrs.get("workhorse.gate_question") or "")) or str(attrs.get("activity") or "").strip()
+        asked = gates.asked_of(span)
         flow, number, _ = context["placed"].get(span["span_id"], ("", 0, False))
         outcome = str(attrs.get("workhorse.wait_outcome") or "")
         head = {
@@ -880,8 +842,8 @@ def _gate_reading(
         asked = gate_file.latest_question(text)
     answer = ""
     if text and asked:
-        which = _asking(text, asked, path, context["waits"], span)
-        answer = "" if which is None else _answer_after(text, asked, which)
+        which = gates.asking_index(text, asked, path, context["waits"], span)
+        answer = "" if which is None else gates.answer_after(text, asked, which)
     taken = head["state"] != "open"
     if head["state"] == "open" and answer and gate_file.status_of(text or "") in ("ANSWERED", "CONSUMED"):
         head["state"] = "answered"
@@ -940,57 +902,3 @@ def entry(
             if item["kind"] == kind and f"{kind}:{item['span']['span_id']}" == key:
                 return _problem_reading(run_id, key, item, spans, context)
     raise EntryNotFound(key)
-
-
-class SearchFailed(RuntimeError):
-    pass
-
-
-SEARCH_QUERY_CHARS = 200
-SEARCH_LINE_CHARS = 160
-
-
-def _hit_line(text: str, needle: str) -> str:
-    lowered = text.lower()
-    at = lowered.find(needle)
-    if at < 0:
-        return ""
-    start = max(0, at - SEARCH_LINE_CHARS // 4)
-    return " ".join(text[start : start + SEARCH_LINE_CHARS].split())
-
-
-def _entry_lines(entries: list[dict[str, Any]]) -> list[str]:
-    lines: list[str] = []
-    for one in entries:
-        if one["kind"] == "message":
-            lines.extend(one["text"].splitlines())
-        else:
-            lines.append(one.get("summary") or "")
-            lines.extend((one.get("result") or "").splitlines())
-    return lines
-
-
-def search(run_id: str, query: str, live: LiveRows | None = None, pending: bool = False) -> dict[str, Any]:
-    """The turns of this run, and only this run, whose transcript says `query`, each with the first matching line. A turn that cannot be read fails the whole search."""
-    needle = " ".join(query.split())[:SEARCH_QUERY_CHARS].lower()
-    if not needle:
-        return {"run_id": run_id, "query": "", "matches": []}
-    matches: list[dict[str, str]] = []
-    spans = store.run_turn_spans(run_id)
-    archived = _archived(run_id)
-    attempted = _attempts(spans, archived)
-    placed = flows.span_passes(spans)
-    slugs = list(attempted) + [slug for slug, held in (live or {}).items() if slug not in attempted and held]
-    for slug in slugs:
-        try:
-            read = _read_turn(run_id, slug, live, pending, spans, archived, attempted, placed)
-        except TurnNotFound:
-            continue
-        except TurnUnreadable as exc:
-            raise SearchFailed(slug) from exc
-        for line in _entry_lines(read["entries"]):
-            found = _hit_line(line, needle)
-            if found:
-                matches.append({"key": slug, "line": found})
-                break
-    return {"run_id": run_id, "query": needle, "matches": matches}

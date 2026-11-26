@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
+from typing import Any
 
 from markdown_it import MarkdownIt
 
@@ -19,6 +21,7 @@ CONSUMED = "CONSUMED"
 
 _MARKDOWN = MarkdownIt("commonmark")
 _QUESTION_HEADINGS = {"question from the agent", "questions from the agent"}
+_NEXT_QUESTION = re.compile(r"^#{1,2}\s+questions?\s+from\s+the\s+agent\s*$", re.IGNORECASE | re.MULTILINE)
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +51,40 @@ def extract_question(text: str) -> str:
         elif selected and opening.tag in ("h1", "h2"):
             end = min(end, opening.map[0])
     return "\n".join(lines[start:end]).strip()
+
+
+def answer_after(text: str, asked: str, which: int = -1) -> str:
+    want = asked.strip()
+    if not want:
+        return ""
+    spots = [found.start() for found in re.finditer(re.escape(want), text)]
+    if not spots or which >= len(spots):
+        return ""
+    at = spots[which]
+    end = spots[which + 1] if which != -1 and which + 1 < len(spots) else len(text)
+    rest = text[at + len(want):end]
+    cut = _NEXT_QUESTION.search(rest)
+    return (rest[: cut.start()] if cut else rest).strip()
+
+
+def asked_of(span: dict[str, Any]) -> str:
+    attrs = span["attrs"]
+    return extract_question(str(attrs.get("workhorse.gate_question") or "")) or str(attrs.get("activity") or "").strip()
+
+
+def asking_index(text: str, asked: str, path: str, waits: list[dict[str, Any]], mine: dict[str, Any] | None) -> int | None:
+    same = [
+        one for one in waits
+        if str(one["attrs"].get("workhorse.gate_path") or "") == path and asked_of(one) == asked
+        and one["attrs"].get("workhorse.wait_outcome") == "completed"
+    ]
+    if mine is not None and mine not in same:
+        return None
+    total = len(re.findall(re.escape(asked.strip()), text)) if asked.strip() else 0
+    askings = len(same) + (1 if mine is None else 0)
+    position = len(same) if mine is None else same.index(mine)
+    index = position - (askings - total)
+    return index if 0 <= index < total else None
 
 
 def apply_answer(text: str, answer: str) -> str:

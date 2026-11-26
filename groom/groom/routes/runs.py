@@ -16,6 +16,7 @@ from litestar.params import PathParameter, QueryParameter
 
 from groom import (
     activity,
+    activity_search,
     alerts,
     archive,
     banner,
@@ -191,8 +192,8 @@ async def _records(read: Callable, run_id: str, before: str, limit: int, metrics
 
 async def _search(read: Callable, run_id: str, q: str, live: activity.LiveRows, pending: bool) -> dict:
     try:
-        return await read(activity.search, run_id, q, live, pending)
-    except activity.SearchFailed as exc:
+        return await read(activity_search.search, run_id, q, live, pending)
+    except activity_search.SearchFailed as exc:
         raise ServiceUnavailableException(detail="the transcripts could not be searched") from exc
 
 
