@@ -38,7 +38,8 @@ Heading("#pane h2", "Settings")
 | `Field`, `TextArea`, `DateField` | role `textbox` named by the label |
 | `Select` | role `combobox`. A native select or a popup of options (a combobox that opens a `listbox` of `option` entries), driven the same way. A fixed list of choices goes in `options=(...)`, as labels. A list filled from data states what it holds with `lists=` |
 | `Form` | role `form`, `group` or `region` by its accessible name. A form the page draws from data states its fields with `lists=`, each entry a name and a role |
-| `Button`, `Check`, `Heading`, `MenuItem`, `Link`, `Option` | the role of the same name |
+| `Button`, `Check`, `Heading`, `MenuItem`, `Link`, `Option`, `Tab` | the role of the same name |
+| `Image` | role `img` named by its alternative text |
 | `Banner`, `Spinner` | role `alert`, `progressbar` |
 | `Text` | by its text, or by `data-testid` when it has an id |
 
