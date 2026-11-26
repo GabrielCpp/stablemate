@@ -29,7 +29,7 @@ BASE_SKILL_FAMILIES = {
 RESOLVER = REPO / "scripts" / "private_names.py"
 HOOK_NAME = "hooks/pre-commit"
 
-HOOK_MARKERS = ("make farrier-run-hook",)
+HOOK_MARKERS = (".agents/hooks/pre-commit",)
 
 BINARY_SNIFF_BYTES = 8000
 

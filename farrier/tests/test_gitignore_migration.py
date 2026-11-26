@@ -26,11 +26,11 @@ def test_fresh_repo_appends_block():
         for entry in install.AGENTS_GITIGNORE_BLOCK:
             assert entry in lines
         assert _ignored(repo, ".agents/runs/run.json") is True
-        assert _ignored(repo, ".agents/agents-context.json") is True
-        assert _ignored(repo, ".agents/agents-context.claude.json") is True
-        assert _ignored(repo, ".agents/local.compose.yaml") is True
+        assert _ignored(repo, ".agents/agents-context.json") is False
+        assert _ignored(repo, ".agents/agents-context.claude.json") is False
+        assert _ignored(repo, ".agents/local.compose.yaml") is False
         assert _ignored(repo, ".agents/operator/ci-operator.md") is True
-        assert _ignored(repo, ".agents/agents.mk") is True
+        assert _ignored(repo, ".agents/agents.mk") is False
         assert _ignored(repo, ".agents/skills/foo/SKILL.md") is False
         assert _ignored(repo, ".agents/prompts/foo.prompt.md") is False
         assert _ignored(repo, ".agents/templates.yml") is False
@@ -71,7 +71,7 @@ def test_migrates_legacy_wholesale_agents_line():
             assert entry in lines
         assert _ignored(repo, ".agents/runs/run.json") is True
         assert _ignored(repo, ".agents/skills/foo/SKILL.md") is False
-        assert _ignored(repo, ".agents/agents.mk") is True
+        assert _ignored(repo, ".agents/agents.mk") is False
     print("ok: migrates legacy .agents line")
 
 
@@ -115,6 +115,32 @@ def test_migrates_slash_prefixed_block():
     print("ok: migrates slash-prefixed block")
 
 
+def test_install_strips_the_old_ignore_lines_and_keeps_agents_mk_tracked():
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp)
+        _git_init(repo)
+        (repo / ".gitignore").write_text(
+            "node_modules\n\n"
+            ".agents/runs/\n.agents/worktrees/\n.agents/workflows/\n"
+            ".agents/operator/\n.agents/local.compose.yaml\n"
+            ".agents/agents-context.json\n.agents/agents-context.*.json\n"
+            ".agents/agents.mk\n"
+        )
+        assert install.ensure_agents_gitignore(repo) is True
+        lines = (repo / ".gitignore").read_text().splitlines()
+        for gone in (
+            ".agents/agents.mk",
+            ".agents/workflows/",
+            ".agents/local.compose.yaml",
+            ".agents/agents-context.json",
+            ".agents/agents-context.*.json",
+        ):
+            assert gone not in lines
+        assert _ignored(repo, ".agents/agents.mk") is False
+        assert _ignored(repo, ".agents/runs/run.json") is True
+    print("ok: strips the old ignore lines")
+
+
 if __name__ == "__main__":
     test_fresh_repo_appends_block()
     test_block_entries_carry_no_leading_slash()
@@ -122,4 +148,5 @@ if __name__ == "__main__":
     test_migrates_legacy_wholesale_agents_line()
     test_migrates_exclude_list_block()
     test_migrates_slash_prefixed_block()
+    test_install_strips_the_old_ignore_lines_and_keeps_agents_mk_tracked()
     print("\nall gitignore-migration tests passed")

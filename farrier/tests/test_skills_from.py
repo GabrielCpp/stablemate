@@ -14,6 +14,7 @@ from farrier._vendor.stablemate_core.schema.manifest import (
 )
 from farrier.agents import parse_agents
 from farrier.install import main
+from farrier.state import repo_state_dir
 
 LINKED = "agents:\n  codex: true\n  claude:\n    skills_from: codex\n"
 
@@ -355,7 +356,8 @@ def test_a_harness_that_takes_prompts_gets_no_link_to_their_skill_form(
     assert (repo / ".claude/commands/acme-ship.md").is_file()
     assert (repo / ".claude/skills/acme-db").is_symlink()
     assert not (repo / ".claude/skills/acme-ship").exists()
-    assert (repo / ".agents/agents-context.claude.json").is_file()
+    assert (repo_state_dir(repo) / "agents-context.claude.json").is_file()
+    assert not (repo / ".agents/agents-context.claude.json").exists()
 
 
 def test_a_codex_prompt_from_an_earlier_install_is_swept(tmp_path: Path) -> None:

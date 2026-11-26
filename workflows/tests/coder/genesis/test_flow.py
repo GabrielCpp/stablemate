@@ -14,6 +14,7 @@ from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
+from workhorse.manifest import context_dir
 
 from workhorse_workflows.coder.genesis.flow import Genesis
 from workhorse_workflows.coder.genesis import nodes as genesis_nodes
@@ -59,7 +60,7 @@ class _Farrier:
         if args[1] == "install":
             if not self.install_ok:
                 return subprocess.CompletedProcess(args, 1, "", "no packs resolved")
-            ctx = target / ".agents" / "agents-context.json"
+            ctx = context_dir(target) / "agents-context.json"
             ctx.parent.mkdir(parents=True, exist_ok=True)
             ctx.write_text(json.dumps(
                 {"instructions": {"api": ["go-service.md"]} if self.instructions else {}}))
@@ -139,7 +140,7 @@ def test_a_bare_directory_becomes_a_repo_the_main_loop_will_accept(
     assert (target / ".git").is_dir()
     assert (target / "api" / "go.mod").read_text() == "module example.com/api\n"
     assert (epics_root()).is_dir()
-    assert json.loads((target / ".agents" / "agents-context.json").read_text())["instructions"]
+    assert json.loads((context_dir(target) / "agents-context.json").read_text())["instructions"]
 
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=target, capture_output=True,
                           text=True, check=True)

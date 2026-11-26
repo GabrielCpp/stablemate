@@ -10,5 +10,6 @@
 # Bypass:  git commit --no-verify
 set -eu
 # >>> farrier: hooks (generated) >>>
-make farrier-run-hook
+root=$(git rev-parse --show-toplevel)
+[ ! -x "$root/.agents/hooks/pre-commit" ] || "$root/.agents/hooks/pre-commit" "$@"
 # <<< farrier: hooks <<<

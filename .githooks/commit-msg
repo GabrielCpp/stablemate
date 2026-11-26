@@ -2,5 +2,5 @@
 set -euo pipefail
 # >>> farrier: hooks (generated) >>>
 root=$(git rev-parse --show-toplevel)
-if [ -x "$root/.agents/hooks/commit-msg" ]; then "$root/.agents/hooks/commit-msg" "$1"; fi
+[ ! -x "$root/.agents/hooks/commit-msg" ] || "$root/.agents/hooks/commit-msg" "$@"
 # <<< farrier: hooks <<<

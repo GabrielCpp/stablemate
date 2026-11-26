@@ -12,6 +12,9 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from workhorse._vendor.stablemate_core.base_cache import farrier_state_dir, repo_state_name
+from workhorse._vendor.stablemate_core.config import ConfigError
+from workhorse._vendor.stablemate_core.manifest import read_manifest
 from workhorse._vendor.stablemate_core.profiles import resolve_default_cli
 
 _REPO_ROOT = "_repo_root"
@@ -22,7 +25,7 @@ def _text(value: Any) -> str:
 
 
 class ContextManifest(BaseModel):
-    """The `.agents/agents-context.json` farrier writes, as we read it."""
+    """The `agents-context.json` farrier writes into its per-repo state folder, as we read it."""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -85,6 +88,20 @@ def build_manifest_context(raw: dict[str, Any], *, repo_root: str | None = None)
     return ContextManifest.model_validate(raw).project(repo_root=Path(repo_root))
 
 
+def context_dir(repo_dir: Path | None = None) -> Path:
+    """The folder the manifests are read from: the run's own copy in a container, else the repo's state folder."""
+    staged = os.environ.get("AGENT_CONTEXT_DIR")
+    if staged and repo_dir is None:
+        return Path(staged)
+    repo_dir = repo_dir or Path(os.environ.get("AGENT_REPO_DIR") or ".")
+    try:
+        manifest = read_manifest(repo_dir)
+    except ConfigError:
+        manifest = None
+    configured = manifest.repo.name if manifest is not None else None
+    return farrier_state_dir(repo_state_name(repo_dir, configured))
+
+
 def load_context_manifest(context_file: str | None) -> ManifestContext:
     """Load the per-repo farrier context manifest that library prompts render against."""
     if context_file:
@@ -92,16 +109,15 @@ def load_context_manifest(context_file: str | None) -> ManifestContext:
         if not path.is_file():
             print(
                 f"error: --context-file not found: {path}\n"
-                "Run `make agent-install` to generate .agents/agents-context.json.",
+                "Run `make agent-install` to generate agents-context.json.",
                 file=sys.stderr,
             )
             sys.exit(1)
     else:
-        repo_dir = os.environ.get("AGENT_REPO_DIR", ".")
-        agents_dir = Path(repo_dir) / ".agents"
+        state_dir = context_dir()
         cli = (os.environ.get("AGENT_CLI") or resolve_default_cli()).strip().lower()
-        per_cli = agents_dir / f"agents-context.{cli}.json"
-        path = per_cli if per_cli.is_file() else agents_dir / "agents-context.json"
+        per_cli = state_dir / f"agents-context.{cli}.json"
+        path = per_cli if per_cli.is_file() else state_dir / "agents-context.json"
         if not path.is_file():
             return ManifestContext()
     try:
@@ -119,5 +135,6 @@ __all__ = [
     "ContextManifest",
     "ManifestContext",
     "build_manifest_context",
+    "context_dir",
     "load_context_manifest",
 ]

@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import shlex
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from fnmatch import fnmatch
 from pathlib import Path
 
@@ -26,6 +26,7 @@ from farrier.hook_managers import (
 from farrier.launcher import (
     LAUNCHER_AGENTS_MK,
     LAUNCHER_CONTEXT_MANIFEST,
+    LEGACY_CONTEXT_GLOB,
 )
 from farrier.managed_blocks import (
     GATE_SCRIPT,
@@ -75,7 +76,6 @@ from farrier.home_guards import (
     guard_names,
 )
 from farrier.sources import (
-    POLICY_ROOT,
     Source,
     build_policy_lookup,
     collect_selection,
@@ -136,8 +136,13 @@ def normalize_agents(config: ConfigLike) -> Agents:
 
 def is_assumed_owned(repo: Path, path: Path, managed: Managed = REPO_MANAGED) -> bool:
     """True when *path* is one farrier owns by convention rather than by a mark."""
-    rel = path.relative_to(repo).as_posix()
-    return any(fnmatch(rel, pattern) for pattern in managed.assumed)
+    rel = shown(repo, path)
+    return repo in path.parents and any(fnmatch(rel, pattern) for pattern in managed.assumed)
+
+
+def shown(repo: Path, path: Path) -> str:
+    """*path* as a report names it: repo-relative inside the repo, absolute outside."""
+    return (path.relative_to(repo) if repo in path.parents else path).as_posix()
 
 
 def sweeps_clean(path: Path, repo: Path) -> bool:
@@ -188,7 +193,7 @@ def conflicts(
                 and not is_owned(path, repo)
             )
         if is_held:
-            held.append(path.relative_to(repo).as_posix())
+            held.append(shown(repo, path))
     return sorted(held)
 
 
@@ -412,7 +417,6 @@ def render_expected(
     policy_names = [
         name for instruction in instructions for name in instruction.policies
     ]
-    outputs.update(renderer.policy_bundles(policy_names))
     renderer.check_resolved()
 
     manager = configured_manager(config, repo)
@@ -536,11 +540,13 @@ def selected_hooks(prefix: str, skills) -> list[SkillHook]:
 
 
 def policy_hooks(policies) -> list[SkillHook]:
-    """Every hook the selected policies declare, run from their installed folders."""
+    """Every hook the selected policies declare, run from wherever farrier finds the policy."""
     hooks: list[SkillHook] = []
     for source in policies:
         data = frontmatter_mapping(source.path.read_text(encoding="utf-8"))
-        hooks.extend(hooks_for(library_name(source), data, (POLICY_ROOT,)))
+        hooks.extend(
+            replace(hook, policy=True) for hook in hooks_for(library_name(source), data)
+        )
     return hooks
 
 
@@ -618,7 +624,7 @@ def commit_checks(
 ) -> list[ListedCheck]:
     """Every commit check that applies to *repo*: its skills', its policies', then the user library's.
 
-    A check runs from its installed copy, or from the library when nothing is installed yet.
+    A skill's check runs from its installed copy, or from the library when nothing is installed yet. A policy's check runs from the library.
     """
     repo_skills, user_only = _split_selection(config, home_config)
     listed: dict[tuple[str, str], ListedCheck] = {}
@@ -628,11 +634,10 @@ def commit_checks(
             listed.setdefault(
                 (check.owner, check.run), _listed(check, repo_folders, source)
             )
-    policy_folders = [repo / POLICY_ROOT]
     for source in selected_policies(config):
         for check in _source_checks("", source):
             listed.setdefault(
-                (check.owner, check.run), _listed(check, policy_folders, source)
+                (check.owner, check.run), _listed(check, [], source)
             )
     for harness, skills in user_only.items():
         folders = [home / user_harness_dir(harness) / "skills"]
@@ -666,7 +671,7 @@ def check_outputs(
     changed: list[Drifted] = []
     extra: list[str] = []
     for path, content in outputs.items():
-        rel = path.relative_to(repo).as_posix()
+        rel = shown(repo, path)
         if isinstance(content, Symlink):
             if not (path.is_symlink() or path.exists()):
                 missing.append(rel)
@@ -693,6 +698,10 @@ def check_outputs(
     named = list(managed.files)
     if managed.repo_scaffolding:
         named.append(LAUNCHER_CONTEXT_MANIFEST)
+        named.extend(
+            path.relative_to(repo).as_posix()
+            for path in sorted(repo.glob(LEGACY_CONTEXT_GLOB))
+        )
     for rel in named:
         path = repo / rel
         if path not in expected_paths and path.is_file():

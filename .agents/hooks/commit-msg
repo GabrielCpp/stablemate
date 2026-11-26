@@ -16,8 +16,8 @@ fi
 export STABLEMATE_CACHE_DIR
 
 # commit-and-push
-for gate in "$root/.agents/policies/commit-and-push/scripts/check_commit_message.py"; do
-  [ -f "$gate" ] || continue
+dir=$(farrier policies path commit-and-push 2>/dev/null || true)
+gate="$dir/scripts/check_commit_message.py"
+if [ -n "$dir" ] && [ -f "$gate" ]; then
   python3 "$gate" "$@"
-  break
-done
+fi

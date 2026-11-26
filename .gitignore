@@ -237,9 +237,4 @@ services/**/index.tsv
 
 .agents/runs/
 .agents/worktrees/
-.agents/workflows/
 .agents/operator/
-.agents/local.compose.yaml
-.agents/agents-context.json
-.agents/agents-context.*.json
-.agents/agents.mk

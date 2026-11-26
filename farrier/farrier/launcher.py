@@ -5,8 +5,8 @@ from __future__ import annotations
 LAUNCHER_AGENTS_MK = ".agents/agents.mk"
 LAUNCHER_CONTEXT_MANIFEST = ".agents/agents-context.json"
 LAUNCHER_CONTEXT_MANIFEST_FMT = ".agents/agents-context.{}.json"
+LEGACY_CONTEXT_GLOB = ".agents/agents-context.*.json"
 LAUNCHER_ROOT_MAKEFILE = "Makefile"
-LAUNCHER_COMPOSE = ".agents/local.compose.yaml"
 
 
 _HEADER = """# Agent launcher — farrier adapter regeneration + containerized runs (generated).
@@ -19,7 +19,7 @@ _HEADER = """# Agent launcher — farrier adapter regeneration + containerized r
 # Usage:
 #   make agent-install             # regenerate the agent adapters from the library
 #   make agent-check               # verify adapters are up to date (no writes)
-#   make farrier-run-hook          # what the repo's pre-commit hook invokes
+#   make farrier-run-hook          # the pre-commit checks the installed skills own
 #   make agent-workflows           # what this machine can run, and where it came from
 #   make agent-run-<workflow>      # run one, in its own container
 #
@@ -119,6 +119,7 @@ define agent_launch
 	$(agent_stage_credentials) \\
 	$(agent_stage_config) \\
 	$(agent_share_with_container) \\
+	$(agent_stage_context) \\
 	echo "[agent] workflow  : $(1)"; \\
 	test -z "$(PROFILE)" || echo "[agent] profile   : $(PROFILE) (from $$run_config)"; \\
 	echo "[agent] run id    : $$run_id"; \\
@@ -136,6 +137,7 @@ define agent_launch
 	AGENT_SOURCE_MODE=worktree \\
 	AGENT_WORKTREE_ROOT="$$worktree_root" \\
 	AGENT_REPO_DIR="$$worktree_root/$$repo_name" \\
+	AGENT_CONTEXT_DIR="$$run_context" \\
 	REPO_URL="$(AGENT_REPO)" \\
 	REPO_NAME="$$repo_name" \\
 	REPO_BRANCH="$(AGENT_BASE_BRANCH)" \\
@@ -213,6 +215,13 @@ define agent_share_with_container
 		echo "[agent]   container's commits stay writable from the host)"; \\
 	fi; \\
 	chmod g+s "$$worktree_root";
+endef
+
+define agent_stage_context
+	run_context="$$worktree_root/context"; \\
+	mkdir -p "$$run_context"; \\
+	state_dir="$$($(FARRIER) state-dir --repo "$(AGENT_REPO)")"; \\
+	cp "$$state_dir"/agents-context*.json "$$run_context"/ 2>/dev/null || true;
 endef
 
 # RUN names a launched run by its compose project (`<workflow>-<run-id>`), which is
