@@ -136,11 +136,34 @@ def check_milestone(graph: Graph, milestone: Milestone) -> list[Finding]:
 
 
 def check_milestones(graph: Graph, f: list[Finding]) -> None:
-    """Layout, then the readiness check of every milestone."""
+    """Layout, the milestones this checkout does not read, then the readiness check of every milestone."""
     check_layout(graph, f)
+    check_unread(graph, f)
     for milestone in graph.milestones:
         f.extend(check_milestone(graph, milestone))
         f.extend(check_epic_list(graph, milestone))
+
+
+def check_unread(graph: Graph, f: list[Finding]) -> None:
+    """The milestones of other products, when the product read from here holds none: an error for each approved one."""
+    mroot = graph.doc_roots.get("milestones")
+    if mroot is None or mroot.is_dir():
+        return
+    for path in sorted(mroot.parent.parent.glob(f"*/{mroot.name}/*/{registry.MILESTONE_FILE}")):
+        try:
+            fm = dict(read_doc(path).frontmatter or {})
+        except OSError:
+            continue
+        if registry.base_type(registry.type_of(fm)) != "milestone":
+            continue
+        rel = _rel(graph, path)
+        product = path.parent.parent.parent.name
+        f.append(Finding(
+            "error" if str(fm.get("status") or "") in BLOCKING_STATUSES else "warn", "milestone-not-read",
+            f"{rel}: this milestone of product `{product}` is not read from here, where the product is "
+            f"`{mroot.parent.name}`, so nothing checked it and Author will not find it. Run from the "
+            f"code checkout whose manifest sets `book.product: {product}`",
+            path=rel, line=1, ref=path.parent.name))
 
 
 def check_epic_list(graph: Graph, milestone: Milestone) -> list[Finding]:

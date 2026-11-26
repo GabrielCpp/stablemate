@@ -289,3 +289,21 @@ def test_create_milestone_writes_the_folder_with_every_section_as_a_stub(tmp_pat
     assert crud.create_milestone(load(tmp_path), "sign-in", "Again").ok is False
     [milestone] = load(tmp_path).milestones
     assert (milestone.name, milestone.status) == ("0001-sign-in", "proposed")
+
+
+def test_an_approved_milestone_of_a_product_this_checkout_does_not_read_is_an_error(repo: Path):
+    elsewhere = milestones_root(repo).parent.parent / "other-product" / "milestones" / "0001-sign-in" / "milestone.md"
+    write(elsewhere, milestone_md("approved"))
+    write(elsewhere.parent.parent / "0002-later" / "milestone.md", milestone_md("proposed"))
+
+    found = [f for f in doctor.run(load(repo)).findings if f.code == "milestone-not-read"]
+
+    assert [(f.severity, f.ref) for f in found] == [("error", "0001-sign-in"), ("warn", "0002-later")]
+    assert "book.product: other-product" in found[0].message
+
+
+def test_another_products_milestones_are_not_flagged_when_this_product_has_its_own(repo: Path):
+    put(repo, "sign-in")
+    write(milestones_root(repo).parent.parent / "other-product" / "milestones" / "0001-x" / "milestone.md", milestone_md())
+
+    assert [f for f in doctor.run(load(repo)).findings if f.code == "milestone-not-read"] == []
