@@ -19,6 +19,7 @@ CACHE_WRITE_MULTIPLIER = 2.0
 PRICES_FILE_ENV = "GROOM_PRICES"
 
 _DATE_SUFFIX = re.compile(r"-\d{8}$")
+_EFFORT_SUFFIX = re.compile(r"-(?:low|medium|high|xhigh|thinking)$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +65,8 @@ DEFAULT_PRICES: dict[str, Price] = {
     "gpt-6.2-astra": Price(input=8.00, output=40.00, cache_read=0.40, cache_write=10.00),
     "gpt-6.2-sol": Price(input=2.00, output=10.00, cache_read=0.10, cache_write=2.50),
     "gpt-6.1-terra": Price(input=1.00, output=5.00, cache_read=0.05, cache_write=1.25),
+    "gemini-4-hydrogen": Price(input=1.50, output=7.50, cache_read=0.075, cache_write=1.50),
+    "gemini-3.8-flash": Price(input=0.75, output=3.75, cache_read=0.075, cache_write=0.75),
 }
 
 _table: dict[str, Price] | None = None
@@ -127,7 +130,7 @@ def price_for(model: str) -> Price | None:
     rates = table()
     name = _normalize(model)
     while name:
-        found = rates.get(name)
+        found = rates.get(name) or rates.get(_EFFORT_SUFFIX.sub("", name))
         if found is not None:
             return found
         _route, sep, tail = name.partition("/")

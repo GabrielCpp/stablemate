@@ -106,6 +106,17 @@ def test_the_gpt_6_astra_model_prices_as_its_explicit_row():
         )
 
 
+def test_an_antigravity_turn_prices_as_the_model_its_effort_suffix_names():
+    with _env():
+        tokens = {"input_tokens": 18_424, "output_tokens": 28, "cache_read_input_tokens": 14_040}
+        store.insert_spans([_turn("a" * 16, "gemini-3.8-flash-low", tokens)])
+        assert _est("a" * 16) == (18_424 * 0.75 + 28 * 3.75 + 14_040 * 0.075) / 1e6
+        assert _priced_model("a" * 16) == "gemini-3.8-flash-low"
+        for model in ("gemini-4-hydrogen-xhigh", "claude-opus-4-6-thinking"):
+            assert prices.price_for(model) == prices.price_for(model.rsplit("-", 1)[0])
+            assert prices.price_for(model) is not None
+
+
 def test_the_override_file_extends_and_corrects_the_built_in_table():
     with _env('[models."acme/fast-1"]\ninput = 2.0\noutput = 8.0\n'):
         added = prices.price_for("acme/fast-1")
