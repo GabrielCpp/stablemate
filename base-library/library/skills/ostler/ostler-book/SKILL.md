@@ -38,7 +38,29 @@ case in front of you.
   holds only the why, so a decision links to the element by name and never restates a shape or
   a status the Python declares.
 - **About the product.** A book covers what the product does. Concurrency and restart belong to
-  the app's own tests, and a driver waits on an event the app emits, never on a timer.
+  the app's own tests, and a driver waits on an event the app emits, never on a timer. The one
+  concurrency the book meets is a call the app asks to send again, below.
+
+## A call the app asks to send again
+
+An app may refuse a call with a signal its contract documents as "send it again": a conflict
+status whose message says the record changed, a 409 that names a stale version, a 503 with
+`Retry-After`. Any real client of the app sends again on that signal, so the book's client does.
+
+- The retry lives in the client's `transport`, so every step, cell, arrangement and watch read
+  sends the same way. [references/retry-on-conflict.md](references/retry-on-conflict.md) holds the shape.
+- It fires on that exact signal, status and message together, for a few attempts, and then the
+  last answer stands.
+- It never sleeps. A `Retry-After` is the one wait allowed, for the time the app names, and
+  only where the client can read it: `transport` sees the status and body, not headers.
+- A file under `decisions/` names the race and the signal, with `elements:` listing the client.
+- A refusal the app does not document as retryable is never retried. It is an app finding for the
+  report, like any other divergence.
+
+A play that passes only some of the time points to a race. Before the book's final commit, play it
+three times, reseeding between plays when the book has a reseed. When a result changes between
+plays, find the call that differs. The app's documented signal on it means the rule above applies.
+No such signal means an app finding, reported and never masked.
 
 ## The package
 

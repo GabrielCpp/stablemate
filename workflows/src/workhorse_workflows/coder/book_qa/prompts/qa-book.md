@@ -103,7 +103,8 @@ earlier assumption in the story, the book or a finding. Do not raise the same bl
    0. Never run the whole book yourself: the workflow plays only what the diff selects. Run one at a time. Exit 3 means the environment is not
    healthy. Report `blocked` and repair nothing.
 9. **Stay in the book.** Edit only under `{{ workhorse_var('service_books') }}/<name>/` of the covered services. Put no
-   sleep, timer or retry loop in the book.
+   sleep, timer or retry loop in the book, except the wire retry on a signal the app documents as "send it again",
+   which the skill's rule on that call holds.
    No document pass runs after this turn, so you keep every touched endpoint's `source=` pointers current with the code the story changed.
 10. **Leave the register alone.** `{{ workhorse_var('service_books') }}/<name>/UNDERSPECIFIED.md` is the product owner's list of
     fields the book models no dimension for. A scheduled whole play, outside any story, adds a finding there when it lies

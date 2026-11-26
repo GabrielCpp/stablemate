@@ -109,6 +109,9 @@ the book or the app is wrong. A wrong book gets fixed. A wrong app gets an entry
 `DISAGREEMENTS.md` and the cell keeps what the source intends. A cell whose intent no source
 settles gets an entry in `UNDERSPECIFIED.md`.
 
+A play that passes on one run and fails on the next is a race. Play the book three times before you
+finish and apply the skill's rule on a call the app asks to send again.
+
 Do not commit. Reply with one JSON object and nothing else. `done` says what the book now
 covers. `blocked` says, only when you could not finish, what an operator must decide or fix. Any
 text in it stops the run for the operator, so a finished book leaves it empty. A defect of the
