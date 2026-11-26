@@ -760,8 +760,11 @@ def shape_faults(service: Service[Any]) -> list[Finding]:
             where = f"screen {screen.__name__}.{attribute}"
             if component.kind in ("field", "textarea", "date") and component.holds is None:
                 found.append(Finding(where, "a person fills it and it states no shape, so no input is tried on it: give it takes= and holds="))
-            elif component.kind == "select" and component.holds is None and not component.options and component.lists is None:
-                found.append(Finding(where, "a person picks in it and it states neither its options, what its list holds, nor a shape"))
+            elif (component.kind == "select" and component.holds is None and not component.options and component.lists is None
+                  and not component.unlisted):
+                found.append(Finding(where, "a person picks in it and it states neither its options, what its list holds, nor a shape: "
+                                     "give it options=(...), lists=Lists(...), or unlisted=\"<why>\" when its choices come from data "
+                                     "the book does not compare"))
     return found
 
 

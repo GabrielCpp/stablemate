@@ -165,6 +165,7 @@ class Component:
     takes: str = ""
     holds: Wire | None = None
     lists: Lists | None = None
+    unlisted: str = ""
 
     def __post_init__(self) -> None:
         if self.id is None and self.label is None:
@@ -177,6 +178,7 @@ class Component:
         label = f" {self.label[lang]!r}" if self.label else ""
         opts = "  options: " + ", ".join(o[lang] for o in self.options) if self.options else ""
         opts = f"  lists: {self.lists.says(lang)}" if self.lists is not None else opts
+        opts = f"  choices unlisted: {self.unlisted}" if self.unlisted else opts
         row = " (per row)" if self.per_row else ""
         holds = f"  holds {self.holds.describe()} as {self.takes}" if self.holds is not None else ""
         return f"{self.found_by(lang):18} {self.kind:9}{label}{row}  {self.does}{opts}{holds}".rstrip()
@@ -204,7 +206,9 @@ def DateField(id: str | None, label: T | str, does: str = "", takes: str = "", h
 
 
 def Select(id: str | None, label: T | str, does: str = "", takes: str = "", holds: Wire | None = None, *,
-           options: tuple[T | str, ...] = (), lists: Lists | None = None) -> Component:
+           options: tuple[T | str, ...] = (), lists: Lists | None = None, unlisted: str = "") -> Component:
+    """A picker. `options` are its fixed choices, `lists` says what data fills it, and `unlisted="<why>"` says why
+    the book states neither, such as choices that come from records of the signed-in account."""
     if not isinstance(does, str):
         raise TypeError("options are given by name: Select(id, label, does, options=(...))")
     if isinstance(options, (str, T)):
@@ -212,8 +216,10 @@ def Select(id: str | None, label: T | str, does: str = "", takes: str = "", hold
     if options and lists is not None:
         raise BookError(f"a select with fixed options cannot also derive its list: write options=(...) for a fixed list "
                         f"or lists=Lists(...) for one filled from data, not both ({id or label})")
+    if unlisted and (options or lists is not None or holds is not None):
+        raise BookError(f"a select whose choices are unlisted states no options, list or shape ({id or label})")
     return Component(id, "select", as_label(label), does, tuple(T(o) if isinstance(o, str) else o for o in options),
-                     takes=takes, holds=holds, lists=lists)
+                     takes=takes, holds=holds, lists=lists, unlisted=unlisted)
 
 
 def Form(id: str | None, label: T | str, does: str = "", *, lists: Lists | None = None) -> Component:

@@ -479,7 +479,18 @@ def test_the_check_names_a_field_that_states_no_shape():
 
 def test_the_check_names_a_select_that_states_no_options_no_list_and_no_shape():
     found = _faults_of(who=Select(None, "Who"))
-    assert found == [("screen Bare.who", "a person picks in it and it states neither its options, what its list holds, nor a shape", True)]
+    assert found == [("screen Bare.who", "a person picks in it and it states neither its options, what its list holds, nor a shape: "
+                      "give it options=(...), lists=Lists(...), or unlisted=\"<why>\" when its choices come from data the book does not compare",
+                      True)]
+
+
+def test_a_select_whose_choices_are_unlisted_with_a_why_gets_no_finding():
+    assert _faults_of(site=Select(None, "Site", unlisted="the sites of the signed-in account")) == []
+
+
+def test_a_select_cannot_be_unlisted_and_state_its_options():
+    with pytest.raises(BookError, match="unlisted states no options"):
+        Select(None, "Site", options=("north",), unlisted="the sites of the signed-in account")
 
 
 def test_a_select_that_states_its_options_gets_no_finding():
