@@ -81,6 +81,14 @@ looks wrong but is the app's behaviour, such as a 500 a malformed id earns. An e
 declares each status once. A status the app gives in two forms, such as a 401 with a detail
 and one without, is one shape whose differing field is optional.
 
+A redirect is an answer too, never followed. Declare it as `Answer(302, None, means)`. The run
+reads a 3xx as a refusal whose message is its `Location`: the path and query when it stays on a
+host the environment declares, else the whole address. So the rule that sends a signed-out caller
+away is `Rule("/auth/logout", applies, 302)`, and an endpoint whose gate does it sets
+`unauthenticated = 302`. A call the model does not carry, such as a sign-out that always sends
+the caller elsewhere, is claimed in a journey step as `Refused(SignOut(), 302, "/auth/login")`.
+Its body is not read.
+
 ## Shapes
 
 Declare each body once in `endpoints/shapes.py` and reuse it.
