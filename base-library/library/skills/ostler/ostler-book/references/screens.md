@@ -389,7 +389,9 @@ Each step runs on the model and in the page, and the rows the page then shows ar
 with the model's. A refusal is the message the page shows, so the model's rule carries the
 app's words. After each step the runtime fails the step if the page sent a request under `api`
 that no screen's `sends` declares. With `api = "/api"` that judges the app's gateway endpoints. The data
-handed with a page and the form actions are not under it, so they are never strays. `check` builds every screen in each declared language and every
+handed with a page and the form actions are not under it, so they are never strays. Only a request to a
+host the environment declares is judged. A call to a third party, such as an error reporter's
+`/api/<project>/envelope/`, is never a stray and no screen declares it. `check` builds every screen in each declared language and every
 interaction. `run` plays the journeys, then the lifecycle cells.
 
 A web run records a video of each journey and each cell arrangement under `<out>/videos`. It keeps
