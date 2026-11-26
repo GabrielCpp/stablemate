@@ -62,6 +62,8 @@ ROLES = {
     "option": "option",
     "banner": "alert",
     "spinner": "progressbar",
+    "tab": "tab",
+    "image": "img",
 }
 
 
@@ -260,6 +262,15 @@ def Link(id: str | None, label: T | str, does: str = "") -> Component:
 
 def Option(id: str | None, label: T | str, does: str = "") -> Component:
     return Component(id, "option", as_label(label), does)
+
+
+def Tab(id: str | None, label: T | str, does: str = "") -> Component:
+    return Component(id, "tab", as_label(label), does)
+
+
+def Image(id: str | None, label: T | str, does: str = "") -> Component:
+    """An image found by its alternative text."""
+    return Component(id, "image", as_label(label), does)
 
 
 @dataclass(frozen=True)

@@ -27,7 +27,7 @@ from ostler.book.outcome import Refusal, Refusals
 from ostler.book.stack import Stack
 from ostler.book.surface import Surface
 from ostler.book.browser import request
-from ostler.book.screen import Button, Check, Field, Lists, Select, Text
+from ostler.book.screen import Button, Check, Field, Image, Lists, Select, Tab, Text
 
 PAGE = b"""<!doctype html><html><body>
 <h1 id="hello">Hello</h1>
@@ -40,6 +40,8 @@ PAGE = b"""<!doctype html><html><body>
 <ul><li>first <button onclick="document.getElementById('echo').textContent = 'first'">Pick</button></li>
 <li>second <button onclick="document.getElementById('echo').textContent = 'second'">Pick</button></li></ul>
 <p id="echo" data-testid="echo"></p>
+<div role="tablist"><button role="tab" aria-selected="true">Summary</button></div>
+<img src="data:," alt="Site logo">
 </body></html>"""
 
 
@@ -93,6 +95,12 @@ def test_the_browser_finds_types_and_reads_by_role_and_name(browser: Browser):
     assert browser.offered(Form.who) == ["", "ana"]
     assert browser.visible(Form.agree)
     assert not browser.disabled(Form.go)
+
+
+def test_the_browser_finds_a_tab_by_its_name_and_an_image_by_its_alternative_text(browser: Browser):
+    assert browser.visible(Tab(None, "Summary"))
+    assert browser.visible(Image(None, "Site logo"))
+    assert not browser.visible(Tab(None, "Details"))
 
 
 def test_an_input_typed_one_character_past_its_limit_cannot_be_reached(browser: Browser):
