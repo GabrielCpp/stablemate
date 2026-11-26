@@ -41,8 +41,10 @@ average. Raw turn count tells you a node is *busy*; this tells you it is
 **Cost coverage is not uniform, and the unit is harness × _provider_.** codex reports
 no money at all under subscription auth. opencode reports real money through OpenRouter
 and a literal `0` through a subscription provider — the same CLI, the same event shape,
-because cost belongs to the provider behind it. copilot reports neither cost nor tokens
-at all (it bills in premium requests).
+because cost belongs to the provider behind it. copilot bills in AI credits at $0.01
+each, and workhorse records each call's `totalNanoAiu` from the session log as dollars.
+A legacy annual plan that bills in premium requests reports no credits, so its turns
+stay unpriced.
 
 The two ways of not pricing a turn differ in how visible they are. Nothing-reported is
 recorded as absent rather than a fabricated `0.0`, so it is excluded from the sum and

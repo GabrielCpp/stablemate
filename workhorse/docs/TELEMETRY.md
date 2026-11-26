@@ -192,7 +192,8 @@ verified against live turns:
 | opencode | OpenRouter | yes | yes — real money |
 | opencode | subscription OAuth | yes | **a literal `0`** |
 | codex | subscription auth | yes | **none reported** |
-| copilot | — | **none** | **none** — bills in *premium requests* |
+| copilot | AI credits | yes, from the session log | yes — `totalNanoAiu` at $0.01 a credit |
+| copilot | legacy annual plan | yes, from the session log | **none** — bills in *premium requests* |
 
 The two ways of not pricing a turn are not equally visible, and the second is the
 dangerous one:
