@@ -156,7 +156,7 @@ def _insert_pending(rows: list[tuple[str, str, str, str, float]]) -> None:
 @resilient
 def _forget_ended(run_ids: list[str]) -> None:
     with STORE.writing() as conn:
-        conn.executemany("UPDATE run_summary SET ended_ts = NULL WHERE run_id = ?", [(run_id,) for run_id in run_ids])
+        conn.executemany("UPDATE run_summary SET ended_ts = NULL, ending = '', error_class = '', failing_node = '' WHERE run_id = ?", [(run_id,) for run_id in run_ids])
 
 
 def discover(now: float | None = None) -> list[str]:
@@ -184,7 +184,7 @@ def discover(now: float | None = None) -> list[str]:
         if row["state"] == PENDING or abs(float(row["last_ts"]) - last_ts) > 1e-6 or (row["ending"] in STOPPED and row["resume_read"] < RESUME_READ):
             if ended or silent:
                 wanted.append((last_ts, run_id))
-            elif row["ended_ts"] is not None:
+            elif row["ended_ts"] is not None or row["ending"]:
                 returned.append(run_id)
         elif row["ended_ts"] is None and silent:
             wanted.append((last_ts, run_id))

@@ -144,6 +144,29 @@ def test_a_run_that_continues_after_a_resume_leaves_history_and_returns_with_its
     assert after["turns"] == before["turns"] + 1
 
 
+def _resume_live(run: str, now: float, clear_ended_ts: bool) -> tuple[dict | None, list[str]]:
+    base = now - 6000
+    seed(run, base, "aborted", costs=(1.0,))
+    refresh(now)
+    with history.STORE.writing() as conn:
+        conn.execute("UPDATE run_summary SET failing_node = 'stamp_specs', error_class = 'Boom' WHERE run_id = ?", (run,))
+        if clear_ended_ts:
+            conn.execute("UPDATE run_summary SET ended_ts = NULL WHERE run_id = ?", (run,))
+    store.insert_spans([span(run + "-b", run + "-t2", run + "-r2", "dev", "agent_turn", now - 30, 5, turn(SONNET, 5, 1.0), 2, run)])
+    returned = history.discover(now)
+    return history.stored(run), returned
+
+
+@pytest.mark.parametrize("clear_ended_ts", [False, True])
+def test_a_resumed_run_loses_the_ending_and_failing_node_it_ended_with(clear_ended_ts: bool) -> None:
+    with _DB():
+        row, returned = _resume_live("run-live", time.time(), clear_ended_ts)
+    assert row is not None
+    assert row["ended_ts"] is None
+    assert (row["ending"], row["error_class"], row["failing_node"]) == ("", "", "")
+    assert "run-live" not in returned
+
+
 def test_a_run_with_no_ending_is_listed_after_forty_eight_hours_of_silence_at_its_last_record() -> None:
     now = time.time()
     base = now - 100 * 3600
