@@ -27,6 +27,7 @@ from ostler.book.landing import judge
 from ostler.book.model import Defect, Model
 from ostler.book.owners import Owners
 from ostler.book.outcome import CannotReach, Done, Flawed, Outcome, Refusal, Unreachable
+from ostler.book.screen import Interaction
 from ostler.book.status import refused as turned_away
 from ostler.book.surface import Surface
 
@@ -87,6 +88,7 @@ def attempt(step: object, model: Model, surface: Surface, baseline: tuple[object
     text = str(step)
     at = offset(surface)
     try:
+        fitted(surface, step)
         result = take(step, model, surface, baseline, seen if seen is not None else {})
     except Unhealthy:
         raise
@@ -101,7 +103,11 @@ def attempt(step: object, model: Model, surface: Surface, baseline: tuple[object
     cover(surface, None, [], model)
     result.text = text
     result.at = at
-    judge(step, result, surface)
+    try:
+        judge(step, result, surface, model)
+    except BookError as wrong:
+        result.ok = False
+        result.note = f"the book contradicts itself: {wrong}"
     stray = strays(surface)
     if stray and not result.skipped:
         note = "the page sent a request no screen declares: " + ", ".join(stray)
@@ -366,6 +372,7 @@ def perform(step: object, request: object, model: Model, surface: Surface) -> St
     fed = asked_feeds(request)
     if wanted or fed:
         hand_over(surface, wanted, fed)
+    fitted(surface, request)
     begin = getattr(surface, "stepping", None)
     if callable(begin):
         begin()
@@ -374,6 +381,13 @@ def perform(step: object, request: object, model: Model, surface: Surface) -> St
     finally:
         if wanted or fed:
             hand_over(surface, {})
+
+
+def fitted(surface: Surface, request: object) -> None:
+    """Lays the page out at the size an interaction plays at, the browser's own size when it states none."""
+    fit = getattr(surface, "fit", None)
+    if callable(fit) and isinstance(request, Interaction):
+        fit(type(request).viewport)
 
 
 def delivered(request: object) -> Arrange[Any] | None:

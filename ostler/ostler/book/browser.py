@@ -21,10 +21,12 @@ from ostler.book.errors import BookError
 from ostler.book.listjudge import ListJudge, ListReader, Unfed
 from ostler.book.outcome import CannotReach, cut_by_limit
 from ostler.book.pagedata import Handed, decode, on_route
-from ostler.book.screen import ROLES, Component, Screen
+from ostler.book.screen import ROLES, Aspect, Component, Screen, Viewport
 from ostler.qa.harness_host import load_harness_module
 
 Wanted = Callable[[Any], bool]
+
+DEFAULT_SIZE = (1280, 720)
 
 FIELDS = """root => {
     const KINDS = ['textbox', 'spinbutton', 'combobox', 'checkbox', 'radiogroup', 'switch', 'slider', 'listbox'];
@@ -183,6 +185,7 @@ class Browser(ListReader):
         self._recording = ""
         self._began = 0.0
         self.lists = ListJudge()
+        self.viewport: Viewport | None = None
         self._feeds: tuple[Wanted, ...] = ()
         self._kept: dict[Wanted, Any] = {}
 
@@ -211,6 +214,8 @@ class Browser(ListReader):
             options["locale"] = self.locales.get(self.lang, self.lang)
         if record and self.video_dir is not None:
             options["record_video_dir"] = self.video_dir
+        if self.viewport is not None:
+            options["viewport"] = {"width": self.viewport.width, "height": self.viewport.height}
         self.context = self._browser.new_context(**options)
         self.page = self.context.new_page()
         self.page.set_default_timeout(self.timeout)
@@ -503,6 +508,53 @@ class Browser(ListReader):
         """Waits until the component is `visible` or `hidden`, `attached` or `detached`."""
         self.locate(component, within=within).wait_for(state=state)
 
+    def resize(self, viewport: Viewport | None) -> None:
+        """Lays the page out at the viewport's size, or at the browser's own size when None."""
+        if viewport == self.viewport:
+            return
+        width, height = (viewport.width, viewport.height) if viewport is not None else DEFAULT_SIZE
+        self.page.set_viewport_size({"width": width, "height": height})
+        self.viewport = viewport
+
+    def read(self, component: Component, aspect: Aspect, within: Component | None = None) -> str:
+        """The state the component shows for the aspect, as text: an attribute's value, '' when it has none, 'true' or
+        'false' for a check, the name of the picked choice."""
+        found = self.locate(component, within=within)
+        if aspect.attribute:
+            return found.get_attribute(aspect.attribute) or ""
+        if aspect.name == "checked":
+            return "true" if found.is_checked() else "false"
+        return self._picked(found)
+
+    def _picked(self, found: Any) -> str:
+        if found.evaluate("el => el.tagName") == "SELECT":
+            return found.evaluate("el => el.selectedIndex < 0 ? '' : el.options[el.selectedIndex].text").strip()
+        checked = found.get_by_role("radio", checked=True)
+        if checked.count():
+            return self.accessible_name(checked.first)
+        return found.inner_text().strip()
+
+    def holds(self, component: Component, aspect: Aspect, value: str, within: Component | None = None) -> str | None:
+        """Waits, by the page's own assertion wait, until the component shows `value` for the aspect. None when it does,
+        else what it showed."""
+        from playwright.sync_api import expect
+
+        found = self.locate(component, within=within)
+        try:
+            if aspect.attribute:
+                expect(found).to_have_attribute(aspect.attribute, value, timeout=self.timeout)
+            elif aspect.name == "checked":
+                expect(found).to_be_checked(checked=value == "true", timeout=self.timeout)
+            elif found.evaluate("el => el.tagName") == "SELECT":
+                expect(found.locator("option:checked")).to_have_text(value, timeout=self.timeout)
+            elif found.get_by_role("radio").count():
+                expect(found.get_by_role("radio", checked=True)).to_have_accessible_name(value, timeout=self.timeout)
+            else:
+                expect(found).to_contain_text(value, timeout=self.timeout)
+        except AssertionError:
+            return f"{component.found_by(self.lang)} is {aspect.name} {self.read(component, aspect, within)!r}, wanted {value!r}"
+        return None
+
     def wrong_labels(self, lang: str, screens: tuple[type[Screen], ...]) -> str | None:
         """Every visible component whose accessible name is not its label in `lang`, one per line, or None."""
         wrong = []
@@ -528,6 +580,7 @@ class Browser(ListReader):
             if (byId) return byId.textContent;
             if (el.getAttribute('aria-label')) return el.getAttribute('aria-label');
             if (el.getAttribute('aria-labelledby')) return document.getElementById(el.getAttribute('aria-labelledby'))?.textContent || '';
+            if (el.closest('label')) return el.closest('label').textContent;
             return el.textContent || '';
         }""").strip()
 

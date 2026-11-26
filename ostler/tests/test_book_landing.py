@@ -9,11 +9,11 @@ from typing import Any
 import pytest
 
 from book_fakes import Plain, Quiet
-from ostler.book import Action, Done, Interaction, PageSurface, Refusal, Screen, State
+from ostler.book import Action, Aspect, BookError, Condition, Done, Interaction, Is, PageSurface, Phase, Refusal, Screen, State, Viewport
 from ostler.book.journey import StepResult
 from ostler.book.landing import Leaving, expected, judge
 from ostler.book.runner import attempt
-from ostler.book.screen import Text
+from ostler.book.screen import EXPANDED, Button, Text
 
 
 DAY = date(2026, 11, 20)
@@ -311,3 +311,87 @@ def test_a_step_taken_on_the_surface_has_its_landing_judged_where_the_result_is_
     stayed = attempt(Tap(), Plain(DAY), surface)
     assert stayed.ok and "the act left Home and the book states no leads_to" in stayed.note
     assert Leaving.line() == "1 interactions left their screen with no leads_to stated: Tap"
+
+
+PHONE = Viewport("phone", 390, 844)
+menu = Button(None, "Open navigation menu")
+
+
+def opened(model: Any, by: Any) -> bool:
+    """the model says the menu is open"""
+    return model is True
+
+
+class Menu(Screen):
+    route = "/menu"
+    toggle = menu
+    phases = (
+        Phase("closed on a phone", shows=(menu,), when=Condition("a phone-sized screen", viewport=PHONE),
+              states=(Is(menu, EXPANDED, "false"),)),
+        Phase("open", when=Condition("the menu is open", holds=opened), states=(Is(menu, EXPANDED, "true"),)),
+        Phase("described only", hides=(menu,)),
+    )
+
+
+class Choose(Interaction[None]):
+    screen = Home
+    leads_to = Menu
+    does = "chooses a menu item"
+
+
+class Phased(Where):
+    def __init__(self, at: Viewport | None = None, faults: tuple[str, ...] = ()) -> None:
+        super().__init__(on=True, arrived=True)
+        self.viewport = at
+        self.faults = faults
+        self.judged: list[tuple[str, tuple[str, ...]]] = []
+        self.sizes: list[Viewport | None] = []
+
+    def fit(self, viewport: Viewport | None) -> None:
+        self.sizes.append(viewport)
+        self.viewport = viewport
+
+    def phase_faults(self, screen: type[Screen], phase: Phase, states: tuple[tuple[Is, str], ...]) -> list[str]:
+        self.judged.append((phase.name, tuple(value for _, value in states)))
+        return list(self.faults)
+
+
+def test_a_phase_is_judged_only_when_its_viewport_and_its_reading_of_the_model_hold():
+    surface = Phased(at=PHONE)
+    judge(Choose(), result(Done(), Done()), surface, model=False)
+    assert surface.judged == [("closed on a phone", ("false",))]
+    surface = Phased()
+    judge(Choose(), result(Done(), Done()), surface, model=True)
+    assert surface.judged == [("open", ("true",))]
+
+
+def test_a_phase_the_page_breaks_fails_the_step_and_names_the_phase():
+    taken = result(Done(), Done())
+    judge(Choose(), taken, Phased(at=PHONE, faults=("menu is expanded 'true', wanted 'false'",)), model=False)
+    assert not taken.ok
+    assert taken.note == "Menu closed on a phone: menu is expanded 'true', wanted 'false'"
+
+
+def test_a_phase_that_claims_states_says_when_it_holds():
+    with pytest.raises(BookError, match="says not when it holds"):
+        Phase("open", states=(Is(menu, EXPANDED, "true"),))
+
+
+def test_an_aspect_with_no_attribute_is_only_one_the_run_reads_by_role():
+    with pytest.raises(BookError, match="names the attribute it reads"):
+        Aspect("collapsed")
+
+
+class Sized(Interaction[None]):
+    screen = Home
+    leads_to = Menu
+    viewport = PHONE
+    does = "chooses a menu item on a phone"
+
+
+def test_a_step_that_states_a_viewport_is_played_at_that_size_and_its_phases_judged_there():
+    surface = Phased()
+    attempt(Sized(), Plain(DAY), surface)
+    attempt(Go(), Plain(DAY), surface)
+    assert surface.sizes == [PHONE, None]
+    assert surface.judged == [("closed on a phone", ("false",))]

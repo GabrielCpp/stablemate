@@ -20,14 +20,14 @@ import pytest
 from book_fakes import Quiet
 from conftest import keep_book_in_repo
 from book_todo import run_book, module
-from ostler.book import Browser, BookError, Field as Wire, Int, Journey, Screen, Service, T
+from ostler.book import Browser, BookError, Field as Wire, Int, Journey, Screen, Service, T, Viewport
 from ostler.book.check import spoken
 from ostler.book.model import Model
 from ostler.book.outcome import Refusal, Refusals
 from ostler.book.stack import Stack
 from ostler.book.surface import Surface
 from ostler.book.browser import request
-from ostler.book.screen import Button, Check, Field, Image, Lists, Select, Tab, Text
+from ostler.book.screen import CHECKED, EXPANDED, PICKED, Button, Check, Field, Group, Image, Lists, Radios, Select, Tab, Text
 
 PAGE = b"""<!doctype html><html><body>
 <h1 id="hello">Hello</h1>
@@ -42,6 +42,11 @@ PAGE = b"""<!doctype html><html><body>
 <p id="echo" data-testid="echo"></p>
 <div role="tablist"><button role="tab" aria-selected="true">Summary</button></div>
 <img src="data:," alt="Site logo">
+<style>@media (min-width: 600px) { .narrow { display: none } }</style>
+<button class="narrow" aria-label="Open navigation menu" aria-expanded="false"
+  onclick="this.setAttribute('aria-expanded', this.getAttribute('aria-expanded') === 'true' ? 'false' : 'true')">=</button>
+<div role="radiogroup" aria-label="Plan"><label><input type="radio" name="plan">Basic</label><label><input type="radio" name="plan" checked>Pro</label></div>
+<div role="group" aria-label="Room 12">tile</div>
 </body></html>"""
 
 
@@ -101,6 +106,36 @@ def test_the_browser_finds_a_tab_by_its_name_and_an_image_by_its_alternative_tex
     assert browser.visible(Tab(None, "Summary"))
     assert browser.visible(Image(None, "Site logo"))
     assert not browser.visible(Tab(None, "Details"))
+
+
+def test_a_component_shown_only_at_a_phone_size_is_found_once_the_page_is_laid_out_there(browser: Browser):
+    menu = Button(None, "Open navigation menu")
+    assert not browser.visible(menu)
+    browser.resize(Viewport("phone", 390, 844))
+    assert browser.visible(menu)
+    browser.resize(None)
+    assert not browser.visible(menu)
+
+
+def test_the_browser_reads_and_waits_on_the_states_a_book_names(browser: Browser):
+    browser.resize(Viewport("phone", 390, 844))
+    menu = Button(None, "Open navigation menu")
+    assert browser.read(menu, EXPANDED) == "false"
+    browser.press(menu)
+    assert browser.holds(menu, EXPANDED, "true") is None
+    plan = Radios(None, "Plan", options=("Basic", "Pro"))
+    assert browser.read(plan, PICKED) == "Pro"
+    assert browser.holds(plan, PICKED, "Pro") is None
+    assert browser.read(Form.who, PICKED) == "Nobody"
+    assert browser.read(Form.agree, CHECKED) == "false"
+    assert browser.visible(Group(None, "Room 12"))
+
+
+def test_a_state_that_never_reads_as_claimed_says_what_it_read(browser: Browser):
+    browser.timeout = 300
+    browser.resize(Viewport("phone", 390, 844))
+    fault = browser.holds(Button(None, "Open navigation menu"), EXPANDED, "true")
+    assert fault == "button 'Open navigation menu' is expanded 'false', wanted 'true'"
 
 
 def test_an_input_typed_one_character_past_its_limit_cannot_be_reached(browser: Browser):

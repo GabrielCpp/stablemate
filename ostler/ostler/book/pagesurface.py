@@ -11,7 +11,7 @@ from ostler.book.browser import Browser
 from ostler.book.environment import Environment
 from ostler.book.errors import BookError
 from ostler.book.pagedata import on_route
-from ostler.book.screen import Component, Screen
+from ostler.book.screen import Component, Is, Phase, Screen, Viewport
 
 
 class PageSurface:
@@ -87,8 +87,42 @@ class PageSurface:
         self.browser.set_offline(False)
         if self.browser.page is not None:
             self.browser.page.goto("about:blank")
+            self.browser.resize(None)
         self.restore()
         self.open()
+
+    @property
+    def viewport(self) -> Viewport | None:
+        """The size the page is laid out at, None for the browser's own."""
+        return self.browser.viewport
+
+    def fit(self, viewport: Viewport | None) -> None:
+        """Lays the page out at the size the next step plays at."""
+        self.browser.resize(viewport)
+
+    def phase_faults(self, screen: type[Screen], phase: Phase, states: tuple[tuple[Is, str], ...]) -> list[str]:
+        """What the page shows against a phase that holds now: each component it shows that is hidden, each it hides that
+        is shown, each it disables that is enabled, and each state that reads otherwise. Each waits by the page's own wait."""
+        faults = []
+        within = screen.root
+        for component in phase.shows:
+            try:
+                self.browser.wait_for(component, "visible", within)
+            except self.timeouts():
+                faults.append(f"{component.found_by(self.lang)} is not shown")
+        for component in phase.hides:
+            try:
+                self.browser.wait_for(component, "hidden", within)
+            except self.timeouts():
+                faults.append(f"{component.found_by(self.lang)} is shown")
+        for component in phase.disabled:
+            if not self.browser.disabled(component, within):
+                faults.append(f"{component.found_by(self.lang)} is enabled")
+        for claim, value in states:
+            fault = self.browser.holds(claim.component, claim.aspect, value, within)
+            if fault is not None:
+                faults.append(fault)
+        return faults
 
     def set_lang(self, lang: str) -> None:
         changed = lang != self.lang

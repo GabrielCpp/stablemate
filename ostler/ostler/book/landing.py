@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, cast
 
+from ostler.book.errors import BookError
 from ostler.book.journey import StepResult
 from ostler.book.outcome import Done, Refusal
 from ostler.book.screen import Interaction, Screen
@@ -40,8 +41,9 @@ def expected(interaction: Interaction[Any], result: StepResult) -> tuple[type[Sc
     return kind.screen, False
 
 
-def judge(step: object, result: StepResult, surface: Surface) -> None:
-    """Checks where an interaction step left the person and adds what it finds to the step result."""
+def judge(step: object, result: StepResult, surface: Surface, model: Any = None) -> None:
+    """Checks where an interaction step left the person, and every phase of that screen whose condition holds, and adds
+    what it finds to the step result."""
     if not isinstance(step, Interaction) or result.skipped or not result.ok:
         return
     if not (isinstance(result.app, (Done, Refusal)) and (result.model is None or isinstance(result.model, (Done, Refusal)))):
@@ -54,11 +56,40 @@ def judge(step: object, result: StepResult, surface: Surface) -> None:
         if callable(arrive) and arrive(screen) is False:
             result.ok = False
             result.note = _added(result.note, f"the act did not land on {screen.__name__}: the book states it leads there")
-        return
-    on = cast("Callable[[type[Screen]], bool | None] | None", getattr(surface, "on", None))
-    if callable(on) and on(screen) is False:
-        Leaving.names[type(step).__name__] = None
-        result.note = _added(result.note, f"the act left {screen.__name__} and the book states no leads_to")
+            return
+    else:
+        on = cast("Callable[[type[Screen]], bool | None] | None", getattr(surface, "on", None))
+        if callable(on) and on(screen) is False:
+            Leaving.names[type(step).__name__] = None
+            result.note = _added(result.note, f"the act left {screen.__name__} and the book states no leads_to")
+            return
+    faults = phases(step, screen, surface, model)
+    if faults:
+        result.ok = False
+        result.note = _added(result.note, "; ".join(faults))
+
+
+def phases(step: Interaction[Any], screen: type[Screen], surface: Surface, model: Any) -> list[str]:
+    """What the page shows against each phase of the screen whose condition holds after the step, for the person who
+    took it, at the size the step played at."""
+    check = cast("Callable[..., list[str]] | None", getattr(surface, "phase_faults", None))
+    if not callable(check):
+        return []
+    by = getattr(step, "by", None)
+    at = getattr(surface, "viewport", None)
+    faults = []
+    for phase in screen.phases:
+        if phase.when is None:
+            continue
+        try:
+            if not phase.when.met(model, by, at):
+                continue
+            states = tuple((claim, claim.wanted(model, by)) for claim in phase.states)
+        except Exception as crash:
+            raise BookError(f"the phase {screen.__name__} {phase.name!r} cannot say whether it holds: "
+                            f"{type(crash).__name__}: {crash}") from None
+        faults += [f"{screen.__name__} {phase.name}: {fault}" for fault in check(screen, phase, states)]
+    return faults
 
 
 def _added(note: str, more: str) -> str:

@@ -11,6 +11,7 @@ from ostler.book.environment import Environment
 from ostler.book.errors import BookError
 from ostler.book.pagesurface import PageSurface
 from ostler.book.proxy import Proxy, Recording
+from ostler.book.screen import Is, Phase, Screen, Viewport
 
 
 class MobileSurface(PageSurface):
@@ -67,6 +68,18 @@ class MobileSurface(PageSurface):
     def reset(self) -> None:
         self.restore()
         self.open()
+
+    @property
+    def viewport(self) -> Viewport | None:
+        return None
+
+    def fit(self, viewport: Viewport | None) -> None:
+        if viewport is not None:
+            raise BookError(f"a device plays at its own size: the step states the viewport {viewport.name}")
+
+    def phase_faults(self, screen: type[Screen], phase: Phase, states: tuple[tuple[Is, str], ...]) -> list[str]:
+        unread = [f"{claim.component.found_by(self.lang)} {claim.aspect.name}: a device reads no component states" for claim, _ in states]
+        return super().phase_faults(screen, phase, ()) + unread
 
     def timeouts(self) -> tuple[type[Exception], ...]:
         return (BookError,)

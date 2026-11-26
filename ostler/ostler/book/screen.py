@@ -64,6 +64,8 @@ ROLES = {
     "spinner": "progressbar",
     "tab": "tab",
     "image": "img",
+    "group": "group",
+    "radios": "radiogroup",
 }
 
 
@@ -273,6 +275,84 @@ def Image(id: str | None, label: T | str, does: str = "") -> Component:
     return Component(id, "image", as_label(label), does)
 
 
+def Group(id: str | None, label: T | str, does: str = "") -> Component:
+    """A region that gathers related content under one name, such as a tile or a card."""
+    return Component(id, "group", as_label(label), does)
+
+
+def Radios(id: str | None, label: T | str, does: str = "", *, options: tuple[T | str, ...] = ()) -> Component:
+    """A set of radio buttons under one name; `options` are the names of its radios."""
+    if isinstance(options, (str, T)):
+        raise TypeError("options takes a list of texts, not one text")
+    return Component(id, "radios", as_label(label), does, tuple(T(o) if isinstance(o, str) else o for o in options))
+
+
+@dataclass(frozen=True)
+class Viewport:
+    """A page size a step plays at, such as a phone's. The app lays its pages out for it, and a phase may hold only there."""
+
+    name: str
+    width: int
+    height: int
+
+
+@dataclass(frozen=True)
+class Aspect:
+    """A state of a component the book names and the run reads: open or closed, valid or not, which choice is picked.
+    `attribute` is the attribute it reads, such as `aria-expanded`. `checked` and `picked` need none: the run reads
+    whether a check is ticked, and which choice a select or a set of radios shows picked."""
+
+    name: str
+    attribute: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.attribute and self.name not in ("checked", "picked"):
+            raise BookError(f"the aspect {self.name!r} names the attribute it reads, such as attribute='aria-pressed'")
+
+
+EXPANDED = Aspect("expanded", "aria-expanded")
+INVALID = Aspect("invalid", "aria-invalid")
+CHECKED = Aspect("checked")
+PICKED = Aspect("picked")
+
+
+@dataclass(frozen=True)
+class Is:
+    """A claim that a component is in a state, as `Is(menu, EXPANDED, "false")`. `value` is the text the run reads, or a
+    function of the model and the person looking that returns it, with a docstring that says what it reads."""
+
+    component: Component
+    aspect: Aspect
+    value: str | Callable[[Any, Any], str]
+
+    def __post_init__(self) -> None:
+        if callable(self.value) and not (self.value.__doc__ or "").strip():
+            raise BookError(f"the value of {self.aspect.name} on {self.component.label or self.component.id} has no docstring: "
+                            "its first line says what the state reads")
+
+    def wanted(self, model: Any, by: Any) -> str:
+        return self.value if isinstance(self.value, str) else self.value(model, by)
+
+    def text(self, lang: str) -> str:
+        said = (getattr(self.value, "__doc__", "") or "").strip().splitlines()[0] if callable(self.value) else repr(self.value)
+        return f"{self.component.found_by(lang)} {self.aspect.name} {said}"
+
+
+@dataclass(frozen=True)
+class Condition:
+    """When a phase holds, in the product's words. `holds` reads the model and the person looking; `viewport` holds only
+    when the step played at that size. Each one given must hold."""
+
+    says: str
+    holds: Callable[[Any, Any], bool] | None = None
+    viewport: Viewport | None = None
+
+    def met(self, model: Any, by: Any, at: Viewport | None) -> bool:
+        if self.viewport is not None and self.viewport != at:
+            return False
+        return self.holds is None or bool(self.holds(model, by))
+
+
 @dataclass(frozen=True)
 class Stored:
     """One value the screen keeps in memory (a useState, a field of a State
@@ -285,13 +365,20 @@ class Stored:
 
 @dataclass(frozen=True)
 class Phase:
-    """A state of the screen: what is shown, what is disabled, and why."""
+    """A state of the screen: what is shown, what is disabled, the states its components are in, and why. A phase with
+    `when` is a claim: each time a step lands on the screen and the condition holds, the run checks every part of it."""
 
     name: str
     shows: tuple[Component, ...] = ()
     hides: tuple[Component, ...] = ()
     disabled: tuple[Component, ...] = ()
     because: str = ""
+    when: Condition | None = None
+    states: tuple[Is, ...] = ()
+
+    def __post_init__(self) -> None:
+        if self.states and self.when is None:
+            raise BookError(f"the phase {self.name!r} claims states and says not when it holds: give it when=Condition(...)")
 
 
 @dataclass(frozen=True)
@@ -385,6 +472,10 @@ class Screen:
                     bits.append("hides " + ", ".join(c.found_by(lang) for c in p.hides))
                 if p.disabled:
                     bits.append("disabled " + ", ".join(c.found_by(lang) for c in p.disabled))
+                if p.states:
+                    bits.append("; ".join(s.text(lang) for s in p.states))
+                if p.when is not None:
+                    bits.append(f"when {p.when.says}" + (f" at {p.when.viewport.name}" if p.when.viewport else ""))
                 if p.because:
                     bits.append(f"because {p.because}")
                 lines.append(f"  {p.name:10} " + "; ".join(bits))
@@ -409,6 +500,7 @@ class Interaction(Generic[F]):
     does: ClassVar[str] = ""
     carries: ClassVar[type[Action[Any, Any]] | None] = None
     source: ClassVar[tuple[str, ...]] = ()
+    viewport: ClassVar[Viewport | None] = None
 
     def __init_subclass__(cls) -> None:
         if cls.carries is None and cls.screen is None:
@@ -446,7 +538,8 @@ class Interaction(Generic[F]):
         where = cls.screen.__name__ if cls.screen is not None else "outside the screens"
         accept = cls.carries.accept if cls.carries is not None else None
         takes = accept.__name__ if accept is not None else "nothing"
-        return f"{cls.__name__:12} on {where:20} takes {takes:8} {cls.does}".rstrip()
+        at = f" at {cls.viewport.name}" if cls.viewport is not None else ""
+        return f"{cls.__name__:12} on {where:20} takes {takes:8} {cls.does}{at}".rstrip()
 
     def __str__(self) -> str:
         text = type(self).__name__ + (f" {self.of}" if self.of is not None else "")

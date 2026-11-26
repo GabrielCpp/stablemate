@@ -288,7 +288,8 @@ def _explain_component(service: Service[Any], args: Any) -> int:
     print(f"{address(screen)}.{attribute}")
     print(component.describe(service.language))
     for phase in screen.phases:
-        for how, members in (("shows", phase.shows), ("hides", phase.hides), ("disabled", phase.disabled)):
+        for how, members in (("shows", phase.shows), ("hides", phase.hides), ("disabled", phase.disabled),
+                             ("states", tuple(s.component for s in phase.states))):
             if component in members:
                 print(f"phase {phase.name}: {how}" + (f", because {phase.because}" if phase.because else ""))
     print(reach_line(service, screen))
