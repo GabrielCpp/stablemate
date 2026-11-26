@@ -17,6 +17,11 @@ if TYPE_CHECKING:
     from ostler.book.http_endpoint import Endpoint
 
 
+class _Stay(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
+
 class Undeclared(Exception):
     """The app answered with a status the endpoint does not declare."""
 
@@ -48,6 +53,19 @@ class Client:
         self.witness = Witness()
         self.known: dict[str, object] = {}
         self.resolved: dict[str, Any] = {}
+        self.located = ""
+
+    def place(self, location: str) -> str:
+        """Where a redirect sends the caller: a path when it stays on one of the client's hosts, else the whole URL."""
+        if not location:
+            return ""
+        parts = urllib.parse.urlsplit(location)
+        if not parts.netloc:
+            return location
+        own = {urllib.parse.urlsplit(address).netloc for address in (self.base, *self.hosts.values())}
+        if parts.netloc not in own:
+            return location
+        return parts.path + (f"?{parts.query}" if parts.query else "")
 
     def know(self, name: str, value: object) -> None:
         """Say what the reference `name` stands for: a value, or a callable
@@ -82,11 +100,15 @@ class Client:
         return call.send(self)
 
     def transport(self, method: str, url: str, headers: dict[str, str], data: bytes | None) -> tuple[Status, bytes]:
+        """Sends one request and reads its answer. A redirect is the answer: the client never follows it, and
+        keeps the place it names in `located`."""
+        self.located = ""
         request = urllib.request.Request(url, data=data, method=method, headers=headers)
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as reply:
+            with urllib.request.build_opener(_Stay).open(request, timeout=self.timeout) as reply:
                 return reply.status, reply.read()
         except urllib.error.HTTPError as reply:
+            self.located = reply.headers.get("Location", "") if reply.headers is not None else ""
             return reply.code, reply.read()
         except (urllib.error.URLError, OSError) as down:
             raise Unhealthy(f"{method} {url} did not answer: {getattr(down, 'reason', down)}") from None

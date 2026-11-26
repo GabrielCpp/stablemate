@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from types import SimpleNamespace
+from typing import Any, Iterator
 
 import pytest
 
-from ostler.book import BookError, Field, Id, Int, List, Object, Str
+from ostler.book import Answer, BookError, Client, Endpoint, Field, Id, Int, List, Object, Str
 from ostler.book.http import Identities, _prepared, canonical, real_id
+from ostler.book.outcome import Refusal
 
 
 @dataclass
@@ -147,3 +151,55 @@ def test_a_text_value_of_a_minted_id_field_is_still_made_unique():
     sent = _prepared(body, {"team": "core"}, Identities(), None, "body")["team"]
     assert sent.startswith("core-")
     assert len(sent) == len("core-") + 8
+
+
+class _Gate(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        own = f"http://{self.headers['Host']}/auth/logout?next=%2Fhome"
+        self.send_response(302)
+        self.send_header("Location", own if self.path == "/home" else "https://sign-in.example.com/authorize")
+        self.send_header("Content-Type", "text/plain")
+        self.end_headers()
+        self.wfile.write(b"Found. Redirecting")
+
+    def log_message(self, format: str, *args: Any) -> None:
+        return None
+
+
+@pytest.fixture
+def gate() -> Iterator[str]:
+    server = HTTPServer(("127.0.0.1", 0), _Gate)
+    running = threading.Thread(target=server.serve_forever, daemon=True)
+    running.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}"
+    finally:
+        server.shutdown()
+        running.join()
+        server.server_close()
+
+
+class Home(Endpoint):
+    method = "GET"
+    path = "/home"
+    answers = (Answer(302, None, "no session: the gate sends the caller to sign in"),)
+    does = "the home page"
+    source = ("app/home.py",)
+
+
+class Away(Endpoint):
+    method = "GET"
+    path = "/away"
+    answers = (Answer(302, None, "the sign-in lives with the identity provider"),)
+    does = "the identity provider sign-in"
+    source = ("app/away.py",)
+
+
+def test_a_redirect_is_read_as_a_refusal_whose_message_is_the_path_it_sends_the_caller_to(gate: str):
+    reply = Client(gate).send(Home())
+    assert reply.refusal == Refusal("/auth/logout?next=%2Fhome", 302)
+
+
+def test_a_redirect_to_another_host_keeps_the_whole_address(gate: str):
+    reply = Client(gate).send(Away())
+    assert reply.refusal == Refusal("https://sign-in.example.com/authorize", 302)

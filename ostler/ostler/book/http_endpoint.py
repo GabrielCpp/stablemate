@@ -25,7 +25,7 @@ from ostler.book.http_shapes import Bytes, Id, Token
 from ostler.book.http_transport import Client, OffShape, Undeclared
 from ostler.book.outcome import Refusals
 from ostler.book.signed import Signed
-from ostler.book.status import Code, Status, succeeded
+from ostler.book.status import Code, Status, redirected, succeeded
 
 GATEWAY: tuple[Status, ...] = (502, 503, 504, Code.UNAVAILABLE)
 
@@ -305,7 +305,7 @@ class Endpoint:
             raise Unhealthy(f"{cls.route()} answered {status}: the service is not there to answer")
         if answer is None:
             raise Undeclared(cls, status, _loose(raw))
-        whole = parsed = cls.read(answer, raw)
+        whole = parsed = None if redirected(status) and answer.body is None else cls.read(answer, raw)
         if answer.body is not None:
             parsed = apart(answer.body, parsed, owed)
         if answer.body is None:
@@ -328,7 +328,8 @@ class Endpoint:
             else:
                 client.ids.learn(issued.kind, str(known), str(issued_id))
         client.witness.see(cls, answer, parsed, client.ids)
-        self.reply = Reply(status, parsed, answer, lambda body: client.ids.spoken(client.message_of(body)), whole)
+        self.reply = Reply(status, parsed, answer, lambda body: client.ids.spoken(client.message_of(body)), whole,
+                           client.place(getattr(client, "located", "")) if redirected(status) else "")
         return self.reply
 
     def __str__(self) -> str:

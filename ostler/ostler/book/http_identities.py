@@ -9,7 +9,7 @@ from ostler.book.errors import BookError
 from ostler.book.http_objects import Answer, error_field
 from ostler.book.http_shapes import Id, Shape, Str, Token
 from ostler.book.outcome import Refusal
-from ostler.book.status import Status, refused
+from ostler.book.status import Status, redirected, refused
 
 
 @dataclass(frozen=True)
@@ -26,14 +26,19 @@ class Reference:
 
 @dataclass
 class Reply:
+    """A redirect reads as a refusal whose message is where it sends the caller, so a rule names that place."""
+
     status: Status
     body: Any
     answer: Answer
     message_of: Callable[[object], str] = error_field
     whole: Any = None
+    location: str = ""
 
     @property
     def refusal(self) -> Refusal | None:
+        if redirected(self.status):
+            return Refusal(self.location, self.status)
         if not refused(self.status):
             return None
         return Refusal(self.message_of(self.body), self.status)

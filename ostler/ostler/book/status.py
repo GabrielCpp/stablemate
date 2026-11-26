@@ -52,3 +52,8 @@ def refused(status: Status) -> bool:
     if isinstance(status, Exited):
         return status != 0
     return status is not Code.OK if isinstance(status, Code) else status >= 400
+
+
+def redirected(status: Status) -> bool:
+    """The service sent the caller elsewhere instead of answering."""
+    return not isinstance(status, (Exited, Code)) and 300 <= status < 400
