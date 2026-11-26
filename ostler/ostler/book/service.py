@@ -5,6 +5,7 @@ may use to name a request."""
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any, Callable, Generic, Mapping, TypeVar
@@ -13,7 +14,7 @@ from ostler.book.arrange import Arrange
 from ostler.book.boundary import Person
 from ostler.book.cast import SOLE, Actor
 from ostler.book.domain import App, Documentation
-from ostler.book.environment import Environment
+from ostler.book.environment import OSTLER, Environment
 from ostler.book.errors import BookError
 from ostler.book.event import Event
 from ostler.book.http import Endpoint
@@ -26,6 +27,7 @@ from ostler.book.stack import Stack
 from ostler.book.state import Axes
 from ostler.book.surface import Surface
 from ostler.book.witness import Unseen
+from ostler.qa.addresses import LEASE_ENV
 
 S = TypeVar("S", bound=Model)
 
@@ -73,7 +75,14 @@ class Service(Generic[S]):
         return self.languages[0]
 
     def environment(self, name: str | None = None) -> Environment:
-        chosen = name or self.default_environment
+        """The environment *name* names. Unnamed, a process under a stack lease plays the one environment ostler serves, and any other plays the default."""
+        chosen = name or self._leased_environment() or self.default_environment
         if chosen not in self.environments:
             raise BookError(f"{self.name} has no environment {chosen!r}; the environments are " + ", ".join(self.environments))
         return self.environments[chosen]
+
+    def _leased_environment(self) -> str:
+        if not os.environ.get(LEASE_ENV, ""):
+            return ""
+        served = [key for key, environment in self.environments.items() if any(url.startswith(OSTLER) for url in environment.hosts.values())]
+        return served[0] if len(served) == 1 else ""

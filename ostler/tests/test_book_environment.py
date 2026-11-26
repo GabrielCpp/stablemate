@@ -53,6 +53,17 @@ def test_an_environment_of_plain_addresses_has_no_copy():
     assert Environment("remote", {"api": "http://api.test"}).copy() == ""
 
 
+def test_a_run_under_a_lease_plays_the_environment_ostler_serves(monkeypatch: pytest.MonkeyPatch):
+    from ostler.book import Service
+    remote = Environment("dev", {"api": "http://api.test"})
+    book = Service(name="api", new_model=dict, surface=lambda environment: None, journeys=(), stack=lambda copy: None,
+                   environments={"dev": remote, "local": named()}, default_environment="dev")
+    assert book.environment().name == "dev"
+    monkeypatch.setenv(LEASE_ENV, "story-1")
+    assert book.environment().name == "local"
+    assert book.environment("dev").name == "dev"
+
+
 @pytest.fixture
 def stack(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     repo = tmp_path / "app"
