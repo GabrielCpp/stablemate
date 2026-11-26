@@ -68,6 +68,10 @@ def test_a_turn_runs_agy_in_print_mode_with_stream_json_the_model_and_the_effort
     assert "--sandbox" not in cmd
 
 
+def test_a_run_that_names_no_model_names_agys_default_so_its_cost_is_known() -> None:
+    assert get_backend("antigravity").default_model == "gemini-4-hydrogen-high"
+
+
 def test_a_resumed_turn_names_its_conversation(tmp_path: Path) -> None:
     (cmd,) = _run(tmp_path, sid="conv-1")
     assert cmd[cmd.index("--conversation") + 1] == "conv-1"

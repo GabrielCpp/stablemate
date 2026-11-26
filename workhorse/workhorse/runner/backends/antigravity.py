@@ -181,7 +181,7 @@ def command(turn: TurnRequest, argv_prompt: str, sid: str | None) -> list[str]:
 
 class AntigravityBackend(JsonlBackend):
     name = "antigravity"
-    default_model = None
+    default_model = "gemini-4-hydrogen-high"
 
     def transcript_mapper(self) -> acp.TranscriptMapper:
         return AntigravityTranscript()

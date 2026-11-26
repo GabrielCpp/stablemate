@@ -479,7 +479,8 @@ rather than compacting.
 The `antigravity` backend runs each turn as `agy -p` with `--output-format stream-json`
 and resumes a node's conversation with `--conversation <id>`. `agy models` lists the model
 names a profile may map a tier to, such as `gemini-4-hydrogen-high` or
-`gemini-3.8-flash-low`. Each name carries its own effort.
+`gemini-3.8-flash-low`. Each name carries its own effort. A run that maps no model
+runs `gemini-4-hydrogen-high`, so every turn records a model groom can price.
 
 - A confined profile runs with `--sandbox`. That restricts the terminal. It holds neither
   writes nor reads to the working directory, so the guards installed by `farrier` do the rest.
