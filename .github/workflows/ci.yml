@@ -19,6 +19,11 @@ on:
   # on a tree nobody is reviewing yet. The verdict that matters is the one on a change
   # someone is about to merge, and the one you ask for.
   pull_request:
+    paths-ignore:
+      - .release-please-manifest.json
+      - uv.lock
+      - '*/CHANGELOG.md'
+      - '*/pyproject.toml'
   # Also how you re-run a red job after a flake, without pushing an empty commit, and how
   # main gets checked on demand: `gh workflow run ci --ref main`.
   workflow_dispatch:
