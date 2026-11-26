@@ -355,6 +355,18 @@ def test_a_run_on_the_correct_app_names_no_navigation_data_request_and_no_form_a
     assert sent == ["GET api/users"]
 
 
+def test_a_request_under_the_api_prefix_to_another_origin_is_not_the_app_s(kit):
+    port = kit[1]
+    with _browser(port) as browser:
+        browser.watching("/api", (f"http://127.0.0.1:{port}",))
+        _home(browser)
+        browser.page.evaluate(f"() => fetch('http://localhost:{port}/api/elsewhere/envelope/').then(() => null, () => null)")
+        browser.page.evaluate(f"() => fetch('http://127.0.0.1:{port}/api/own').then(() => null, () => null)")
+        sent = [r.url for r in browser.taken()]
+    assert f"http://127.0.0.1:{port}/api/own" in sent
+    assert not [url for url in sent if url.startswith("http://localhost")]
+
+
 def test_a_form_action_answers_a_post_to_the_page_with_its_name_in_the_query(kit):
     screens = _screens()
     with _browser(kit[1]) as browser:

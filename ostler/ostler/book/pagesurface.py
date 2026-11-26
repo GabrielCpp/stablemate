@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 
 from ostler.book.browser import Browser
 from ostler.book.environment import Environment
+from ostler.book.errors import BookError
 from ostler.book.pagedata import on_route
 from ostler.book.screen import Component, Screen
 
@@ -27,6 +28,7 @@ class PageSurface:
     def __init__(self, environment: Environment, screens: tuple[type[Screen], ...], lang: str = ""):
         self.screens = screens
         self.lang = lang
+        self.environment = environment
         self.browser = self.drive(environment, lang)
 
     def drive(self, environment: Environment, lang: str) -> Any:
@@ -38,7 +40,19 @@ class PageSurface:
         self.browser.start()
         api = next((screen.api for screen in self.screens if screen.api), "")
         if api:
-            self.browser.watching(api)
+            self.browser.watching(api, self.origins())
+
+    def origins(self) -> tuple[str, ...]:
+        """The origins of the hosts the environment declares. A request to any other host is not the app's."""
+        found: list[str] = []
+        for host in self.environment.hosts:
+            try:
+                parts = urlsplit(self.environment.address(host))
+            except (BookError, RuntimeError, OSError):
+                continue
+            if parts.scheme and parts.netloc:
+                found.append(f"{parts.scheme}://{parts.netloc}")
+        return tuple(found)
 
     def stop(self) -> None:
         self.browser.stop()

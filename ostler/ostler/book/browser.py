@@ -178,6 +178,8 @@ class Browser(ListReader):
         self.context: Any = None
         self._seen: list[Any] = []
         self._prefix: str | None = None
+        self._origins: tuple[str, ...] = ()
+        self._noting: Any = None
         self._recording = ""
         self._began = 0.0
         self.lists = ListJudge()
@@ -215,7 +217,7 @@ class Browser(ListReader):
         self.page.on("framenavigated", self._navigated)
         self._began = time.monotonic()
         if self._prefix is not None:
-            self.watching(self._prefix)
+            self.watching(self._prefix, self._origins)
         self._listen()
 
     def begin(self, name: str) -> None:
@@ -247,12 +249,20 @@ class Browser(ListReader):
         self._make()
         return kept
 
-    def watching(self, prefix: str) -> None:
-        """Records every request whose path starts with `prefix`, whichever page sends it."""
+    def watching(self, prefix: str, origins: tuple[str, ...] = ()) -> None:
+        """Records every request whose path starts with `prefix`, whichever page sends it. With `origins`, only a
+        request to one of them counts, so a call to a third party such as an error reporter is never the app's."""
         self._prefix = prefix
+        self._origins = origins
+        if self._noting is self.context:
+            return
+        self._noting = self.context
 
         def note(req: Any) -> None:
-            if urlsplit(req.url).path.startswith(prefix):
+            parts = urlsplit(req.url)
+            if self._prefix is None or not parts.path.startswith(self._prefix):
+                return
+            if not self._origins or f"{parts.scheme}://{parts.netloc}" in self._origins:
                 self._seen.append(req)
 
         self.context.on("request", note)
