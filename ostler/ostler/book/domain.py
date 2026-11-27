@@ -389,6 +389,11 @@ class Action(Generic[A, S]):
         return None
 
     @staticmethod
+    def emits_when(event: type[Event], a: A, s: S, by: Actor | None) -> bool:
+        """Whether this accepted call emits `event`, judged on the state before `reduce` runs."""
+        return True
+
+    @staticmethod
     def announces(event: type[Event], a: A, s: S, by: Actor | None) -> dict[str, Any] | None:
         """What the detail of this event carries, as far as the model predicts it, built from the state after the action."""
         return None

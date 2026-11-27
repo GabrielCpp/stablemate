@@ -220,7 +220,9 @@ never modelled here: the book refers to it, as [neighbours.md](neighbours.md) sa
   static method that returns the detail of the event as far as the model predicts it, built
   from the state after the action. The first line of its docstring is what the book says the
   emission carries. A path it leaves out is not judged, and the default returns nothing, so
-  the run only demands that the event arrives about a record it made.
+  the run only demands that the event arrives about a record it made. When one route publishes
+  an event only on some accepted calls, override `emits_when(event, a, s, by) -> bool`, which
+  reads the state before `reduce` runs and defaults to `True`.
 
   ```python
   class Transition(Action[TicketFixture, Ticket]):

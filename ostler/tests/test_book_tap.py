@@ -18,7 +18,7 @@ from ostler.book import tapping
 from ostler.book.runner import perform
 from ostler.book.tapping import Deliveries, Landings
 
-from book_desk import Breaches, Desk, Emitter, Lapses, Opens, OpensQuietly, ScanTap, Scanner, Tap, Tickets, ToQueue, Writes
+from book_desk import Breaches, Desk, Emitter, Lapses, Opens, OpensQuietly, ScanTap, Scanner, Tap, Tickets, ToQueue, Upserts, Writes
 
 DAY = date(2026, 11, 14)
 
@@ -308,3 +308,23 @@ def test_a_clocked_action_in_an_environment_that_names_no_delivery_leaves_its_em
     for step in (Writes("T-22"), Lapses("T-22"), Breaches("T-22")):
         assert perform(step, step, model, surface).ok
     assert Deliveries.line() == "emissions: 0 proven, 0 fail, 1 unproven"
+
+
+def test_emits_when_reads_state_before_reduce_and_skips_tap_and_unproven_when_false():
+    tap = Tap()
+    Deliveries.begin(tap)
+    model = Tickets(DAY)
+    surface = Emitter(tap)
+    first = perform(step := Upserts("T-23"), step, model, surface)
+    second = perform(step := Upserts("T-23"), step, model, surface)
+    assert first.ok, first.note
+    assert second.ok, second.note
+    assert Deliveries.line() == "emissions: 1 proven, 0 fail, 0 unproven"
+
+    Deliveries.begin(None)
+    model_no_tap = Tickets(DAY)
+    surface_no_tap = Emitter(Tap())
+    assert perform(step := Upserts("T-24"), step, model_no_tap, surface_no_tap).ok
+    assert perform(step := Upserts("T-24"), step, model_no_tap, surface_no_tap).ok
+    assert Deliveries.line() == "emissions: 0 proven, 0 fail, 1 unproven"
+

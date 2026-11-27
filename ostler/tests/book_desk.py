@@ -115,6 +115,26 @@ class OpenQuietly(Open):
         return None
 
 
+class UpsertTicket(Action[str, Tickets]):
+    """Emits `Changed` only when creating a ticket that was not yet in `s.tickets`."""
+
+    emits = (Changed,)
+
+    @staticmethod
+    def emits_when(event: type[Event], a: str, s: Tickets, by: Any) -> bool:
+        return a not in s.tickets
+
+    @staticmethod
+    def reduce(a: str, s: Tickets, by: Any) -> Create | Update:
+        if a in s.tickets:
+            return Update(Tickets.tickets, a, replace(s.tickets[a], priority="high"))
+        return Create(Tickets.tickets, Ticket(a, "high"))
+
+    @staticmethod
+    def announces(event: type[Event], a: str, s: Tickets, by: Any) -> dict[str, Any] | None:
+        return {"ticket_id": a, "snapshot": {"priority": s.tickets[a].priority}}
+
+
 class Opens:
     carries = Open
     by = SOLE
@@ -131,6 +151,10 @@ class Opens:
 
 class OpensQuietly(Opens):
     carries = OpenQuietly
+
+
+class Upserts(Opens):
+    carries = UpsertTicket
 
 
 class Tap(Delivery):
@@ -169,7 +193,11 @@ class Emitter(Quiet):
         self.tickets: list[str] = []
 
     def perform(self, step: Any) -> Done:
-        self.tickets.append(step.of)
+        created = step.of not in self.tickets
+        if created:
+            self.tickets.append(step.of)
+        if not created:
+            return Done()
         if self.bug != "silent":
             self.tap.waiting.append(("ticket.changed", {"ticket_id": "S-" + step.of, "snapshot": {"priority": "low"}}))
         if self.bug not in ("silent", "stranger"):

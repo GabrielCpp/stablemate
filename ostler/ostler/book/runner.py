@@ -464,6 +464,7 @@ def move(step: object, request: object, model: Model, surface: Surface) -> StepR
         detail, wrong = occurrence(hearing, model)
         if wrong:
             return StepResult(step, None, None, model.rows(), (), False, wrong)
+    expected = expected_emissions(action, request, model) if action is not None else ()
     model_outcome = spoken(surface, model.perform(request))
     reduced = trace(model)
     try:
@@ -501,8 +502,8 @@ def move(step: object, request: object, model: Model, surface: Surface) -> StepR
         note = f"the surface never offers this: {app_outcome.reason}"
     if hearing is not None and ok:
         ok, note, model_rows, app_rows = repeated(hearing, detail, request, model, surface, model_rows, reads)
-    if action is not None and ok and isinstance(app_outcome, Done):
-        note = emissions(action, request, model, surface)
+    if action is not None and expected and ok and isinstance(app_outcome, Done):
+        note = emissions(action, expected, request, model, surface)
         ok = not note
     ok, note, known = settle(ok, note, *judged(request, owed, model, surface))
     return StepResult(step, model_outcome, app_outcome, model_rows, app_rows, ok, note, reduced, known=known)
@@ -568,15 +569,31 @@ def run_ids(surface: Surface, model: Model) -> Identities:
     return client.ids if isinstance(client, Client) else Held(model)
 
 
-def emissions(action: type[Action[Any, Any]], request: object, model: Model, surface: Surface) -> str:
-    """The note of the first event the action should emit and the tap did not show, or nothing."""
+def expected_emissions(action: type[Action[Any, Any]], request: object, model: Model) -> tuple[type[Event], ...]:
+    """The events of `action.emits` that `emits_when` expects on the state before `reduce`, or `()` when inputs fail `take`."""
+    by = getattr(request, "by", SOLE)
+    try:
+        accepted = action.take(cast(Any, request).input())
+    except BookError:
+        return ()
+    return tuple(event for event in action.emits if action.emits_when(event, accepted, model, by))
+
+
+def emissions(
+    action: type[Action[Any, Any]],
+    expected: tuple[type[Event], ...],
+    request: object,
+    model: Model,
+    surface: Surface,
+) -> str:
+    """The note of the first expected event the action should emit and the tap did not show, or nothing."""
     if not Deliveries.tapping:
-        Deliveries.unproven += len(action.emits)
+        Deliveries.unproven += len(expected)
         return ""
     ids = run_ids(surface, model)
     by = getattr(request, "by", SOLE)
     accepted = action.take(cast(Any, request).input())
-    for event in action.emits:
+    for event in expected:
         wanted = action.announces(event, accepted, model, by) or {}
         note = Deliveries.prove(event, wanted, ids, action.__name__)
         if note:
