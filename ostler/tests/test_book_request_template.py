@@ -5,7 +5,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from ostler.book import Environment, PageSurface, Screen
-from ostler.book.browser import action, answer, refusal, request
+from ostler.book.wanted import action, answer, refusal, request
 
 
 def sent(method: str, url: str) -> SimpleNamespace:

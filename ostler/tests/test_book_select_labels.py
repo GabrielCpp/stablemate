@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from typing import Any, Iterator
 
 from ostler.book import Browser, Screen, T
-from ostler.book.browser import request
+from ostler.book.wanted import request
 from ostler.book.screen import Lists, Select
 
 PAGE = (

@@ -8,7 +8,7 @@ from urllib.parse import parse_qsl, urlsplit
 import pytest
 
 from ostler.book import Screen, T
-from ostler.book.browser import request
+from ostler.book.wanted import request
 from ostler.book.errors import BookError
 from ostler.book.screen import Form, Lists
 from test_book_form_fields import _form_page, _read, drawn

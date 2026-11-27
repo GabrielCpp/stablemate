@@ -10,7 +10,8 @@ import pytest
 from ostler.book import Answer, Arrange, Done, Endpoint, OffShape, Refusal
 from ostler.book.http import Client, Identities
 from ostler.book.httpsurface import HttpSurface
-from ostler.book.runner import PATIENCE, Landings, landed, perform, spoken
+from ostler.book.runner import landed, perform, spoken
+from ostler.book.tapping import PATIENCE, Landings
 
 from book_fakes import Counter as Tally
 from book_fakes import Quiet
@@ -71,14 +72,14 @@ def test_a_reading_off_its_shape_on_the_way_is_tolerated():
 
 
 def test_a_reading_off_its_shape_on_the_last_read_is_raised(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr("ostler.book.runner.RETAKES", 2)
+    monkeypatch.setattr("ostler.book.tapping.RETAKES", 2)
     with pytest.raises(OffShape):
         landed(Late(lands_on=9, off_shape_on=(1, 2)), (1,))
     assert Landings.missed
 
 
 def test_an_event_that_never_lands_is_judged_on_the_last_reading(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr("ostler.book.runner.RETAKES", 4)
+    monkeypatch.setattr("ostler.book.tapping.RETAKES", 4)
     surface = Late(lands_on=99)
     rows, reads = landed(surface, (1,))
     assert rows == (0,)
@@ -88,7 +89,7 @@ def test_an_event_that_never_lands_is_judged_on_the_last_reading(monkeypatch: py
 
 
 def test_after_one_miss_the_bound_drops(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr("ostler.book.runner.RETAKES", 1000)
+    monkeypatch.setattr("ostler.book.tapping.RETAKES", 1000)
     assert Landings.bound() == 1000
     monkeypatch.setattr(Landings, "missed", True)
     assert Landings.bound() == PATIENCE

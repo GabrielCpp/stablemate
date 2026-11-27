@@ -11,7 +11,8 @@ from ostler.book.arrange import Arrange
 from ostler.book.asked import asked
 from ostler.book.backstage import Backstage, CannotArrange
 from ostler.book.boundary import Foreign, Needs, Passes, Person, Reaches, View
-from ostler.book.browser import Browser, Received, action, answer, refusal, request
+from ostler.book.browser import Browser, Received
+from ostler.book.wanted import action, answer, refusal, request
 from ostler.book.cast import SOLE, Actor
 from ostler.book.delivery import Again, Bus, Delivery
 from ostler.book.domain import (Action, App, Become, Change, Collection, Create, Delete, Documentation, Entry, Fixture, Heard, Index, MoveToday,

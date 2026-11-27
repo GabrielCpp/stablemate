@@ -14,8 +14,9 @@ from typing import Any, Iterator
 import pytest
 
 from ostler.book import BookError, Bus, Delivery
-from ostler.book import runner
-from ostler.book.runner import Deliveries, Landings, perform
+from ostler.book import tapping
+from ostler.book.runner import perform
+from ostler.book.tapping import Deliveries, Landings
 
 from book_desk import Breaches, Desk, Emitter, Lapses, Opens, OpensQuietly, ScanTap, Scanner, Tap, Tickets, ToQueue, Writes
 
@@ -138,7 +139,8 @@ FAILING_RUN = """
 import sys
 from datetime import date
 from book_desk import Emitter, Opens, Tap, Tickets
-from ostler.book.runner import Deliveries, perform
+from ostler.book.runner import perform
+from ostler.book.tapping import Deliveries
 
 class Marked(Tap):
     def close_tap(self):
@@ -290,7 +292,7 @@ def test_a_step_that_carries_a_clocked_action_sends_nothing_and_proves_its_emiss
 
 def test_a_clocked_action_whose_scan_never_runs_fails_its_step_and_the_note_says_the_tap_read_none(monkeypatch: pytest.MonkeyPatch):
     tap, surface, model = _clocked(scanning=False)
-    monkeypatch.setattr(runner, "RETAKES", 20)
+    monkeypatch.setattr(tapping, "RETAKES", 20)
     for step in (Writes("T-21"), Lapses("T-21")):
         assert perform(step, step, model, surface).ok
     step = Breaches("T-21")

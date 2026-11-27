@@ -8,7 +8,6 @@ import argparse
 import importlib
 import os
 import pkgutil
-import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -38,7 +37,8 @@ from ostler.book.reach import unreached
 from ostler.book.screen import Component, Interaction, as_label
 from ostler.book.search import actions_of, items, states_of
 from ostler.book.service import Service
-from ostler.book.sources import file_of, is_web, missing, pointer_missing, raw
+from ostler.book.sources import file_of, is_web, missing, raw
+from ostler.book.sourcecheck import source_is_there, under_site
 
 
 @dataclass(frozen=True)
@@ -264,27 +264,6 @@ def web_faults(service: Service[Any]) -> list[Finding]:
                 found.append(Finding(name, f"source {address} is a web address: a book of an outside system declares "
                                            "Service documentation=Documentation(sites=(...))"))
     return found
-
-
-COMMIT = re.compile(r"[0-9a-f]{7,40}")
-COMMIT_FILE = re.compile(r"([0-9a-f]{7,40}):(.+)")
-
-
-def commit_has(app: str, spec: str) -> bool:
-    return subprocess.run(["git", "-C", app, "cat-file", "-e", spec], capture_output=True).returncode == 0
-
-
-def source_is_there(pointer: str, app: str, members: dict[str, Path]) -> bool:
-    if COMMIT.fullmatch(pointer):
-        return commit_has(app, f"{pointer}^{{commit}}")
-    named = COMMIT_FILE.fullmatch(pointer)
-    if named:
-        return commit_has(app, pointer)
-    return not pointer_missing(file_of(pointer), app, members)
-
-
-def under_site(service: Service[Any], pointer: str) -> bool:
-    return service.documentation is not None and is_web(pointer) and pointer.startswith(service.documentation.sites)
 
 
 def decision_faults(service: Service[Any], module: str, app: str | None = None) -> list[Finding]:
