@@ -25,94 +25,13 @@ from workhorse.runner.backends.null import NullBackend
 
 from workhorse_workflows.coder.dev import flow as dev_flow
 from workhorse_workflows.coder.dev.flow import Dev
+from coder.dev.story import EPIC, STORY, STORY_MD, make_dev
 from workhorse_workflows.coder.shared.owner import CUT_CONTINUE_NOTE, MAX_LAPS
 from workhorse_workflows.coder.shared import work
 from workhorse_workflows.coder.shared.schemas.dev import DispatchEntry
 from workhorse_workflows.coder.shared.schemas.dev_story import DevOutcome
-from workhorse_workflows.coder.shared.schemas.qa import StackStatus
-from workhorse_workflows.kit.qa import runner as qa_runner
-from workhorse_workflows.kit.qa.runner import copy_lease
-from workhorse_workflows.kit.qa.schemas import QaPlanRun
 from _epics import epics_root
 from coder.dev.fake_agent import BLOCK_NOTE, OPERATOR_ANSWER, FakeAgent, git_head
-
-EPIC = "EPIC-1"
-STORY = "STORY-1"
-
-STORY_MD = """---
-id: STORY-1
-type: story
-services: [api, web]
----
-
-# Story STORY-1
-
-## Dependencies
-
-(none)
-
-## Fixtures
-
-(none)
-
-## Context
-
-Users need links that only point inside the site.
-
-## Acceptance Criteria
-
-- a relative link destination is rejected
-
-## Non-Functional Acceptance Criteria
-
-(none)
-
-## Technical Notes
-
-- the check lives in the api's link validator
-
-## Implementation Status
-
-- **Status**: Not started
-"""
-
-@pytest.fixture
-def docs(
-    repo: Path,
-    write: Callable[[Path, str], Path],
-    git: Callable[..., subprocess.CompletedProcess],
-) -> Path:
-    """The docs repo, carrying one epic with one story, committed so the tree starts clean."""
-    write(
-        epics_root() / EPIC / "epic.md",
-        f"---\ntitle: Epic One\nstatus: active\n---\n\n# Epic One\n\n## Stories\n\n"
-        f"### {STORY}\n\n- title: Story {STORY}\n",
-    )
-    write(epics_root() / EPIC / "stories" / STORY / "story.md", STORY_MD)
-    git(repo, "add", "-A")
-    git(repo, "commit", "-qm", "Plan one epic", "--allow-empty")
-    return repo
-
-
-@pytest.fixture
-def workspace(
-    tmp_path: Path,
-    docs: Path,
-    git: Callable[..., subprocess.CompletedProcess],
-    write: Callable[[Path, str], Path],
-    name_workspace: Callable[[dict[str, Path]], None],
-) -> dict[str, Path]:
-    """One real code repo and the named workspace that lists it, outside the docs tree."""
-    root = tmp_path / "ws"
-    api = root / "api"
-    api.mkdir(parents=True)
-    git(api, "init", "-q", "-b", "main")
-    write(api / "README.md", "# api\n")
-    git(api, "add", "-A")
-    git(api, "commit", "-qm", "Initial commit")
-    name_workspace({"api": api})
-    return {"api": api}
-
 
 def _answers(seen: list[str]) -> Callable[..., None]:
     """A stand-in for the human the `Await` is waiting on."""
@@ -123,9 +42,6 @@ def _answers(seen: list[str]) -> Callable[..., None]:
 
     return answered
 
-
-def _dev(docs: Path, operator_mode: str = "auto") -> Dev:
-    return Dev(story=STORY, epic=EPIC, operator_mode=operator_mode)
 
 
 def test_a_clean_pass_settles_the_fix_and_records_the_decline(
@@ -138,7 +54,7 @@ def test_a_clean_pass_settles_the_fix_and_records_the_decline(
     """One ready turn with a fixed and a declined answer finishes the run on its first check."""
     agent = FakeAgent(workspace)
 
-    result = drive_flow(_dev(docs), env(), agent)
+    result = drive_flow(make_dev(docs), env(), agent)
 
     assert isinstance(result, DevOutcome), result
     assert result.status == "ready", result
@@ -174,7 +90,7 @@ def test_the_check_hands_the_plan_its_storys_declared_services(
     setattr(spy, NODE_ATTR, replace(node_spec(real), fn=spy))
     monkeypatch.setattr(dev_flow, "record_plan", spy)
 
-    drive_flow(_dev(docs), env(), FakeAgent(workspace))
+    drive_flow(make_dev(docs), env(), FakeAgent(workspace))
 
     assert seen and all(item == ["api", "web"] for item in seen), seen
 
@@ -188,7 +104,7 @@ def test_a_red_gate_sends_its_output_back_and_a_green_turn_finishes(
     """The check's failure is the next turn's report, and the run ends once the gates pass."""
     agent = FakeAgent(workspace, red=1)
 
-    result = drive_flow(_dev(docs), env(), agent)
+    result = drive_flow(make_dev(docs), env(), agent)
 
     assert result.status == "ready", result
     assert result.settled == [f"{STORY}/review-1.1"], result
@@ -214,7 +130,7 @@ def test_a_copy_the_story_added_comes_back_as_a_copies_failure_before_any_servic
     agent = FakeAgent(workspace, red=2)
     copies.finds("api/links.go:1-9", str(workspace["api"]))
 
-    result = drive_flow(_dev(docs), env(), agent)
+    result = drive_flow(make_dev(docs), env(), agent)
 
     assert result.status == "ready", result
     two = agent.args_for("dev-review")[1]
@@ -245,7 +161,7 @@ def test_the_clone_check_is_not_consulted_when_the_story_status_check_fails(
 
     agent = Stamping(workspace)
 
-    drive_flow(_dev(docs), env(), agent)
+    drive_flow(make_dev(docs), env(), agent)
 
     first_report = str(agent.args_for("dev-review")[1]["report"])
     assert "Status" in first_report, first_report
@@ -262,7 +178,7 @@ def test_the_clone_check_receives_the_dispatch_repos_and_the_story_identity(
     """The docs entry never reaches the check, and the story's id and slug do."""
     agent = FakeAgent(workspace)
 
-    drive_flow(_dev(docs), env(), agent)
+    drive_flow(make_dev(docs), env(), agent)
 
     (call,) = copies.calls
     assert call["roots"] == [str(workspace["api"])], call
@@ -295,7 +211,7 @@ def test_the_lap_gates_a_service_the_check_set_adds_after_the_plan_services(
 
     agent = Repairing(workspace)
 
-    result = drive_flow(_dev(docs), env(), agent)
+    result = drive_flow(make_dev(docs), env(), agent)
 
     assert result.status == "ready", result
     first, second = agent.args_for("dev-review")
@@ -313,7 +229,7 @@ def test_the_check_set_receives_the_dispatch_and_the_story_identity(
     """The check set sees the plan's dispatch, docs entry included, and the story's id and slug."""
     agent = FakeAgent(workspace)
 
-    drive_flow(_dev(docs), env(), agent)
+    drive_flow(make_dev(docs), env(), agent)
 
     (call,) = check_set.calls
     assert [e.cwd for e in call["dispatch"] if e.type != "docs"] == [str(workspace["api"])], call
@@ -333,7 +249,7 @@ def test_the_check_set_is_not_consulted_when_the_clone_check_finds_a_copy(
     agent = FakeAgent(workspace)
     copies.finds("api/links.go:1-9", str(workspace["api"]))
 
-    drive_flow(_dev(docs), env(), agent)
+    drive_flow(make_dev(docs), env(), agent)
 
     assert len(copies.calls) == 2, copies.calls
     assert len(check_set.calls) == 1, check_set.calls
@@ -348,7 +264,7 @@ def test_an_unanswered_finding_comes_back_named_in_the_report(
     """A finding with no section in the answer file stays open and buys another turn."""
     agent = FakeAgent(workspace, unanswered=1)
 
-    result = drive_flow(_dev(docs), env(), agent)
+    result = drive_flow(make_dev(docs), env(), agent)
 
     assert result.settled == [f"{STORY}/review-1.1"], result
     assert result.declined == [f"{STORY}/review-1.2"], result
@@ -520,7 +436,7 @@ def test_a_follow_up_that_cites_an_open_record_files_no_record(
         ),),
     )
 
-    result = drive_flow(_dev(docs), env(), agent)
+    result = drive_flow(make_dev(docs), env(), agent)
 
     assert result.status == "ready", result
     assert [a["kind"] for a in agent.args_for("judge")] == ["scope"], agent.counts()
@@ -537,7 +453,7 @@ def test_a_follow_up_no_open_record_holds_is_filed_beside_the_qa_ones(
     _file_open(docs, SNAPSHOTS, "clear-report-snapshots", filed_by="qa")
     agent = FakeAgent(workspace, follow_ups=(_follow_up("Paginate the audit log", "it loads every row"),))
 
-    drive_flow(_dev(docs), env(), agent)
+    drive_flow(make_dev(docs), env(), agent)
 
     by_origin = {r.filed_by: r.summary for r in Ostler(docs).records().records}
     assert by_origin == {"qa": SNAPSHOTS, "coder": "Paginate the audit log"}
@@ -584,7 +500,7 @@ def test_two_follow_ups_of_a_workspace_run_land_as_records_on_the_untracked_shel
     )
     code_heads = {name: git_head(path) for name, path in two_repo_workspace.items()}
 
-    drive_flow(_dev(docs), env(), FakeAgent(two_repo_workspace, follow_ups=followed, repo="api-service"))
+    drive_flow(make_dev(docs), env(), FakeAgent(two_repo_workspace, follow_ups=followed, repo="api-service"))
 
     folders = sorted(p.parent.relative_to(artifacts / "backlogs").parts[:2] for p in (artifacts / "backlogs").glob("*/*/*/record.md"))
     assert folders == [("api-service", "audit"), ("api-service", "pricing")]
@@ -598,7 +514,7 @@ def test_two_follow_ups_of_a_workspace_run_land_as_records_on_the_untracked_shel
     assert git_head(two_repo_workspace["web-app"]) == code_heads["web-app"]
     assert not list(two_repo_workspace["api-service"].rglob("record.md"))
 
-    drive_flow(_dev(docs), env(name="coder-again"), FakeAgent(two_repo_workspace, follow_ups=followed, repo="api-service"))
+    drive_flow(make_dev(docs), env(name="coder-again"), FakeAgent(two_repo_workspace, follow_ups=followed, repo="api-service"))
 
     assert _register(docs) == lines
     assert len(list((artifacts / "backlogs").glob("*/*/*/record.md"))) == 2
@@ -616,7 +532,7 @@ def test_a_blocked_turn_in_human_mode_parks_and_resumes_with_the_answer(
     seen: list[str] = []
 
     with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
-        result = drive_flow(_dev(docs, operator_mode="human"), env(), agent)
+        result = drive_flow(make_dev(docs, operator_mode="human"), env(), agent)
 
     assert result.status == "ready", result
     (gate,) = seen
@@ -639,7 +555,7 @@ def test_checks_that_stay_red_past_the_lap_budget_park_instead_of_failing(
     seen: list[str] = []
 
     with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
-        result = drive_flow(_dev(docs), env(), agent)
+        result = drive_flow(make_dev(docs), env(), agent)
 
     assert result.status == "ready", result
     assert agent.counts() == {"dev-plan": 1, "dev-build": 1, "dev-review": MAX_LAPS + 2, "resolve-operator": 1}, agent.counts()
@@ -662,7 +578,7 @@ def test_work_the_turn_left_uncommitted_comes_back_named_in_the_report(
     """A path the story wrote and did not commit fails the check, so the owner records it."""
     agent = FakeAgent(workspace, stray=1)
 
-    result = drive_flow(_dev(docs), env(), agent)
+    result = drive_flow(make_dev(docs), env(), agent)
 
     assert result.status == "ready", result
     assert agent.counts() == {"dev-plan": 1, "dev-build": 1, "dev-review": 2}, agent.counts()
@@ -690,7 +606,7 @@ def test_a_backlog_record_filed_under_an_artifacts_dir_in_the_repo_is_not_the_ow
         workspace, follow_ups=(_follow_up("Paginate the audit log", "it loads every row"),)
     )
 
-    result = drive_flow(_dev(docs), env(), agent)
+    result = drive_flow(make_dev(docs), env(), agent)
 
     assert result.status == "ready", result
     assert agent.counts()["dev-review"] == 1, agent.counts()
@@ -708,7 +624,7 @@ def test_a_path_dirty_before_the_story_began_is_not_the_story_s_to_commit(
     mine.write_text("package links\n", encoding="utf-8")
     entry = f"notes.go\0{hashlib.sha256(mine.read_bytes()).hexdigest()}"
     agent = FakeAgent(workspace)
-    dev = _dev(docs).model_copy(update={"preexisting": (entry,)})
+    dev = make_dev(docs).model_copy(update={"preexisting": (entry,)})
 
     result = drive_flow(dev, env(), agent)
 
@@ -748,7 +664,7 @@ def test_a_plan_that_skips_a_criterion_goes_back_naming_it(
 
     agent = Walks(workspace)
 
-    result = drive_flow(_dev(docs), env(), agent)
+    result = drive_flow(make_dev(docs), env(), agent)
 
     assert result.status == "ready", result
     assert agent.counts() == {"dev-plan": 1, "dev-build": 1, "dev-review": 2}, agent.counts()
@@ -769,7 +685,7 @@ def test_a_full_walk_proceeds(
     _three_criteria(docs, git)
     agent = FakeAgent(workspace, walk=(1, 2, 3))
 
-    result = drive_flow(_dev(docs), env(), agent)
+    result = drive_flow(make_dev(docs), env(), agent)
 
     assert result.status == "ready", result
     assert agent.counts() == {"dev-plan": 1, "dev-build": 1, "dev-review": 1}, agent.counts()
@@ -791,196 +707,6 @@ def test_a_follow_up_turn_needs_no_walk(
 
     assert result.status == "ready", result
     assert agent.counts() == {"dev-plan": 1, "dev-build": 1, "dev-review": 1}, agent.counts()
-
-
-class _Stack:
-    """The stack nodes, scripted: what the scoped rerun returns, and every call the flow made."""
-
-    def __init__(
-        self,
-        status: Literal["passed", "failed", "invalid"] = "passed",
-        ready: Literal["yes", "no", "unneeded"] = "yes",
-        failed: tuple[str, ...] = (),
-        red: int = 0,
-    ) -> None:
-        self.status: Literal["passed", "failed", "invalid"] = status
-        self.red = red
-        self.ready: Literal["yes", "no", "unneeded"] = ready
-        self.failed = failed
-        self.calls: list[str] = []
-        self.leases: list[str] = []
-        self.only: list[str] = []
-
-    def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(qa_runner, "story_near", lambda _root, _services=(), _package="": "book")
-        monkeypatch.setattr(qa_runner, "stack_env", self.env)
-        monkeypatch.setattr(qa_runner, "ensure_stack", self.ensure)
-        monkeypatch.setattr(qa_runner, "run_qa_plan", self.run)
-        monkeypatch.setattr(qa_runner, "release_copy", self.release)
-
-    def env(self, _root: Any, near: str = "", lease: str = "", repo_dir: str = "") -> dict[str, str]:
-        self.calls.append("stack_target")
-        self.leases.append(lease)
-        return {}
-
-    def ensure(self, _log: Any, **_k: Any) -> StackStatus:
-        self.calls.append("ensure_stack")
-        return StackStatus(ready=self.ready)
-
-    def run(self, _log: Any, only: list[str] | None = None, **_k: Any) -> QaPlanRun:
-        self.calls.append("run_qa_plan")
-        self.only = list(only or [])
-        reruns = self.calls.count("run_qa_plan")
-        status: Literal["passed", "failed", "invalid"] = "failed" if reruns <= self.red else self.status
-        scenarios = {sid: {"status": "failed"} for sid in self.failed} if status == "failed" else {}
-        return QaPlanRun(status=status, ostler={"scenarios": scenarios})
-
-    def release(self, _log: Any, **_k: Any) -> None:
-        self.calls.append("release_copy")
-        return None
-
-
-def test_no_failed_record_touches_no_stack(
-    docs: Path,
-    workspace: dict[str, Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A story QA never failed finishes without a stack node running."""
-    stack = _Stack()
-    stack.install(monkeypatch)
-
-    result = drive_flow(_dev(docs), env(), FakeAgent(workspace))
-
-    assert result.status == "ready", result
-    assert stack.calls == [], stack.calls
-
-
-def test_failed_scenarios_that_now_pass_finish(
-    docs: Path,
-    workspace: dict[str, Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The scoped rerun runs only the failed ids, and a pass lets the item leave dev."""
-    stack = _Stack()
-    stack.install(monkeypatch)
-    agent = FakeAgent(workspace, failed=("scenario-b", "scenario-a"))
-
-    result = drive_flow(_dev(docs), env(), agent)
-
-    assert result.status == "ready", result
-    assert agent.counts() == {"dev-plan": 1, "dev-build": 1, "dev-review": 1}, agent.counts()
-    assert stack.only == ["scenario-a", "scenario-b"], stack.only
-    assert stack.calls == ["stack_target", "ensure_stack", "run_qa_plan", "release_copy"], stack.calls
-
-
-def test_a_scenario_that_still_fails_goes_back_to_review(
-    docs: Path,
-    workspace: dict[str, Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A red rerun is the next turn's report, names the ids, and spends one repair lap."""
-    stack = _Stack(failed=("scenario-a",), red=1)
-    stack.install(monkeypatch)
-    agent = FakeAgent(workspace, failed=("scenario-a",))
-
-    result = drive_flow(_dev(docs), env(), agent)
-
-    assert result.status == "ready", result
-    assert agent.counts() == {"dev-plan": 1, "dev-build": 1, "dev-review": 2}, agent.counts()
-    first, second = agent.args_for("dev-review")
-    assert first["report"] == "", first
-    assert "scenario-a" in str(second["report"]), second
-    assert stack.calls.count("release_copy") == stack.calls.count("run_qa_plan") == 2, stack.calls
-
-
-def test_a_scoped_run_that_does_not_finish_lets_the_item_leave(
-    docs: Path,
-    workspace: dict[str, Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """An unfinished or unreachable rerun is QA's to own, and the copy is still released."""
-    stack = _Stack(status="invalid")
-    stack.install(monkeypatch)
-    agent = FakeAgent(workspace, failed=("scenario-a",))
-
-    result = drive_flow(_dev(docs), env(), agent)
-
-    assert result.status == "ready", result
-    assert agent.counts() == {"dev-plan": 1, "dev-build": 1, "dev-review": 1}, agent.counts()
-    assert stack.calls[-1] == "release_copy", stack.calls
-
-
-def test_a_stack_that_will_not_come_up_is_skipped_and_released(
-    docs: Path,
-    workspace: dict[str, Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """No stack means no rerun and no repair turn, and the lease is still released."""
-    stack = _Stack(ready="no")
-    stack.install(monkeypatch)
-    agent = FakeAgent(workspace, failed=("scenario-a",))
-
-    result = drive_flow(_dev(docs), env(), agent)
-
-    assert result.status == "ready", result
-    assert stack.calls == ["stack_target", "ensure_stack", "release_copy"], stack.calls
-
-
-def test_the_dev_lease_is_not_the_qa_lease(
-    docs: Path,
-    workspace: dict[str, Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Dev's copy of the stack carries its own name, so it never collides with QA's."""
-    stack = _Stack()
-    stack.install(monkeypatch)
-    run_env = env()
-
-    drive_flow(_dev(docs), run_env, FakeAgent(workspace, failed=("scenario-a",)))
-
-    (lease,) = stack.leases
-    assert lease != copy_lease(STORY, "t"), lease
-    assert lease.endswith("-dev"), lease
-
-
-def test_a_second_failing_self_check_hands_the_item_to_qa(
-    docs: Path,
-    workspace: dict[str, Path],
-    env: Callable[..., RunEnv],
-    drive_flow: Callable[..., Any],
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """The self-check bounces dev once, and a still-red rerun then finishes the item and says QA owns it."""
-    stack = _Stack(failed=("scenario-a",), red=5)
-    stack.install(monkeypatch)
-    agent = FakeAgent(workspace, failed=("scenario-a",))
-
-    with caplog.at_level("INFO"):
-        result = drive_flow(_dev(docs), env(), agent)
-
-    assert result.status == "ready", result
-    assert agent.counts() == {"dev-plan": 1, "dev-build": 1, "dev-review": 2}, agent.counts()
-    assert stack.calls.count("run_qa_plan") == 2, stack.calls
-    assert stack.calls.count("release_copy") == 2, stack.calls
-    assert "scenario-a" in str(agent.args_for("dev-review")[1]["report"])
-    assert any(
-        "self-check: 1 scenario(s) still fail after one bounce, QA owns them now: scenario-a"
-        in r.getMessage()
-        for r in caplog.records
-    ), [r.getMessage() for r in caplog.records]
 
 
 PHASE_TURNS = ("dev-plan", "dev-build", "dev-review")
@@ -1020,7 +746,7 @@ def test_a_fresh_story_runs_plan_build_and_review_in_that_order(
 ) -> None:
     agent = FakeAgent(workspace)
 
-    drive_flow(_dev(docs), env(), agent)
+    drive_flow(make_dev(docs), env(), agent)
 
     assert [c for c in agent.calls if c in PHASE_TURNS] == list(PHASE_TURNS), agent.calls
 
@@ -1033,7 +759,7 @@ def test_a_failed_check_reenters_review_and_not_build(
 ) -> None:
     agent = FakeAgent(workspace, red=1)
 
-    drive_flow(_dev(docs), env(), agent)
+    drive_flow(make_dev(docs), env(), agent)
 
     turns = [c for c in agent.calls if c in PHASE_TURNS]
     assert turns == ["dev-plan", "dev-build", "dev-review", "dev-review"], agent.calls
@@ -1049,7 +775,7 @@ def test_an_operator_answer_on_a_build_block_returns_to_build(
     seen: list[str] = []
 
     with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
-        result = drive_flow(_dev(docs, operator_mode="human"), env(), agent)
+        result = drive_flow(make_dev(docs, operator_mode="human"), env(), agent)
 
     assert result.status == "ready", result
     turns = [c for c in agent.calls if c in PHASE_TURNS]
@@ -1067,7 +793,7 @@ def test_a_departure_without_advice_sends_the_build_back_when_an_advisor_is_offe
 ) -> None:
     agent = FakeAgent(workspace, departures=("swap the parser",), advise_from=2)
 
-    result = drive_advised(_dev(docs), env(), agent)
+    result = drive_advised(make_dev(docs), env(), agent)
 
     assert result.status == "ready", result
     turns = [c for c in agent.calls if c in PHASE_TURNS]
@@ -1092,7 +818,7 @@ def test_without_an_advisor_a_departure_passes_and_every_phase_runs_at_max(
 ) -> None:
     agent = FakeAgent(workspace, departures=("swap the parser",), advise_from=9)
 
-    drive_flow(_dev(docs), env(), agent)
+    drive_flow(make_dev(docs), env(), agent)
 
     assert agent.counts()["dev-build"] == 1, agent.counts()
     assert [p for p in agent.powers if p[0] in PHASE_TURNS] == [
@@ -1110,7 +836,7 @@ def test_a_decline_with_no_consult_is_reopened_and_named_when_an_advisor_is_offe
 ) -> None:
     agent = FakeAgent(workspace, consult_from=2)
 
-    result = drive_advised(_dev(docs), env(), agent)
+    result = drive_advised(make_dev(docs), env(), agent)
 
     assert agent.counts()["dev-review"] == 2, agent.counts()
     report = str(agent.args_for("dev-review")[1]["report"])
@@ -1127,7 +853,7 @@ def test_a_decline_with_a_consult_on_file_stays_declined(
 ) -> None:
     agent = FakeAgent(workspace, consult_from=1)
 
-    result = drive_advised(_dev(docs), env(), agent)
+    result = drive_advised(make_dev(docs), env(), agent)
 
     assert agent.counts()["dev-review"] == 1, agent.counts()
     assert result.declined == [f"{STORY}/review-1.2"], result
@@ -1142,7 +868,7 @@ def test_a_later_turn_of_a_phase_on_the_same_conversation_sends_only_the_follow_
     agent = FakeAgent(workspace, red=1, session=lambda n: "sess-1")
     run_env = env()
 
-    drive_flow(_dev(docs), run_env, agent)
+    drive_flow(make_dev(docs), run_env, agent)
 
     turns = [c for c in agent.calls if c in (*PHASE_TURNS, "dev-follow-up")]
     assert turns == ["dev-plan", "dev-build", "dev-review", "dev-follow-up"], agent.calls
@@ -1165,7 +891,7 @@ def test_a_conversation_other_than_the_briefed_one_opens_with_the_full_brief_aga
     monkeypatch.setattr(Dev, "chain_session", lambda self, key: f"conversation-{next(reads)}")
     agent = FakeAgent(workspace, red=1, session=lambda n: "sess-1")
 
-    drive_flow(_dev(docs), env(), agent)
+    drive_flow(make_dev(docs), env(), agent)
 
     turns = [c for c in agent.calls if c in (*PHASE_TURNS, "dev-follow-up")]
     assert turns == ["dev-plan", "dev-build", "dev-review", "dev-review"], agent.calls
@@ -1179,7 +905,7 @@ def test_the_plan_turn_on_a_fresh_conversation_carries_the_full_rules(
 ) -> None:
     agent = FakeAgent(workspace, session=lambda n: "sess-1")
 
-    drive_flow(_dev(docs), env(), agent)
+    drive_flow(make_dev(docs), env(), agent)
 
     (plan,) = agent.args_for("dev-plan")
     assert plan["opening_brief"] == "", plan
@@ -1196,7 +922,7 @@ def test_the_opening_brief_records_an_operator_answer_as_a_product_page(
 ) -> None:
     agent = FakeAgent(workspace, session=lambda n: "sess-1")
 
-    drive_flow(_dev(docs), env(), agent)
+    drive_flow(make_dev(docs), env(), agent)
 
     (plan,) = agent.args_for("dev-plan")
     product = str(plan["product_dir"])
@@ -1215,7 +941,7 @@ def test_the_build_turn_on_the_plans_conversation_points_at_the_opening_brief(
 ) -> None:
     agent = FakeAgent(workspace, session=lambda n: "sess-1")
 
-    drive_flow(_dev(docs), env(), agent)
+    drive_flow(make_dev(docs), env(), agent)
 
     (plan,) = agent.args_for("dev-plan")
     (build,) = agent.args_for("dev-build")
@@ -1237,7 +963,7 @@ def test_a_rebrief_renders_the_full_rules_and_rewrites_the_brief_on_disk(
 ) -> None:
     agent = FakeAgent(workspace, session=lambda n: "sess-1")
 
-    drive_flow(_dev(docs), env(), agent)
+    drive_flow(make_dev(docs), env(), agent)
 
     (build,) = agent.args_for("dev-build")
     (rebrief,) = agent.rebriefs_for("dev-build")
@@ -1259,7 +985,7 @@ def test_the_first_review_turn_writes_the_reviewer_files_beside_its_brief(
 ) -> None:
     agent = FakeAgent(workspace)
 
-    drive_flow(_dev(docs), env(), agent)
+    drive_flow(make_dev(docs), env(), agent)
 
     (review,) = agent.args_for("dev-review")
     folder = Path(str(review["brief_path"])).parent
@@ -1284,7 +1010,7 @@ def test_a_build_turn_cut_twice_at_its_deadline_parks_and_resumes_on_the_same_se
     seen: list[str] = []
 
     with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
-        result = drive_flow(_dev(docs), env(), agent)
+        result = drive_flow(make_dev(docs), env(), agent)
 
     assert result.status == "ready", result
     (gate,) = seen
@@ -1309,7 +1035,7 @@ def test_a_first_deadline_cut_of_the_build_continues_without_a_gate(
     seen: list[str] = []
 
     with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
-        result = drive_flow(_dev(docs), env(), agent)
+        result = drive_flow(make_dev(docs), env(), agent)
 
     assert result.status == "ready", result
     assert seen == [], seen
@@ -1331,7 +1057,7 @@ def test_a_second_consecutive_cut_of_the_build_gates_the_operator(
     seen: list[str] = []
 
     with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
-        result = drive_flow(_dev(docs), env(), agent)
+        result = drive_flow(make_dev(docs), env(), agent)
 
     assert result.status == "ready", result
     (gate,) = seen
@@ -1349,7 +1075,7 @@ def test_a_silence_cut_of_the_build_gates_on_the_first_cut(
     seen: list[str] = []
 
     with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
-        result = drive_flow(_dev(docs), env(), agent)
+        result = drive_flow(make_dev(docs), env(), agent)
 
     assert result.status == "ready", result
     (gate,) = seen
@@ -1366,7 +1092,7 @@ def test_a_first_deadline_cut_of_the_review_continues_without_a_gate(
     seen: list[str] = []
 
     with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
-        result = drive_flow(_dev(docs), env(), agent)
+        result = drive_flow(make_dev(docs), env(), agent)
 
     assert result.status == "ready", result
     assert seen == [], seen
@@ -1383,7 +1109,7 @@ def test_a_second_consecutive_cut_of_the_review_gates_the_operator(
     seen: list[str] = []
 
     with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
-        result = drive_flow(_dev(docs), env(), agent)
+        result = drive_flow(make_dev(docs), env(), agent)
 
     assert result.status == "ready", result
     (gate,) = seen
@@ -1400,7 +1126,7 @@ def test_a_first_deadline_cut_of_the_plan_continues_without_a_gate(
     seen: list[str] = []
 
     with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
-        result = drive_flow(_dev(docs), env(), agent)
+        result = drive_flow(make_dev(docs), env(), agent)
 
     assert result.status == "ready", result
     assert seen == [], seen
@@ -1416,7 +1142,7 @@ def test_a_cut_resolver_turn_lands_on_the_gate(
     seen: list[str] = []
 
     with patch.object(pyflow_park, "wait_for_answer", _answers(seen)):
-        result = drive_flow(_dev(docs), env(), agent)
+        result = drive_flow(make_dev(docs), env(), agent)
 
     assert result.status == "ready", result
     (gate,) = seen

@@ -10,6 +10,7 @@ from workhorse import worklist as wl
 from workhorse._vendor.stablemate_core import books
 from workhorse.pyflow import AgentTimeout, Await, Continue, Done
 
+from workhorse_workflows.coder.dev.gates import first_failure
 from workhorse_workflows.coder.dev.report import (
     findings_text,
     plan_arg,
@@ -33,9 +34,8 @@ from workhorse_workflows.coder.shared.conversation import (
     reset_briefs,
     story_chain,
 )
-from workhorse_workflows.coder.shared.clones import check_copies
 from workhorse_workflows.coder.shared.counsel import consulted, record_consults
-from workhorse_workflows.coder.shared.dev import check_story_status, read_operator_context
+from workhorse_workflows.coder.shared.dev import read_operator_context
 from workhorse_workflows.coder.shared.escalation import context_path, escalation
 from workhorse_workflows.coder.shared.judge import Judge
 from workhorse_workflows.coder.shared.failed import (
@@ -43,7 +43,6 @@ from workhorse_workflows.coder.shared.failed import (
     failed_scenarios_arg,
     last_failed_scenarios,
 )
-from workhorse_workflows.coder.shared.failure import from_findings, from_gate
 from workhorse_workflows.coder.shared.owner import (
     HUMAN_MODES,
     MAX_BLOCKS,
@@ -62,16 +61,12 @@ from workhorse_workflows.coder.shared.resolution import (
     Resolving,
     product_dir,
 )
-from workhorse_workflows.coder.shared.reach import resolve_check_set
 from workhorse_workflows.coder.shared.review import (
     ANSWERS_FILE,
     resolve_review_context,
     settle_findings,
 )
-from workhorse_workflows.coder.shared.schemas._base import Finding
 from workhorse_workflows.coder.shared.schemas.dev import (
-    FailureReport,
-    GateOutcome,
     OperatorResolution,
 )
 from workhorse_workflows.coder.shared.schemas.dev_story import (
@@ -82,7 +77,7 @@ from workhorse_workflows.coder.shared.schemas.dev_story import (
     PlanResult,
 )
 from workhorse_workflows.coder.shared.schemas.story import StoryPaths
-from workhorse_workflows.coder.shared.service_gates import GATE_ORDER, declared_services, run_gate
+from workhorse_workflows.coder.shared.service_gates import declared_services
 from workhorse_workflows.coder.shared.stack import (
     ensure_stack,
     release_copy,
@@ -511,62 +506,8 @@ class Dev(Resolving):
             self.call(
                 branch_code_repos, self.ctx.spec_dir, self.branch, plan=document
             )
-        report = self._first_failure(lap)
+        report = first_failure(self, lap)
         return [] if report is None else [report_text(report)]
-
-    def _first_failure(self, lap: int) -> FailureReport | None:
-        stamped = self.call(
-            check_story_status,
-            self.ctx.story_slug,
-            epic=self.ctx.story_epic,
-            story_path=self.ctx.story_path,
-        )
-        impl = self.output(resolve_impl_context)
-        if stamped.status == "dirty":
-            return from_findings(
-                "story status",
-                [
-                    Finding(
-                        target=self.ctx.story_path,
-                        issue=(
-                            f"the story's Status reads '{stamped.written}', which marks it "
-                            "finished. The run reads that line to pick work, so the story "
-                            "drops out of every later pass and out of QA."
-                        ),
-                        repair=(
-                            "put the Status line back to the value it held before this "
-                            "story's work. `git diff` on the story file shows it. Record "
-                            "what you ran as prose under `## Implementation Status` instead. "
-                            "The run stamps the outcome itself, from a QA run it performed."
-                        ),
-                    )
-                ],
-                self.ctx.story_path,
-                lap,
-            )
-        copies = self.call(
-            check_copies,
-            [entry.cwd for entry in impl.dispatch_list if entry.type != "docs"],
-            story_slug=self.ctx.story_slug,
-            story_id=self.ctx.story_id,
-        )
-        if copies.findings:
-            return from_findings("copies", copies.findings, copies.cwd, lap)
-        checks = self.call(
-            resolve_check_set,
-            tuple(impl.dispatch_list),
-            self.ctx.story_slug,
-            self.ctx.story_id,
-        )
-        for entry in checks.checks:
-            outcome = GateOutcome()
-            for gate in GATE_ORDER:
-                outcome = self.call(
-                    run_gate, entry.cwd, entry.service, gate, service_type=entry.type
-                )
-                if outcome.status == "dirty":
-                    return from_gate(outcome, entry.cwd, lap)
-        return None
 
     def _settle(self) -> list[str]:
         w = self._worklist

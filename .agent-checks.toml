@@ -202,7 +202,7 @@ stops a run's process group with os.killpg, sending SIGTERM and then SIGKILL. Ex
 "workflows/src/workhorse_workflows/research/workflow.py" = 1405
 "workflows/tests/author/test_workflow.py" = 1510
 "workflows/tests/coder/book_qa/test_flow.py" = 2349
-"workflows/tests/coder/dev/test_flow.py" = 1332
+"workflows/tests/coder/dev/test_flow.py" = 1165
 "workflows/tests/coder/docs/test_flow.py" = 645
 "workflows/tests/coder/fix_ci/test_flow.py" = 581
 "workflows/tests/coder/qa/test_flow.py" = 1613
@@ -243,4 +243,11 @@ files = ["workhorse/workhorse/runner/backends/antigravity.py", "workhorse/workho
 reasons = [
   "antigravity.py imports the backend base types because it reads agy's stream-json events",
   "pi.py imports the same base types because it reads pi's json events and drives its rpc compaction",
+]
+
+[[check-clones.coincidence]]
+files = ["workflows/tests/coder/dev/test_flow.py", "workflows/tests/coder/dev/test_self_check.py"]
+reasons = [
+  "test_flow.py drives the whole dev flow and asserts its phase counts, so each test repeats the drive and the status check",
+  "test_self_check.py drives the same flow to assert the scoped rerun, so each test repeats the drive and the status check on its own scenario",
 ]
