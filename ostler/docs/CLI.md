@@ -63,7 +63,7 @@ A failure inside ostler itself prints one line, `ostler <command>: internal erro
 
 ```bash
 ostler list  --type ETYPE [--epic E] [--status S] [--json]
-ostler search <query> [--type TYPE] [--root ROOT] [--limit N] [--match] [--json]
+ostler search <query> [--type TYPE] [--kind KIND] [--service MODULE] [--root ROOT] [--limit N] [--match] [--json]
 ostler index build [--json]
 ostler query stories-covering-seed <arg> [--json]
 ostler next-epic [--json]                     # first epic in milestone order with unfinished work
@@ -72,10 +72,15 @@ ostler path epic <epic> | path spec <story-id> | path story <story-id> | path br
 ostler path milestone <slug> | path notes <slug> | path design <slug>
 ```
 
-`search` ranks sections with BM25 across the current book and decisions, OR-ing the query's terms
-with prefix and stemming matches. `--root` names epics, milestones, specs or the register, and
-`--root all` reads every root. `index build` builds
-or refreshes the store that backs it and reports the counts.
+`search` ranks rows with BM25 across one index: a row per markdown section of every document root,
+of the company, team and product pages (`pages`) and of the artifacts `docs/` folder (`docs`), and a
+row per element of every service book (`books`). Hits that hold every term come first, then hits
+that hold some, with prefix and stemming matches. `--root` takes one root or a comma list, such as
+`books,pages`, and `--root all` reads every root. Without `--root` or `--type`, the search leaves out
+epics, milestones, specs and the register. `--kind` keeps one book element kind, or `company`, `team`
+or `product` for a page. `--service` keeps the elements of one book beside every other root. A book
+is loaded only when the search reads `books`. `index build` builds or refreshes the store that backs
+it and reports the counts.
 
 Epic directories are named by the epic's id (`<artifacts dir>/epics/<epic-id>/`), and a story's
 folder by the story's id (`stories/<story-id>/`). Ask `path epic` rather than joining a path

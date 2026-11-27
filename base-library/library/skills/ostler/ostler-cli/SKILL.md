@@ -50,7 +50,7 @@ Everything else an agent writes outside the code also goes to the artifacts fold
 
 `<product>` is `book.product` in the repository's `agents.yml`, else the repository's name. Repositories that name the same product share its pages, milestones and designs. `<repo>` files what one codebase owns: its service books, register and notes.
 
-A decision tied to one service is a file in that service book's `decisions/`. An answer that spans services is a product page. Read both with `ostler book search <term> --kind decision|product`.
+A decision tied to one service is a file in that service book's `decisions/`. An answer that spans services is a product page. Read both with `ostler search <term> --kind decision|product`.
 
 The milestones order the work: a milestone's `dependsOn` milestones first, then its `epics:` list in
 order. `okf.milestone_epics()` returns that list.
@@ -153,9 +153,14 @@ Warning-level findings (`story-covers-no-seed`, `ungrounded-surface`) are report
 the check.
 
 **The service book.** A service's behaviour lives in the book under `services/<repo>/<name>/` in the artifacts folder, or `services/<name>/` in a repository that keeps its book, written
-with [[ostler-book]] and read with `ostler book search|explain|decisions`. A search term may be a label in any of the book's
-languages, a source file or a part of its path, or several words in any order, and `--kind question`
-finds an open question.
+with [[ostler-book]] and read with `ostler search`, `ostler book explain` and `ostler book decisions`.
+`ostler search` ranks one full-text index of the service books, the company, team and product pages,
+the artifacts `docs/` folder and the planning records. A term may be a label in any of the book's
+languages, a source file or a part of its path, or several words in any order. A hit holding every
+word ranks above one holding a few. `--kind question` finds an open question, `--service` keeps one
+book's elements, and `--root books,pages,docs` names the roots to read. Without `--root` it reads
+every root but epics, milestones, specs and the register. `ostler book search` is the same search over
+`books,pages`.
 
 ## Id allocation, profiles, templates
 

@@ -71,9 +71,10 @@ keeps its own service books. Both read the same product pages and the same miles
 The link goes one way. A repository names its product. Nothing under `products/<product>/` lists
 its repositories. A repository with no `book.product` is a product of its own.
 
-`ostler book search` started in a repository reads the company pages, its team's pages, its
-product's pages and its own service books. It reads another repository's book only when
-`--service services.<other>.<name>` names it.
+`ostler search` started in a repository reads the company pages, its team's pages, its
+product's pages, the `docs/` folder and its own service books. Started in the artifacts folder,
+it reads every team's pages and every repository's books. `--service services.<other>.<name>`
+keeps the hits of one book. `ostler book search` is the same search over the books and the pages.
 
 ## What stays in the code repository
 

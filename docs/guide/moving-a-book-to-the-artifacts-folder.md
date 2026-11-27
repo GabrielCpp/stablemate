@@ -46,7 +46,7 @@ Run every command from the repository root. `<artifacts>` is the artifacts folde
    cp product/*.md <artifacts>/products/<product>/
    ```
 
-   Skip this step when the repository has no `product/` folder. Once the move is done, `ostler book search <a word of a page>` run from the repository prints `== product <product>` above the page, and that heading is the check.
+   Skip this step when the repository has no `product/` folder. Once the move is done, `ostler book search <a word of a page>` run from the repository prints a `pages/product  products/<product>/<slug>` hit for the page, and that hit is the check.
 
 5. Rewrite the pointers that the move leaves wrong. Start with the `check by hand` lines of step 3.
 

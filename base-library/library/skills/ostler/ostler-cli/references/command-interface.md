@@ -26,7 +26,7 @@ ostler doctor [--epic SLUG] [--json] [--no-schema]   # checks epics, stories, mi
 **Retrieve**
 ```bash
 ostler list   --type epic|story|spec|seed [--epic E] [--status S] [--json]
-ostler search <query> [--type T] [--json]                         # full-text match over node prose
+ostler search <query> [--type T] [--kind K] [--service M] [--root R] [--json]   # one ranked index: books, pages, docs and records
 ostler query  stories-covering-seed <arg> [--json]
 ostler next-epic [--json]                            # first epic in milestone order with unfinished work
 ostler next-story <epic> [--json]                    # next runnable story (deps satisfied, not done)
@@ -76,7 +76,7 @@ ostler edit settle-review <story-id> [--write]
 
 **The service book** (written with the `ostler-book` skill)
 ```bash
-ostler book search <term> [--service services.<name>] [--kind rule|endpoint|interaction|action|journey|screen|decision|company|team|product|question|event|outside]
+ostler book search <term> [--service services.<name>] [--kind K]   # ostler search --root books,pages; names a flat book's move
 ostler book explain services.<name> <ClassName>   # everything the book says of one element
 ostler book decisions services.<name> [--story ID]   # services.<name> is services.<repo>.<name> in the artifacts folder
 ostler book pages [--level company|team|product] [--check]   # the pages of the company, team and product books: level, slug, date, status, statement

@@ -18,7 +18,7 @@ before the code whenever the question is *what* something does, *why* it is so, 
 *how a user reaches it*:
 
 ```bash
-ostler book search <term> [--service <module>] [--kind rule|endpoint|interaction|action|journey|screen|decision|company|team|product|question|event|outside]
+ostler search <term> [--root books,pages,docs] [--service <module>] [--kind rule|endpoint|interaction|action|journey|screen|decision|company|team|product|question|event|outside]
 ostler book explain <module> <ClassName>       # everything the book says of one element
 ostler book decisions <module> [--story <id>]  # each decision and the story behind it
 ostler book pages [--level company|team|product]      # the pages above every service, one line each

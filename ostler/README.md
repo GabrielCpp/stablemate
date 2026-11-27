@@ -323,7 +323,7 @@ ostler book run     services.api --no-stack --only AddTodo,FindTodos
 ostler book run     services.api --fresh-data   # reload the data first: the stack's `fresh` command, else a reset of the `ostler env` copy, else a refusal
 ostler book explore services.api --seed-only   # walk the model's state graph, no app
 ostler book walk    services.api --scene overdue --action read
-ostler book search  overdue               # what the book says, read from its index in the user cache, and the company, team and product pages
+ostler book search  overdue               # ostler search --root books,pages: what the books and the company, team and product pages say, ranked
 ostler book pages [--level company|team|product] [--check]   # one line per page: level, slug, date, status, statement; --check names a page with no date or an empty body
 ostler book explain services.api AddTodo
 ostler book index   services.api          # rebuild the search index in the user cache; search keeps it itself, nothing is committed
@@ -375,10 +375,10 @@ code repository's `agents.yml`. With no `book.team`, no team book is read. A fol
 
 A page starts with a `date:` line (required), then optional `sources:` and `status:` lines, a blank line and prose whose
 first line is its statement. `status:` is free text, for an ADR or an RFC: `proposed`, `accepted`, `superseded by <slug>`.
-`ostler book search` reads every level with every query, with or without `--service`, and prints their hits first, under
-`== company`, `== team <name>` and `== product` (`== product <name>` for a named product), in that order. A hit line reads `<level>  <path>:<line>` and ends with
-` (superseded)` when the page's status starts with `superseded`. `--kind company`, `--kind team` or `--kind product` shows
-only that level and any other `--kind` leaves them out. `ostler book pages` lists the pages and `--check` names each page
+`ostler search` indexes every level beside the books, and `ostler book search` reads the pages with every query, with or
+without `--service`. A page hit reads `<score>  pages/<level>  <path>` and its heading ends with ` (superseded)` when the
+page's status starts with `superseded`. Started in the artifacts folder, the search reads every team's pages.
+`--kind company`, `--kind team` or `--kind product` shows only that level and any other `--kind` leaves them out. `ostler book pages` lists the pages and `--check` names each page
 with no `date:` line or an empty body.
 
 When two books disagree, the order of authority is company, team, product, service decision, story. An agent that finds
@@ -388,7 +388,7 @@ A screen book says how a person moves between screens. `first = True` marks a sc
 `leads_to = <Screen>` on an interaction names the screen the person is on once the act went through, and `inside`
 with `shown_in` names the screen that hosts a dialog or an inline form, and the phase of the host that shows it.
 `check` refuses a book with no first screen and a `leads_to` or `inside` that names no screen of it, and tells of a
-screen no walk from a first screen reaches. `ostler book search` prints, for a screen, an interaction or a component,
+screen no walk from a first screen reaches. `ostler search` prints, below a screen, an interaction or a component,
 the interactions to perform to get there. `ostler book explain services.web ListPage.edit` reads one component:
 its phases and the way to its screen.
 The play verifies it: after an act, a stated `leads_to` is waited for on the surface and a miss fails the step. An act with
