@@ -47,16 +47,6 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "workflow at its entry flow.",
     )
     parser.add_argument(
-        "--context-file",
-        default=None,
-        metavar="PATH",
-        help="Per-repo farrier context manifest (JSON). Default: "
-        "agents-context.json in the repo's farrier state folder "
-        "(`farrier state-dir`). Provides the template "
-        "values, instruction/prompt path maps, and selected-skills set the "
-        "library prompts render against. Required.",
-    )
-    parser.add_argument(
         "--runs-dir",
         default=None,
         help="Directory to write run artifacts (default: <cwd>/.agents/runs — "
@@ -242,7 +232,7 @@ def invocation(args: argparse.Namespace) -> RunInvocation:
         resume_run_dir=resume_run_dir,
         no_cache=getattr(args, "no_cache", False),
         dry_run=getattr(args, "dry_run", False),
-        context_manifest=_load_context_manifest(args.context_file),
+        context_manifest=_load_context_manifest(),
         worktree=getattr(args, "worktree", False),
         worktree_branch=getattr(args, "worktree_branch", None),
         worktree_base=getattr(args, "worktree_base", None),
