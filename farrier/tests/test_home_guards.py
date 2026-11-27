@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from farrier.home_guards import approval_keys
+from farrier.home_guards_codex import approval_keys
 from home_install import configure, run
 
 SETTINGS: dict[str, Any] = {"model": "opus", "hooks": {"Stop": [{"hooks": []}]}}

@@ -69,13 +69,8 @@ from farrier.library_check import check_library, format_findings
 from farrier.library_view import KINDS, find, format_list, layer_label, stack
 from farrier.manifest import excluded, find_manifest, locate_manifest, read_manifest
 from farrier.naming import repo_prefix
-from farrier.home_guards import (
-    APPROVE,
-    check_pending,
-    codex_guards_move,
-    excepted_guards,
-    guard_entries,
-)
+from farrier.home_guards import excepted_guards, guard_entries
+from farrier.home_guards_codex import APPROVE, check_pending, codex_guards_move
 from farrier.home_entries import (
     check_entries,
     install_entries,
