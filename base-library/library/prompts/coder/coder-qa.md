@@ -27,11 +27,14 @@ Each one takes the first proof that fits:
   stack cannot host. Write the test in the repo's own suite. Cover the criterion with a
   scenario that runs it through `qa.tool(<runner>).run(...)` and checks its result with
   `qa.verify(...)`. A red test is a product finding.
-- **live check**: only the shared DEV environment shows it, after the deploy: a cloud
-  permission, a routing rule between deployed services, a secret, a scheduled job, a
-  migration on real data. Write `<spec>/live-qa.md`, the runbook a person runs on DEV after
-  the deploy: numbered steps, evidence per criterion under `qa/live/`, a verdict rule per
-  step and an evidence manifest. No scenario covers it.
+- **live check**: only a person working the environment the story is proved on can show
+  it, and no scenario can drive it: a cloud permission, a routing rule between running
+  services, a secret, a scheduled job, a migration on real data. Write
+  `<spec>/manual-qa.md` in the form the `plan-qa` command gives, against that
+  environment instead of DEV: a title naming the environment, `QA_DIR="<spec>/qa"` with
+  `mkdir -p` per `ac<n>-<slug>/` folder, numbered `## 1) ...` steps that each save evidence
+  under `$QA_DIR/ac<n>-<slug>/` and state a `Verdict:` rule, a cleanup section and a final
+  `## Evidence manifest`, with no table and no script block. No scenario covers it.
 
 A criterion the local stack could show is never a live check.
 
@@ -40,8 +43,8 @@ check, or one for several that a single observation proves. Each scenario carrie
 `qa.check(..., covers=["ac:<n>"])` in its body. A criterion no scenario, test or live check can
 show stops the story. Report it with the reason. Run `ostler qa lint` on the plan.
 
-**Done when** every criterion is covered by a scenario or a live runbook, and the plan
-lints.
+**Done when** every criterion is covered by a scenario or a live runbook, the plan lints,
+and `manual-qa.md` holds every part of the form above for each live criterion.
 
 ## 2. Run
 
@@ -103,8 +106,8 @@ its frontmatter. Rewrite it on every pass.
 ## Assessment
 <what the run proved, what it did not, and why>
 
-## Owed after deploy
-<each live check, the criterion it proves and the runbook path, or "none">
+## Owed on the environment
+<each live check, the criterion it proves, the environment and the runbook path, or "none">
 
 ## History
 - <date>: <status>: <outcome>
