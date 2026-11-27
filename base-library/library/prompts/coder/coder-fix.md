@@ -17,9 +17,15 @@ Load {{ skill_link("ostler-cli") }} for the backlog and the planning graph.
   pattern and symbols. Fix only this item. Do not substitute another.
 - The item was written by the QA of another story. A sentence about what that story owned
   binds that story, not this repair.
-- Read the code the item names and the repo's `AGENTS.md`.
+- Read the repo's `AGENTS.md`. Then read what the book says of the behaviour, before the
+  code: `ostler book search <noun>` for the screen, endpoint or rule the item names,
+  `ostler book explain <module> <Element>` for each match, and the decisions it lists. The
+  book states the behaviour the repair restores. Where the book and the item disagree,
+  report the conflict and settle neither side.
+- Read the code the item names.
 
-**Done when** you can name the behaviour the item says is wrong and the code that causes it.
+**Done when** you can name the behaviour the item says is wrong, the book element that
+states the right one or its absence, and the code that causes it.
 
 ## 2. Fix
 
@@ -33,7 +39,8 @@ Load {{ skill_link("ostler-cli") }} for the backlog and the planning graph.
 ## 3. QA
 
 Dispatch a QA checker with none of this session's context, on a strong model. Give it the
-item, the diff and the gate commands, never your reasoning. It runs the narrowest
+item, the diff, the gate commands and the book elements step 1 found, never your reasoning.
+It reads those elements first and judges the behaviour against them. It runs the narrowest
 verification that proves the repair: the touched packages' tests, the lint gate and, for a
 user-visible change, the behaviour itself. It rules out what a green suite hides: a
 swallowed 5xx, a console error, a partial write, a test that asserts presence. It reports

@@ -18,7 +18,18 @@ Load {{ skill_link("ostler-cli") }} for `ostler env` and QA plans.
 
 Read the story, its acceptance criteria, `<spec>/plan.md` and `<spec>/review-answers.md`.
 `ostler path spec $ARGUMENTS` names the spec folder. Read the repo's `AGENTS.md` and
-`docs/qa/lessons.md` when it exists. For each criterion, decide what observation shows it.
+`docs/qa/lessons.md` when it exists.
+
+Then read the book of each service the story touches, before any code or test. Run
+`ostler book search <noun>` for each noun a criterion names, `ostler book explain <module>
+<Element>` for each screen, endpoint and journey it finds, `ostler book pages` and
+`ostler book decisions <module> --story $ARGUMENTS`. The book says how to bring the stack up,
+which account signs in, how a user reaches each screen and what each step shows. A scenario
+walks the path the book gives, and its expected result comes from the criterion and the
+book, never from the code under test. Read the code only for what the book does not hold,
+and name each such gap in `qa.md`.
+
+For each criterion, decide what observation shows it.
 Each one takes the first proof that fits:
 
 - **scenario**: a call, a screen, a command or a stored record on the local stack shows it.

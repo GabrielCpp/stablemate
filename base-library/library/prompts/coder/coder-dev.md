@@ -27,7 +27,9 @@ A story with no `model.md` goes to the coder-docs command first.
 
 ## 2. Plan
 
-Search the code for what the story can reuse before you plan anything new. Create the
+Search the book for what the story can reuse, then the code. `ostler book search <noun>`
+for each noun the criteria name finds the screens, endpoints, rules and journeys that exist,
+and `ostler book explain <module> <Element>` gives each one's source. Create the
 plan with `ostler create spec $ARGUMENTS plan.md`, then fill these sections:
 
 - **Approach**: the shape of the change in a paragraph.

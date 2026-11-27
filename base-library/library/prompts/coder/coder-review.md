@@ -32,6 +32,9 @@ two lenses each.
 
 - **Bugs.** Wrong logic, unhandled errors, races, leaks and broken invariants on the
   changed lines.
+- **The book.** A changed behaviour the service's book or a product page states
+  otherwise. Run `ostler book search` on each changed screen, endpoint and rule, then
+  `ostler book explain` on each match, and quote the claim the change breaks.
 - **The standard.** A rule an installed coding standard states, quoted.
   {{ find_by_tags("standards") }}
 - **Local guidance.** A comment or instruction file near a changed path whose rule the
