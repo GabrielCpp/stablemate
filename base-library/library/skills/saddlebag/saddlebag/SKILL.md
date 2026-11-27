@@ -349,8 +349,8 @@ permanent, so ask the operator before you run it.
 ## Install
 
 The distribution is `stablemate-saddlebag`. The command and the import package are
-`saddlebag`. `uv tool install stablemate` installs it with the rest of the stablemate
-tools, and `uv tool install stablemate-saddlebag` installs it alone. It needs Python
+`saddlebag`. `pipx install stablemate` installs it with the rest of the stablemate
+tools, and `pipx install stablemate-saddlebag` installs it alone. It needs Python
 3.12 or newer. The keyring store needs a Secret Service (gnome-keyring, KDE Wallet) on
 Linux or the Keychain on macOS. The daemon needs a Vault with a KV v2 mount named
 `secret`; for a developer machine, `vault server -dev` is enough.

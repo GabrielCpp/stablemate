@@ -39,7 +39,7 @@ output, written by `farrier install --user`.
 
 The renderer that turns this content into a repo's adapters is **`farrier`**, a
 separate published package (in the public `stablemate` repo) — it is not part of
-this content tree. Install it with `pipx install farrier` and point it at this
+this content tree. Install it with `pipx install stablemate` and point it at this
 library once with `farrier config set-library /path/to/agent-library`. Run
 `farrier config show` any time to confirm the currently configured `library_dir`.
 

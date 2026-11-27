@@ -33,7 +33,7 @@ Docker Compose. It needs zero repo-specific knowledge: containers are identified
 convention), and gates are found by scanning for a `STATUS: AWAITING_OPERATOR` line, not a
 hardcoded path table.
 
-Manual launch only — `uv run groom serve` in a terminal/tmux pane for the session. No systemd
+Manual launch only — `groom serve` (installed by `pipx install stablemate`) in a terminal/tmux pane for the session. No systemd
 unit, no auto-start, no compose service for `groom` itself.
 
 ## Why not fold this into `workhorse`

@@ -48,8 +48,10 @@ groom feed --run <run_id> --every 30m            # from a shell: a digest every 
   quiet still wakes you. `groom wait --run <run_id>` stays silent and exits on the first
   of `blocked`, `ended`, `stuck`, `stalled`, `gave-up` or `compact-loop`. `--until` widens the set, for
   example with `churn`, `watchdog` and `died`. Run either as a background task and let
-  its output wake you. `--since` takes a timestamp in epoch seconds, as `date +%s` prints
-  it, and replays the events after it.
+  its output wake you. `feed --since` takes a timestamp in epoch seconds, as `date +%s`
+  prints it, and replays the events after it. `wait` has no `--since`. A `wait` started
+  right after you answer a gate can return that same gate, because the socket replays it
+  until the run reads the answer. Check `groom status --run <run_id>` before acting on it.
 - **An attended run always has a feed.** A `wait` alone, a wait on the launcher's
   process or a wait on a result file returns only when something ends. A run that hangs
   ends nothing, and the session sleeps beside it for as long as it hangs. Where a
@@ -71,7 +73,8 @@ groom feed --run <run_id> --every 30m            # from a shell: a digest every 
 
 ## The recipe
 
-Three commands, in this order. From a stablemate checkout, prefix each with `uv run`.
+Three commands, in this order. `pipx install stablemate` puts `groom` and every
+`workhorse-<workflow>` command on the PATH. No stablemate checkout is needed.
 
 ```bash
 groom status --json                                    # every live run: run_id, workflow, run_dir
@@ -122,9 +125,9 @@ paste. `groom status --run <run_id> --json` narrows to one run when the id is kn
 | Verb | Does | Reach for it when | Over HTTP (groom) |
 |---|---|---|---|
 | `status` | asks the socket what the process is doing: pid, node, whether a turn is streaming | first, always; and to confirm a reload landed | `GET /api/live?run=<run_id>` |
-| `reload` | unwinds to the outermost frame, re-imports the workflow package, re-enters from the checkpoint | code under `workflows/` was pushed | — |
+| `reload` | unwinds to the outermost frame, re-imports the workflow package, re-enters from the checkpoint | the workflow runs from an editable source tree and its code changed | — |
 | `reload --at-boundary` | same, but held until the current state finishes | the streaming turn is legitimate work the fix does not change | — |
-| `reload --core` | re-execs the process image so `workhorse` itself is replaced | the fix is in `workhorse/`, not a workflow | — |
+| `reload --core` | re-execs the process image so `workhorse` itself is replaced | the fix is in `workhorse/`, or `pipx upgrade stablemate` installed a new release | — |
 | `questions` | lists the gates the run is parked on | the run shows an operator wait | `GET /api/run/{run_id}/outbox` |
 | `answer` | posts the answer to the open gate (`--gate` picks one, `--text` inlines it) | the cause is fixed **and verified**, never to make it move | `POST /api/run/{run_id}/outbox` |
 | `switch-cli NAME` | cuts the current turn or usage-limit wait and re-enters the checkpoint on another agent CLI | the current CLI is wedged or at its usage limit | — |
@@ -193,9 +196,10 @@ workhorse-<workflow> control --run <run_dir> resume [opencode]          # detach
 ## Confirming a reload landed
 
 An `--at-boundary` request is acknowledged immediately and then held, so the
-acknowledgement is not the reload. Before sending it, check the run's interpreter
-resolves your source tree and not a wheel in `site-packages` — that is how a reload
-reports success over code it never loaded. After it, watch the run dir's
+acknowledgement is not the reload. Before sending it, check where the run's interpreter
+resolves the workflow package. A plain reload leaves a wheel in `site-packages` alone,
+and that is how a reload reports success over code it never loaded. A pipx install is
+all wheels, so after `pipx upgrade stablemate` send `reload --core`. After it, watch the run dir's
 `events.jsonl` for the re-entry and confirm the pid did not change. The full four-step
 procedure, with the source-tree check and the `--at-boundary` / `--core` choice, is
 **[references/reloading-a-live-run.md](references/reloading-a-live-run.md)**; the

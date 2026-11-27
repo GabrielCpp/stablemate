@@ -19,8 +19,12 @@ It installs no workflows. A workflow is a Python distribution with its own comma
 ## Installation
 
 ```bash
-pipx install farrier
+pipx install stablemate
 ```
+
+The `stablemate` package ships `farrier` with the workflows, `groom` and `ostler`. Do
+not also `pipx install farrier`, because pipx refuses a second package that exposes the
+same command.
 
 Requires Python >= 3.12.
 
@@ -256,7 +260,7 @@ over-selecting is free, is in
 
 ## Typical Setup Sequence
 
-1. Install farrier: `pipx install farrier`
+1. Install farrier: `pipx install stablemate`
 2. Set library: `farrier config set-library /path/to/example-org/agents`
 3. `farrier init` at the repo root, then fill in `packs:` — `general` and
    `stablemate` always, plus the stack pack for what the repo is built with

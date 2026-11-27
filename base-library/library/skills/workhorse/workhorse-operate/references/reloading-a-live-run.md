@@ -27,8 +27,9 @@ wheel in `site-packages` is deliberately left alone.
 <run's venv>/bin/python -c "import workhorse_workflows as w; print(w.__file__)"
 ```
 
-If that prints a `site-packages` path, reloading will change nothing — reinstall
-editable, or restart the run knowingly.
+If that prints a `site-packages` path, a plain reload will change nothing. That is the
+normal case for a `pipx install stablemate`. Run `pipx upgrade stablemate`, then send
+`reload --core`, which re-execs the process and loads the upgraded wheels.
 
 ## 3. Reload
 

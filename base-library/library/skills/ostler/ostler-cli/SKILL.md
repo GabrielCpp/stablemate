@@ -14,7 +14,7 @@ docs (`docs/epics` and the story spec folders) — or when authoring a new
 `workhorse` workflow that should integrate with the planning graph instead of hand-rolling its own
 JSON state files.
 
-`ostler` is a standalone, repo-agnostic tool (`pipx install ostler` / `pip install ostler`) that
+`ostler` is a standalone, repo-agnostic tool (`pipx install stablemate`) that
 operates relative to the current working directory (`-C/--chdir DIR` to point elsewhere). It is
 **the one tool that reads and writes the graph** — never hand-edit `epic.md`'s `## Seeds`/
 `## Stories` sections or allocate ids yourself; call ostler instead so structure stays consistent

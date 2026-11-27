@@ -29,8 +29,8 @@ On Linux that is `~/.local/share/groom/`. **`$GROOM_DB` moves both** — the arc
 derived from the db path, not from the platform dir, so pointing the db at a scratch file
 takes the bodies with the index instead of writing them into the real archive.
 
-> From a stablemate checkout, prefix every command below with `uv run` to use the working
-> tree. Elsewhere `groom` is on the PATH from `pipx install ./groom`. The commands are
+> `groom` is on the PATH from `pipx install stablemate`. No stablemate checkout is
+> needed. The commands are
 > read-only against a live `groom serve` — the store is SQLite in WAL mode and answering a
 > question does not disturb the run producing it.
 
