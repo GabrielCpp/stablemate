@@ -126,12 +126,15 @@ Declare each body once in `endpoints/shapes.py` and reuse it.
     tag and the query that searches for it, are ids of one kind. A part of a minted name, such
     as its first letters, cannot be written.
     Mint every record a journey or a fixture creates, not only a name the app requires to be
-    unique. The play then finds its records by searching or filtering for that word, or by
-    opening them by id. It never reads a whole list to find one record, and it never claims
+    unique.     the play never reads a whole list to find one record, and it never claims
     the count of a list other users write to. A stack is rarely empty: other books' plays,
     other users and earlier runs leave records behind. Where a list has no search and no
     filter, and its count is the only thing to observe, declare that answer `Unseen` with
     its `Because` and why.
+  - A book never hardcodes a UUID, ULID, cloud ARN, storage URI, cloud resource id or host URL
+    outside `Environment` and `Documentation`. The surface resolves environment ids at runtime
+    through `Reference` and mints unknown ids with `uuid4()`. `ostler book check` refuses a book
+    that pins any of them.
 - `Token("<name>")`: a page token, or any cursor the app issues and takes back. The runtime
   compares it by presence and never by value. An answer is right when the app gives a token
   exactly where the model's view gives one. In a request, the runtime sends the app's own

@@ -13,6 +13,7 @@ reports something.
 | endpoint, journey or rule not registered | check | a class exists that nothing lists | add it to `ALL` or `__all__` |
 | endpoint no matrix places | check | it will be played in every state | add a column to the matrix of the record it touches |
 | module nothing imports | check | dead file | import it where it belongs, or delete it |
+| `<file>:<line>: hardcodes <kind> ...` | check | a module of the book hardcodes a UUID, ULID, AWS ARN, cloud resource id, storage URI or host URL outside `Environment` | resolve environment ids with `Reference` or learn them from replies, mint unknown ids with `uuid4()`, and keep hosts inside `Environment` |
 | `the book contradicts itself` | explore --seed-only | a scene or fixture arranges a record the model refuses | fix the scene's steps or the fixture, never the rule |
 | `FAIL state ...` with `path:` and `rows differ` | explore --only | the model and the app disagree on one cell | compare the two lists; decide book wrong or app wrong |
 | `rules never refused: N` | explore, run | a rule no reachable cell breaks | add the scene or input that breaks it, or the rule is dead |
