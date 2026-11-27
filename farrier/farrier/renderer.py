@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -13,7 +12,6 @@ from jinja2 import Environment, StrictUndefined, UndefinedError
 from farrier._vendor.stablemate_core.harness import (
     RepoLayout,
     Surface,
-    repo_harnesses,
     spec,
     with_surface,
 )
@@ -60,11 +58,6 @@ from farrier.prompt_render import (
     strip_arguments_placeholder,
 )
 from farrier.selection_errors import unknown_selection_error
-from farrier.state import (
-    CONTEXT_MANIFEST_FILE,
-    CONTEXT_MANIFEST_FILE_FMT,
-    repo_state_dir,
-)
 from farrier.sources import (
     Asset,
     Source,
@@ -438,48 +431,6 @@ class Renderer:
                 'reference in the library source with `| default("…")`.'
             ) from exc
 
-    @property
-    def state_dir(self) -> Path:
-        """The per-user folder this repo's manifests install into."""
-        return repo_state_dir(self.repo, self.repo_config)
-
-    def manifest_text(self, target: str) -> Rendered:
-        """The context manifest for *target*, as the file it installs as."""
-        text = json.dumps(self.context_manifest(target), indent=2, sort_keys=True)
-        return Rendered(text + "\n", assumed=True)
-
-    def context_manifest(self, target: str) -> dict[str, Any]:
-        """Per-repo manifest consumed by workhorse at run time (see workhorse/templates.py)."""
-
-        def rel(path: Path) -> str:
-            return path.relative_to(self.repo).as_posix()
-
-        instructions = {
-            key: rel(self.skill_output_path(library_name(source), target))
-            for key, source in self.skill_lookup.items()
-        }
-        prompts = {
-            key: rel(self.prompt_output_path(library_name(source), target))
-            for key, source in self.prompt_lookup.items()
-            if self.takes_prompts(target)
-        }
-        instruction_tags = {
-            key: tags
-            for key, source in self.skill_lookup.items()
-            if (tags := self.skill_tags(source))
-        }
-        repo_context = {**self.repo_context, "root": "."}
-        return {
-            "template": self.template_values,
-            "repo": repo_context,
-            "vars": self.template_values,
-            "instructions": instructions,
-            "instruction_tags": instruction_tags,
-            "prompts": prompts,
-            "used_skills": sorted(self.skill_lookup.keys()),
-            "skill_dir": rel(self.skill_dir_path(target)),
-        }
-
     def skill_description(
         self, source: Source, header: dict[str, str], body: str
     ) -> str:
@@ -716,18 +667,6 @@ class Renderer:
             return outputs
 
         outputs[self.repo / LAUNCHER_AGENTS_MK] = render_agents_mk()
-
-        enabled_assistants = [
-            harness.name for harness in repo_harnesses() if agents.get(harness.name)
-        ]
-        manifest_target = enabled_assistants[0] if enabled_assistants else "claude"
-        for assistant in enabled_assistants:
-            outputs[self.state_dir / CONTEXT_MANIFEST_FILE_FMT.format(assistant)] = (
-                self.manifest_text(assistant)
-            )
-        outputs[self.state_dir / CONTEXT_MANIFEST_FILE] = self.manifest_text(
-            manifest_target
-        )
 
         root_makefile = self.repo / LAUNCHER_ROOT_MAKEFILE
         if not root_makefile.exists():

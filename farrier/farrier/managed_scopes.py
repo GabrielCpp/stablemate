@@ -19,7 +19,7 @@ from farrier.home_guards import BRIDGE_FILE, PI_BRIDGE_FILE
 from farrier.hook_managers import LEFTHOOK_INCLUDE
 from farrier.launcher import (
     LAUNCHER_AGENTS_MK,
-    LAUNCHER_CONTEXT_MANIFEST,
+    LEGACY_CONTEXT_MANIFEST,
     LEGACY_CONTEXT_GLOB,
 )
 from farrier.local_instructions import LocalInstruction
@@ -50,7 +50,7 @@ MANAGED_FILES = [
 ]
 
 ASSUMED_OWNED = [
-    LAUNCHER_CONTEXT_MANIFEST,
+    LEGACY_CONTEXT_MANIFEST,
     LEGACY_CONTEXT_GLOB,
 ]
 

@@ -32,8 +32,7 @@ from farrier.local_instructions import (
 )
 from farrier.launcher import (
     LAUNCHER_AGENTS_MK,
-    LAUNCHER_CONTEXT_MANIFEST,
-    LAUNCHER_CONTEXT_MANIFEST_FMT,
+    LEGACY_CONTEXT_MANIFEST,
     LAUNCHER_ROOT_MAKEFILE,
     render_agents_mk,
 )
@@ -122,8 +121,7 @@ __all__ = [
     "BASE_LAYER_NAME",
     "config_path",
     "LAUNCHER_AGENTS_MK",
-    "LAUNCHER_CONTEXT_MANIFEST",
-    "LAUNCHER_CONTEXT_MANIFEST_FMT",
+    "LEGACY_CONTEXT_MANIFEST",
     "LAUNCHER_ROOT_MAKEFILE",
     "LAYERS",
     "Layer",

@@ -50,26 +50,6 @@ def test_the_copilot_instruction_target_is_gone(tmp_path):
         renderer.skill_output_path(source.id, "copilot-instruction")
 
 
-def test_context_manifest_copilot_uses_open_skills_paths(tmp_path):
-    renderer, _ = _make_renderer(tmp_path)
-    manifest = renderer.context_manifest("copilot")
-    for path in manifest["instructions"].values():
-        assert path.startswith(".github/skills/"), (
-            f"Expected .github/skills/ prefix, got: {path}"
-        )
-        assert path.endswith("/SKILL.md"), f"Expected SKILL.md suffix, got: {path}"
-    assert manifest["skill_dir"] == ".github/skills"
-
-
-def test_context_manifest_copilot_no_instructions_path(tmp_path):
-    renderer, _ = _make_renderer(tmp_path)
-    manifest = renderer.context_manifest("copilot")
-    for path in manifest["instructions"].values():
-        assert ".github/instructions" not in path, (
-            f"Found legacy instructions path: {path}"
-        )
-
-
 def test_render_copilot_skills_include_frontmatter(tmp_path):
     renderer, _ = _make_renderer(tmp_path, "# Go\nUse for Go work.\n")
     outputs = renderer.render(
