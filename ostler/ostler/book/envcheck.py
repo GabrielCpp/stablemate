@@ -33,17 +33,36 @@ CLOUD_HOST_RE = re.compile(
     re.IGNORECASE,
 )
 URL_RE = re.compile(r"\bhttps?://[^\s\"'<>`]+", re.IGNORECASE)
+XMLNS_RE = re.compile(r"\bhttps?://[a-z0-9.-]+\.amazonaws\.com/doc/\d{4}-\d{2}-\d{2}/?", re.IGNORECASE)
+DNS_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
+EXPR_SENTINEL = "xexprx"
 
 RESERVED_HOSTS = frozenset({"localhost", "127.0.0.1", "0.0.0.0", "::1", "example.com", "example.org", "example.net"})
 RESERVED_SUFFIXES = (".localhost", ".local", ".test", ".invalid", ".example", ".example.com", ".example.org", ".example.net")
 HOST_DECLARATIONS = frozenset({"Environment", "Documentation"})
 
 
+def _url_host(raw_url: str) -> str | None:
+    try:
+        return urlsplit(raw_url).hostname
+    except ValueError:
+        authority = raw_url.split("://", 1)[-1].split("/", 1)[0].split("?", 1)[0].rsplit("@", 1)[-1]
+        if authority.startswith("[") and "]" in authority:
+            return authority[1 : authority.index("]")] or None
+        return authority.split(":", 1)[0] or None
+
+
 def _reserved_host(host: str | None) -> bool:
     if not host:
         return True
     lowered = host.lower().strip("[]")
-    return lowered in RESERVED_HOSTS or lowered.endswith(RESERVED_SUFFIXES)
+    if lowered in RESERVED_HOSTS or lowered.endswith(RESERVED_SUFFIXES):
+        return True
+    labels = lowered.split(".")
+    if any(lbl != EXPR_SENTINEL and not DNS_LABEL_RE.match(lbl) for lbl in labels):
+        return True
+    concrete = [lbl for lbl in labels if lbl != EXPR_SENTINEL]
+    return len(concrete) < 2
 
 
 def _docstring_nodes(tree: ast.AST) -> set[int]:
@@ -121,32 +140,33 @@ def _allowed_url_nodes(tree: ast.Module, outside_uses: dict[str, list[bool]] | N
 
 
 def _scan_text(text: str, allow_urls: bool, templated: bool = False) -> list[str]:
+    cleaned = XMLNS_RE.sub("", text)
     problems: list[str] = []
-    for match in ARN_RE.finditer(text):
+    for match in ARN_RE.finditer(cleaned):
         problems.append(f"hardcodes AWS ARN {match.group(0)!r}: resolve environment resources through the surface or Reference instead")
-    for match in STORAGE_URI_RE.finditer(text):
+    for match in STORAGE_URI_RE.finditer(cleaned):
         problems.append(f"hardcodes cloud storage URI {match.group(0)!r}: pass bucket or object locations through the surface or Reference instead")
-    for match in AWS_BACKING_RE.finditer(text):
+    for match in AWS_BACKING_RE.finditer(cleaned):
         problems.append(f"hardcodes AWS resource endpoint {match.group(0)!r}: backing cloud services belong in the runtime or surface, not in the book")
-    for match in AWS_RESOURCE_ID_RE.finditer(text):
+    for match in AWS_RESOURCE_ID_RE.finditer(cleaned):
         problems.append(f"hardcodes AWS resource id {match.group(0)!r}: resolve environment resources at runtime instead")
-    for match in AWS_KEY_ID_RE.finditer(text):
+    for match in AWS_KEY_ID_RE.finditer(cleaned):
         problems.append(f"hardcodes AWS access key id {match.group(0)!r}: keep credentials out of the book")
-    for match in UUID_RE.finditer(text):
+    for match in UUID_RE.finditer(cleaned):
         problems.append(
             f"hardcodes UUID {match.group(0)!r}: resolve environment ids with Reference or learn them from replies, and mint unknown ids with uuid4()"
         )
-    for match in ULID_RE.finditer(text):
+    for match in ULID_RE.finditer(cleaned):
         hit = match.group(0)
         if any(ch.isdigit() for ch in hit[2:]):
             problems.append(f"hardcodes ULID {hit!r}: resolve environment ids with Reference or learn them from replies")
     if allow_urls:
         return problems
     reported_hosts: set[str] = set()
-    for match in URL_RE.finditer(text):
+    for match in URL_RE.finditer(cleaned):
         raw_url = match.group(0).rstrip(".,;:)")
-        host = urlsplit(raw_url).hostname
-        if templated and host == "placeholder":
+        host = _url_host(raw_url)
+        if templated and host == EXPR_SENTINEL:
             continue
         if not _reserved_host(host):
             if host:
@@ -154,7 +174,7 @@ def _scan_text(text: str, allow_urls: bool, templated: bool = False) -> list[str
             problems.append(
                 f"hardcodes URL {raw_url!r} outside Environment: declare environment hosts in Environment and pass them through the surface or Reference"
             )
-    for match in CLOUD_HOST_RE.finditer(text):
+    for match in CLOUD_HOST_RE.finditer(cleaned):
         host = match.group(0)
         if host.lower() not in reported_hosts and not AWS_BACKING_RE.fullmatch(host):
             problems.append(f"hardcodes cloud endpoint {host!r} outside Environment: declare environment hosts in Environment instead")
@@ -169,7 +189,7 @@ def _joined_skeleton(node: ast.JoinedStr) -> tuple[str, str]:
             rendered.append(part.value)
             display.append(part.value)
         else:
-            rendered.append("placeholder")
+            rendered.append(EXPR_SENTINEL)
             display.append("{...}")
     return "".join(rendered), "".join(display)
 
@@ -199,7 +219,7 @@ def _file_faults(label: str, tree: ast.Module, outside_uses: dict[str, list[bool
         elif isinstance(node, ast.JoinedStr):
             skeleton, display = _joined_skeleton(node)
             for problem in _scan_text(skeleton, id(node) in allowed_urls, templated=True):
-                shown = problem.replace("placeholder", "{...}") if "{...}" in display else problem
+                shown = problem.replace(EXPR_SENTINEL, "{...}") if "{...}" in display else problem
                 if (lineno, shown) not in seen:
                     seen.add((lineno, shown))
                     out.append(Finding(f"{label}:{lineno}", shown))
@@ -218,8 +238,14 @@ def _candidate_files(module: str) -> list[tuple[str, Path]]:
     except Exception:
         pass
     for root in roots:
-        if service_folder(root, module) is not None:
-            return [(rel, root / rel) for rel in book_files(root, module) if rel.endswith(".py")]
+        own = service_folder(root, module)
+        if own is not None:
+            ops_dir = own / "ops"
+            return [
+                (rel, root / rel)
+                for rel in book_files(root, module)
+                if rel.endswith(".py") and not (root / rel).is_relative_to(ops_dir)
+            ]
     candidates: list[tuple[str, Path]] = []
     for name, loaded in sorted(sys.modules.items()):
         if name != module and not name.startswith(module + "."):

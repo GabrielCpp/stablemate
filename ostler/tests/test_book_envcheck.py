@@ -28,11 +28,11 @@ class Orders(State):
         return ()
 
 
-class CheckUp(Action[object, State]):
+class CheckUp(Action[object, Orders]):
     source = ("https://docs.acme.io/orders#ping",)
 
     @staticmethod
-    def reduce(a: object, s: State, by: object) -> Transaction:
+    def reduce(a: object, s: Orders, by: object) -> Transaction:
         return Transaction(says=({},))
 
 
@@ -122,6 +122,7 @@ def test_clean_book_with_environment_and_documentation_urls_passes(book_workspac
         ('FACILITY_ID = "55768f04-9986-4c21-b3cb-a1531412266c"\n', "hardcodes UUID"),
         ('UNIT_ID = "01G8BR5S2Z15GZCQBN0B7YRD31"\n', "hardcodes ULID"),
         ('GATEWAY = "https://gateway.dev.acme.io/v1"\n', "hardcodes URL"),
+        ('BRACKETED = "https://portal.acme.io/items/[id]"\n', "hardcodes URL"),
         ('DYNAMIC = f"https://{tenant}.portal.acme.io/api"\n', "hardcodes URL"),
         ('CDN = "d111111abcdef8.cloudfront.net"\n', "hardcodes cloud endpoint"),
     ],
@@ -158,11 +159,17 @@ def test_shared_outside_helper_imported_by_book_is_checked(book_workspace: Path)
 def test_reserved_loopback_and_example_urls_in_fixtures_are_allowed(book_workspace: Path) -> None:
     extra = {
         "services/orders/fixtures.py": (
+            'host = "localhost:8080"\n'
             'LOOPBACK = "http://127.0.0.1:9000/callback"\n'
             'LOCALHOST = "http://localhost:3000/callback"\n'
             'SYNTHETIC = "https://orders.example.com/webhook"\n'
             'TEST_HOST = "http://gateway.local/health"\n'
+            'CONTAINER_ALIAS = "http://vendor-fakes:8040/alarm"\n'
+            'DYNAMIC_HOST = f"https://{host}/items/{host}"\n'
+            'REGEX_PATTERN = r\'"(https://[^"]*/authorize\\?[^"]*)"\'\n'
+            'S3_XMLNS = "{http://s3.amazonaws.com/doc/2006-03-01/}Contents"\n'
         ),
+        "services/orders/ops/stub.py": 'LOCAL_STUB_ARN = "arn:aws:lambda:us-east-1:000000000000:function:stub"\n',
     }
     code = "from . import fixtures\n" + CLEAN_SERVICE
     module = _write_book(book_workspace, "orders", code, extra=extra)
