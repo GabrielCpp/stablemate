@@ -16,7 +16,11 @@ from conftest import keep_book_in_repo
 from ostler._vendor.stablemate_core import book_branch
 from ostler._vendor.stablemate_core import config as core_config
 from ostler.book.pages import cmd_pages
+from ostler import index, textindex
+from ostler.book import index as book_index
 from ostler.book.index import cmd_search_book
+from ostler.cli import main
+from ostler.model import load as load_graph
 
 SHOP = '''
 from ostler.book import Action, Arrange, Service, Stack
@@ -87,6 +91,11 @@ def _search(term: str, service: str | None = None, kind: str | None = None) -> i
     return cmd_search_book(SimpleNamespace(service=service, term=term, kind=kind))
 
 
+def _found(out: str) -> list[str]:
+    """Each hit as `<root>/<type> <where>`, read from the first of its two lines."""
+    return [" ".join(line.split("  ")[1:3]).split(" — ")[0] for line in out.splitlines() if line[:1].isdigit()]
+
+
 def _all_levels(root: Path, artifacts: Path) -> None:
     _on_team(root, "glaze-lab")
     _company(artifacts, "words", "date: 2026-11-01\n\nA ceramic is named in the singular.\n")
@@ -98,37 +107,28 @@ def test_search_finds_a_product_page_with_no_service(root: Path, capsys: pytest.
     _product(root, "glaze", GLAZE)
     assert _search("fired onto") == 0
     out = capsys.readouterr().out
-    assert "== product\n" in out
-    assert "product   product/glaze.md:4\n    A glaze is a ceramic coating fired onto a piece.\n" in out
+    assert _found(out) == ["pages/product product/glaze"]
+    assert "A glaze is a ceramic coating [fired] [onto] a piece." in out
 
 
 def test_search_finds_every_level_with_no_service(root: Path, artifacts: Path, capsys: pytest.CaptureFixture[str]):
     _all_levels(root, artifacts)
     assert _search("ceramic") == 0
-    out = capsys.readouterr().out
-    assert "== company\n" in out
-    assert "company   company/words.md:3" in out
-    assert "== team glaze-lab\n" in out
-    assert "team      teams/glaze-lab/firing.md:4" in out
-    assert "== product\n" in out
-    assert "product   product/glaze.md:4" in out
+    found = _found(capsys.readouterr().out)
+    assert {"pages/company company/words", "pages/team teams/glaze-lab/firing", "pages/product product/glaze"} <= set(found)
 
 
 def test_search_finds_every_level_when_a_service_is_given(root: Path, artifacts: Path, capsys: pytest.CaptureFixture[str]):
     _all_levels(root, artifacts)
     assert _search("ceramic", service="services.shop") == 0
-    out = capsys.readouterr().out
-    assert "== company\n" in out
-    assert "== team glaze-lab\n" in out
-    assert "== product\n" in out
-    assert "action" in out
+    roots = {hit.split("/")[0] for hit in _found(capsys.readouterr().out)}
+    assert roots == {"pages", "books"}
 
 
-def test_levels_print_company_then_team_then_product_then_the_services(root: Path, artifacts: Path, capsys: pytest.CaptureFixture[str]):
+def test_a_service_narrows_the_books_and_keeps_every_level(root: Path, artifacts: Path, capsys: pytest.CaptureFixture[str]):
     _all_levels(root, artifacts)
-    assert _search("ceramic") == 0
-    headings = [line for line in capsys.readouterr().out.splitlines() if line.startswith("== ")]
-    assert headings == ["== company", "== team glaze-lab", "== product", "== services.shop"]
+    assert _search("ceramic", service="services.shop") == 0
+    assert all("services.shop" in hit for hit in _found(capsys.readouterr().out) if hit.startswith("books/"))
 
 
 def test_no_team_in_agents_yml_leaves_the_team_folder_unread(root: Path, artifacts: Path, capsys: pytest.CaptureFixture[str]):
@@ -147,37 +147,35 @@ def test_another_teams_folder_is_never_read(root: Path, artifacts: Path, capsys:
 def test_missing_folders_change_nothing(root: Path, capsys: pytest.CaptureFixture[str]):
     _on_team(root, "glaze-lab")
     assert _search("ceramic") == 0
-    out = capsys.readouterr().out
-    assert [line for line in out.splitlines() if line.startswith("== ")] == ["== services.shop"]
+    assert {hit.split("/")[0] for hit in _found(capsys.readouterr().out)} == {"books"}
 
 
-@pytest.mark.parametrize("level,heading", [("company", "== company"), ("team", "== team glaze-lab"), ("product", "== product")])
-def test_each_level_kind_shows_only_that_level(root: Path, artifacts: Path, capsys: pytest.CaptureFixture[str], level: str, heading: str):
+@pytest.mark.parametrize("level,where", [
+    ("company", "pages/company company/words"),
+    ("team", "pages/team teams/glaze-lab/firing"),
+    ("product", "pages/product product/glaze"),
+])
+def test_each_level_kind_shows_only_that_level(root: Path, artifacts: Path, capsys: pytest.CaptureFixture[str], level: str, where: str):
     _all_levels(root, artifacts)
     assert _search("ceramic", kind=level) == 0
-    out = capsys.readouterr().out
-    assert [line for line in out.splitlines() if line.startswith("== ")] == [heading]
-    assert "action" not in out
+    assert _found(capsys.readouterr().out) == [where]
 
 
 def test_the_decision_kind_excludes_every_level(root: Path, artifacts: Path, capsys: pytest.CaptureFixture[str]):
     _all_levels(root, artifacts)
     assert _search("ceramic", kind="decision") == 1
-    out = capsys.readouterr().out
-    assert "== " not in out
+    assert capsys.readouterr().out == "nothing in the book says 'ceramic' as a decision\n"
 
 
 def test_a_superseded_page_is_found_and_marked(root: Path, capsys: pytest.CaptureFixture[str]):
     _product(root, "slip", SLIP)
     assert _search("clay in water") == 0
-    assert "product   product/slip.md:4 (superseded)\n" in capsys.readouterr().out
+    assert "pages/product  product/slip — slip (superseded)\n" in capsys.readouterr().out
 
 
 def test_no_wider_folder_leaves_the_output_unchanged(root: Path, capsys: pytest.CaptureFixture[str]):
     assert _search("ceramic") == 0
-    out = capsys.readouterr().out
-    assert "product" not in out.replace("nothing in the book says", "")
-    assert "== services.shop" in out
+    assert {hit.split("/")[0] for hit in _found(capsys.readouterr().out)} == {"books"}
 
 
 def test_check_is_red_on_a_page_without_a_date(root: Path, capsys: pytest.CaptureFixture[str]):
@@ -283,8 +281,7 @@ def test_search_heading_names_the_product(tmp_path: Path, artifacts: Path, monke
     monkeypatch.chdir(repo)
     assert _search("fired onto") == 0
     out = capsys.readouterr().out
-    assert "== product acme\n" in out
-    assert "product   products/acme/glaze.md:4\n" in out
+    assert _found(out) == ["pages/product products/acme/glaze"]
 
 
 def _git(folder: Path, *args: str) -> None:
@@ -325,8 +322,7 @@ def test_search_from_a_checkout_on_a_book_branch_names_the_product(branched: dic
     monkeypatch.chdir(branched["branch"])
     assert _search("fired onto") == 0
     out = capsys.readouterr().out
-    assert "== product acme\n" in out
-    assert "products/acme/glaze.md:4" in out
+    assert _found(out) == ["pages/product products/acme/glaze"]
 
 
 def test_pages_from_a_checkout_on_the_base_branch_leave_out_the_branch_page(branched: dict[str, Path], monkeypatch: pytest.MonkeyPatch):
@@ -341,3 +337,34 @@ def test_pages_from_an_artifacts_worktree_list_that_checkouts_products(branched:
         "product  glaze  2026-11-21  A glaze is a ceramic coating fired onto a piece.",
         "product  kiln  2026-11-20  A kiln fires the ceramic piece twice.",
     ]
+
+
+def test_pages_from_the_artifacts_folder_list_every_team(artifacts: Path, monkeypatch: pytest.MonkeyPatch):
+    _team(artifacts, "glaze-lab", "firing", "date: 2026-11-02\n\nA ceramic is fired twice.\n")
+    _team(artifacts, "kiln-crew", "cooling", "date: 2026-11-03\n\nA kiln cools overnight.\n")
+    monkeypatch.chdir(artifacts)
+    assert _listed("team") == [
+        "team  firing  2026-11-02  A ceramic is fired twice.",
+        "team  cooling  2026-11-03  A kiln cools overnight.",
+    ]
+
+
+def test_ostler_search_finds_a_book_element_by_kind_and_service(root: Path, artifacts: Path, capsys: pytest.CaptureFixture[str]):
+    _all_levels(root, artifacts)
+    assert main(["search", "ceramic order", "--kind", "action", "--service", "services.shop"]) == 0
+    assert _found(capsys.readouterr().out) == ["books/action services.shop.service:Order"]
+
+
+def test_ostler_search_reads_the_artifacts_docs(root: Path, artifacts: Path, capsys: pytest.CaptureFixture[str]):
+    _write(artifacts / "docs" / "adr" / "glazing.md", "# Glazing\n\nWe glaze every piece twice.\n")
+    assert main(["search", "glaze twice", "--root", "docs"]) == 0
+    assert _found(capsys.readouterr().out) == ["docs/ docs/adr/glazing#glazing"]
+
+
+def test_a_search_of_named_roots_reads_only_those_and_loads_no_book_it_leaves_out(root: Path, artifacts: Path, monkeypatch: pytest.MonkeyPatch):
+    _all_levels(root, artifacts)
+    graph = load_graph(root)
+    with index.session(root, enabled=False):
+        assert {hit["root"] for hit in textindex.search(graph, "ceramic", root="books,pages")} == {"books", "pages"}
+        monkeypatch.setattr(book_index, "text_of", lambda *_: pytest.fail("a book was loaded"))
+        assert {hit["root"] for hit in textindex.search(graph, "ceramic", root="pages")} == {"pages"}

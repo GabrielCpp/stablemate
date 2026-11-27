@@ -15,8 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from ostler._vendor.stablemate_core import base_cache, books
-from ostler.book import pages
-from ostler.book.search import Item, items, loose_hits, phrase_hits
+from ostler.book.search import Item, items
 
 CACHE_FOLDER = "book-index"
 ESCAPED = re.compile(r"\\(.?)", re.DOTALL)
@@ -131,31 +130,33 @@ def book_root(start: str) -> str:
     return str(books.book_home(Path(start)))
 
 
-def read_levels(root: str) -> dict[str, list[Entry]]:
-    found: dict[str, list[Entry]] = {}
-    for level in pages.levels(root):
-        entries = [Entry(level.kind, page.slug, f"{page.path}:{number}" + (" (superseded)" if page.superseded() else ""), (text,))
-                   for page in pages.load(level) for number, text in page.searchable()]
-        if entries:
-            found[level.heading] = entries
-    return found
+def text_of(root: str, name: str) -> str:
+    """The index text of one book, read from the user cache, or built by importing the book when the cache is stale."""
+    directory = os.path.join(root, *name.split("."))
+    if not stale(directory):
+        with open(cache_path(directory), encoding="utf-8") as f:
+            return f.read()
+    from ostler.book.cli import load
+
+    text = build(load(name), name)
+    try:
+        store(cache_path(directory), text)
+    except OSError:
+        pass
+    return text
 
 
 def entries_of(root: str, name: str, words: Sequence[str] = ()) -> list[Entry]:
-    directory = os.path.join(root, *name.split("."))
-    if stale(directory):
-        from ostler.book.cli import load
+    return parse(text_of(root, name), words)
 
-        text = build(load(name), name)
-        found = parse(text, words)
-        try:
-            store(cache_path(directory), text)
-        except OSError:
-            pass
-    else:
-        with open(cache_path(directory), "rb") as f:
-            found = parse(f.read(), words)
-    return found
+
+def book_modules(start: str) -> tuple[str, list[str], list[str]]:
+    """The book root of `start`, the service books it reads, and the flat books it skips."""
+    root = book_root(start)
+    package = books.service_package(Path(start))
+    flat = flat_books(root)
+    skipped = {f"services.{name}" for name in flat}
+    return root, [n for n in services_of(root, package) if n not in skipped], flat
 
 
 def folders(base: str) -> list[str]:
@@ -205,38 +206,47 @@ def cmd_index(service: Any, args: Any) -> int:
     return 0
 
 
+BOOK_ROOTS = "books,pages"
+
+
+def flat_hits(graph: Any, root: str, args: Any) -> list[dict]:
+    """A book still at the old flat place stays out of the index, so a search that names it reads it with the pages in memory."""
+    from ostler import textindex, textrows
+
+    if root not in sys.path:
+        sys.path.insert(0, root)
+    rows = textrows.book_rows(args.service, entries_of(root, args.service))
+    rows += [row for doc in textrows.documents(graph, {textrows.PAGES})
+             for row in textrows.rows_for(doc.root, doc.path, graph, doc.type, doc.superseded, doc.name)]
+    return textindex.search_rows(rows, args.term, etype=args.kind, root=BOOK_ROOTS, limit=BOOK_LIMIT)
+BOOK_LIMIT = 20
+
+
 def cmd_search_book(args: Any) -> int:
-    root = book_root(os.getcwd())
+    """`ostler search --root books,pages`, kept under its old name: it names a flat book's move and refuses an unknown service first."""
+    from ostler import index as index_mod
+    from ostler import textindex
+    from ostler.model import load as load_graph
+
+    root, names, flat = book_modules(os.getcwd())
     package = books.service_package(Path(os.getcwd()))
-    flat = flat_books(root)
     for name in flat:
         print(f"skipped services.{name}: {moved_hint(name, package)}", file=sys.stderr)
     if args.service:
         names = [args.service]
-    else:
-        names = [n for n in services_of(root, package) if n not in {f"services.{f}" for f in flat}]
     for name in names:
         if not os.path.isdir(os.path.join(root, *name.split("."))):
             hint = flat_name_of(name, flat)
             raise SystemExit(f"no service {name!r} under {root}" + (f"; {moved_hint(hint, package)}" if hint else ""))
-    wider = read_levels(root)
-    held = {**wider, **{name: entries_of(root, name, args.term.lower().split()) for name in names}}
-    matched = {name: phrase_hits(entries, args.term, args.kind) for name, entries in held.items()}
-    if not any(matched.values()):
-        matched = {name: loose_hits(entries, args.term, args.kind) for name, entries in held.items()}
-    found = False
-    for name, rows in matched.items():
-        if not rows:
-            continue
-        found = True
-        if not args.service or name in wider:
-            print(f"== {name}")
-        for entry, lines in rows:
-            print(f"{entry.kind:9} {entry.address}")
-            for line in lines:
-                print(f"    {line}")
-            if entry.reach:
-                print(f"    {entry.reach}")
-    if not found:
+    graph = load_graph(Path(os.getcwd()))
+    with index_mod.session(graph.root):
+        if args.service in {f"services.{name}" for name in flat}:
+            hits = flat_hits(graph, root, args)
+        else:
+            hits = textindex.search(graph, args.term, etype=args.kind, root=BOOK_ROOTS, limit=BOOK_LIMIT,
+                                    service=args.service)
+    for line in textindex.render(hits):
+        print(line)
+    if not hits:
         print(f"nothing in {args.service or 'the book'} says {args.term!r}" + (f" as a {args.kind}" if args.kind else ""))
-    return 0 if found else 1
+    return 0 if hits else 1

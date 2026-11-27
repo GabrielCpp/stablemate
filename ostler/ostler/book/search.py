@@ -7,7 +7,7 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, Iterator, Protocol
+from typing import Any, Iterator
 
 from ostler.book import decisions, questions
 from ostler.book.arrange import Arrange
@@ -20,16 +20,10 @@ from ostler.book.model import Defect, Rule
 from ostler.book.reach import described, reach_line, route_text
 from ostler.book.screen import Component, Interaction, Screen
 from ostler.book.service import Service
+from ostler import textrows
+from ostler.textrows import BOOK_KINDS
 
-KINDS = ("rule", "defect", "endpoint", "interaction", "action", "journey", "screen", "component", "scene", "decision", "company", "team", "product", "question", "event", "outside")
-
-
-class Row(Protocol):
-    @property
-    def kind(self) -> str: ...
-
-    @property
-    def lines(self) -> tuple[str, ...]: ...
+KINDS = BOOK_KINDS
 
 
 @dataclass(frozen=True)
@@ -166,45 +160,23 @@ def items(service: Service[Any], module: str) -> list[Item]:
     return out
 
 
-def phrase_hits[E: Row](rows: list[E], term: str, kind: str | None) -> list[tuple[E, list[str]]]:
-    wanted = term.lower()
-    found = []
-    for row in rows:
-        if kind is not None and row.kind != kind:
-            continue
-        lines = [line.strip() for line in row.lines if wanted in line.lower()]
-        if lines:
-            found.append((row, lines))
-    return found
+SERVICE_LIMIT = 50
 
 
-def loose_hits[E: Row](rows: list[E], term: str, kind: str | None) -> list[tuple[E, list[str]]]:
-    words = term.lower().split()
-    found = []
-    if not words:
-        return found
-    for row in rows:
-        if kind is not None and row.kind != kind:
-            continue
-        lowered = [line.lower() for line in row.lines]
-        if all(any(word in line for line in lowered) for word in words):
-            found.append((row, [line.strip() for line, low in zip(row.lines, lowered) if any(word in low for word in words)]))
-    return found
+def search(service: Service[Any], module: str, term: str, kind: str | None = None) -> list[dict]:
+    """The ranked hits of `term` among the elements of one loaded book, by the engine `ostler search` uses."""
+    from ostler import textindex
 
-
-def search(service: Service[Any], module: str, term: str, kind: str | None = None) -> list[tuple[Item, list[str]]]:
-    rows = items(service, module)
-    return phrase_hits(rows, term, kind) or loose_hits(rows, term, kind)
+    rows = textrows.book_rows(module, items(service, module))
+    return textindex.search_rows(rows, term, etype=kind, root=textrows.BOOKS, limit=SERVICE_LIMIT)
 
 
 def cmd_search(service: Service[Any], args: Any) -> int:
+    from ostler import textindex
+
     hits = search(service, args.service, args.term, args.kind)
-    for item, lines in hits:
-        print(f"{item.kind:9} {item.address}")
-        for line in lines:
-            print(f"    {line}")
-        if item.reach:
-            print(f"    {item.reach}")
+    for line in textindex.render(hits):
+        print(line)
     if not hits:
         print(f"nothing in {service.name} says {args.term!r}" + (f" as a {args.kind}" if args.kind else ""))
     return 0 if hits else 1

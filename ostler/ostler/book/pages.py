@@ -1,5 +1,6 @@
 """The books above one service: prose pages, one markdown file each, at three levels. The company
-book is `company/` and a team book is `teams/<team>/`, both in the artifacts dir. The product book is
+book is `company/` and a team book is `teams/<team>/`, both in the artifacts dir. A repository reads the
+team its agents.yml names, and the artifacts folder reads every team. The product book is
 `products/<product>/` in the book root of the start, the artifacts dir or its worktree on the start's branch, or `product/` beside `services/` when the repository keeps its book. A page has a `date:` line, optional `sources:` and `status:` lines, a
 blank line, then prose whose first line is its statement."""
 
@@ -78,10 +79,18 @@ def levels(root: str, start: str | None = None) -> list[Level]:
     artifacts = str(core_config.resolve_artifacts_dir())
     origin = Path(start if start is not None else os.getcwd())
     found = [Level("company", "", os.path.join(artifacts, "company"), "company")]
-    team = books.book_settings(origin).team or team_of(root)
-    if team:
+    for team in teams_of(root, origin, artifacts):
         found.append(Level("team", team, os.path.join(artifacts, "teams", team), f"teams/{team}"))
     return found + product_levels(origin)
+
+
+def teams_of(root: str, origin: Path, artifacts: str) -> list[str]:
+    """The team the code at `origin` names, or every team when `origin` is the artifacts folder."""
+    if books.namespaced(origin):
+        folder = os.path.join(artifacts, "teams")
+        return sorted(n for n in os.listdir(folder) if os.path.isdir(os.path.join(folder, n))) if os.path.isdir(folder) else []
+    team = books.book_settings(origin).team or team_of(root)
+    return [team] if team else []
 
 
 def parse(path: str, level: Level) -> Page:

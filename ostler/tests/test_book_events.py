@@ -180,8 +180,8 @@ def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
 
 
 def _hits(capsys: pytest.CaptureFixture[str]) -> list[tuple[str, str]]:
-    shown = [line.split() for line in capsys.readouterr().out.splitlines() if line and not line.startswith((" ", "="))]
-    return sorted((kind, address) for kind, address in shown)
+    shown = [line.split("  ")[1:3] for line in capsys.readouterr().out.splitlines() if line[:1].isdigit()]
+    return sorted((where.removeprefix("books/"), address) for where, address in shown)
 
 
 def _search(term: str, kind: str | None = None) -> int:
@@ -192,9 +192,9 @@ def test_an_events_name_finds_its_contract_its_emitter_and_its_listener_across_t
     _emitter(root)
     _listener(root)
     assert _search("ticket.changed") == 0
-    assert _hits(capsys) == [("action", "services.emitter.actions:Transition"),
-                             ("event", "services.emitter.events:TicketChanged"),
-                             ("outside", "services.listener.service:Opens")]
+    assert {("action", "services.emitter.actions:Transition"),
+            ("event", "services.emitter.events:TicketChanged"),
+            ("outside", "services.listener.service:Opens")} <= set(_hits(capsys))
 
 
 def test_the_event_kind_returns_the_contract_alone(root: Path, capsys: pytest.CaptureFixture[str]):

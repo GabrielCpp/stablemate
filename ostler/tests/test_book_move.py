@@ -86,7 +86,7 @@ def test_an_in_repo_book_is_refused_before_the_move_and_checks_green_after(tmp_p
     assert (artifacts / "products" / "acme" / "one-rule.md").is_file()
     found = _ostler(["book", "search", "listed twice"], repo)
     assert found.returncode == 0, found.stdout + found.stderr
-    assert "== product acme\n" in found.stdout
+    assert "pages/product  products/acme/one-rule\n" in found.stdout
     assert _merges(repo) == ""
     assert _merges(artifacts) == ""
 

@@ -60,7 +60,7 @@ def _book(*screens: type[Screen], endpoints: tuple[type[Endpoint], ...] = (), la
 
 
 def _found(service: Any, term: str, kind: str | None = None, mod: str = "shop_book") -> list[str]:
-    return [item.name for item, _ in search(service, mod, term, kind)]
+    return [hit["title"] for hit in search(service, mod, term, kind)]
 
 
 def test_a_label_in_the_second_language_of_the_book_finds_its_screen(module: str):
@@ -74,9 +74,9 @@ def test_the_items_of_a_one_language_book_are_the_lines_of_its_first_language(mo
     assert screen.lines == tuple(Plain.describe("en").splitlines())
 
 
-def test_a_source_file_name_finds_the_screen_written_from_it(module: str):
+def test_a_source_file_name_finds_the_screen_written_from_it_first(module: str):
     service = _book(Greeting, Plain, languages=("fr",))
-    assert _found(service, "greeting.tsx", mod=module) == ["Greeting"]
+    assert _found(service, "greeting.tsx", mod=module)[0] == "Greeting"
 
 
 def test_a_part_of_a_source_path_finds_the_endpoint_written_from_it(module: str):
@@ -90,36 +90,36 @@ def test_an_element_with_no_source_has_no_source_line(module: str):
     assert not [line for line in endpoint.lines if line.startswith("source:")]
 
 
-def test_two_words_that_sit_apart_on_one_screen_find_it_when_no_phrase_matches(module: str):
+def test_two_words_that_sit_apart_on_one_screen_find_it_first(module: str):
     service = _book(Greeting, Plain, languages=("fr", "es"))
-    assert _found(service, "enregistrer aller", mod=module) == ["Greeting"]
+    assert _found(service, "enregistrer aller", mod=module)[0] == "Greeting"
 
 
-def test_a_phrase_that_matches_keeps_its_result_and_adds_no_loose_match(module: str):
+def test_the_screen_holding_every_word_ranks_above_one_holding_a_few(module: str):
     service = _book(Editor, Plain, languages=("en",))
-    assert _found(service, "save changes", "screen", module) == ["Editor"]
+    assert _found(service, "save changes", "screen", module)[0] == "Editor"
 
 
-def test_loose_words_that_are_not_all_on_one_item_find_nothing_and_exit_one(module: str, capsys):
+def test_words_no_item_holds_find_nothing_and_exit_one(module: str, capsys):
     service = _book(Greeting, Plain, languages=("fr",))
-    args = SimpleNamespace(service=module, term="aller settings", kind=None)
+    args = SimpleNamespace(service=module, term="zebra quartz", kind=None)
     assert cmd_search(service, args) == 1
-    assert capsys.readouterr().out == "nothing in mini says 'aller settings'\n"
+    assert capsys.readouterr().out == "nothing in mini says 'zebra quartz'\n"
 
 
-def test_kind_narrows_a_loose_match(module: str):
+def test_kind_narrows_the_hits(module: str):
     service = _book(Plain, endpoints=(Store,), languages=("en",))
-    assert sorted(_found(service, "save settings", mod=module)) == ["Plain", "Store"]
+    assert {"Plain", "Store"} <= set(_found(service, "save settings", mod=module))
     assert _found(service, "save settings", "endpoint", module) == ["Store"]
     assert _found(service, "save settings", "screen", module) == ["Plain"]
 
 
-def test_a_loose_match_prints_only_the_lines_that_hold_a_word(module: str, capsys):
+def test_a_hit_marks_the_words_it_matched(module: str, capsys):
     service = _book(Greeting, languages=("fr", "es"))
-    args = SimpleNamespace(service=module, term="enregistrer aller", kind=None)
+    args = SimpleNamespace(service=module, term="enregistrer aller", kind="screen")
     assert cmd_search(service, args) == 0
-    printed = [line.strip() for line in capsys.readouterr().out.splitlines()[1:-1]]
-    assert printed and all("aller" in line.lower() or "enregistrer" in line.lower() for line in printed)
+    out = capsys.readouterr().out
+    assert "books/screen" in out and "[Enregistrer]" in out and "[Aller]" in out
 
 
 def _decided(module: str) -> None:
@@ -128,30 +128,31 @@ def _decided(module: str) -> None:
         f.write("story: SHOP-42\ndate: 2026-11-14\nelements: Checkout, Cart\nsources: app.py::refund\n\nA refund keeps the basket.\n")
 
 
-def test_a_story_id_finds_its_decision(module: str):
+def _decision(module: str, term: str) -> dict:
     _decided(module)
-    [(item, lines)] = search(_book(languages=("en",)), module, "SHOP-42", "decision")
-    assert (item.kind, item.address, lines) == ("decision", "decisions/refund.md:1", ["story: SHOP-42"])
+    [hit] = search(_book(languages=("en",)), module, term, "decision")
+    assert hit["node"] == f"{module}/decisions/refund.md"
+    return hit
+
+
+def test_a_story_id_finds_its_decision(module: str):
+    assert "[SHOP]-[42]" in _decision(module, "SHOP-42")["snippet"]
 
 
 def test_a_class_name_finds_the_decision_that_explains_it(module: str):
-    _decided(module)
-    [(item, lines)] = search(_book(languages=("en",)), module, "Cart", "decision")
-    assert (item.address, lines) == ("decisions/refund.md:3", ["elements: Checkout, Cart"])
+    assert "[Cart]" in _decision(module, "Cart")["snippet"]
 
 
 def test_a_cited_source_finds_its_decision(module: str):
-    _decided(module)
-    [(item, lines)] = search(_book(languages=("en",)), module, "app.py::refund", "decision")
-    assert (item.address, lines) == ("decisions/refund.md:4", ["sources: app.py::refund"])
+    assert "[app].[py]::[refund]" in _decision(module, "app.py::refund")["snippet"]
 
 
 def test_a_word_of_an_open_question_finds_it(module: str):
     questions = os.path.join(os.path.dirname(decisions.directory(module)), "QUESTIONS.md")
     with open(questions, "w") as f:
         f.write("# Open\n\n- Checkout: why does a refund wait a day?\n")
-    [(item, lines)] = search(_book(languages=("en",)), module, "refund wait", "question")
-    assert (item.address, item.name, lines) == ("QUESTIONS.md:3", "Checkout", ["Checkout: why does a refund wait a day?"])
+    [hit] = search(_book(languages=("en",)), module, "refund wait", "question")
+    assert (hit["node"], hit["title"]) == (f"{module}/QUESTIONS.md:3", "Checkout")
 
 
 @pytest.mark.parametrize("options", ["ana", T(en="Ana", fr="Anne")])

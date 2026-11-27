@@ -21,6 +21,7 @@ from ostler import artifact as artifact_mod
 from ostler import qa as qa_mod
 from ostler import index as index_mod
 from ostler import textindex as textindex_mod
+from ostler import textrows
 from ostler._vendor.stablemate_core import books, config as core_config
 from ostler.environments import cli as env_cli
 from ostler.book import cli as book_cli
@@ -129,10 +130,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     ls.add_argument("--json", action="store_true")
 
-    se = sub.add_parser("search", help="ranked full-text search over the current book")
+    se = sub.add_parser("search", help="ranked full-text search over the books, the pages, the docs and the records")
     se.add_argument("q")
     se.add_argument("--type", dest="etype", help="a frontmatter type, such as concept or flow")
-    se.add_argument("--root", help="a document root: epics, milestones, specs, register, or all")
+    se.add_argument("--kind", choices=textrows.BOOK_KINDS, help="a book element kind, or company, team or product")
+    se.add_argument("--service", help="keep only this service book of the books, such as services.<repo>.<name>")
+    se.add_argument("--root", help="books, pages, docs, epics, milestones, specs, register, a comma list, or all")
     se.add_argument("--limit", type=int, default=10, help="most hits to return")
     se.add_argument(
         "--match", action="store_true",
@@ -810,7 +813,7 @@ def _cmd_cache(args) -> int:
 def _cmd_search(graph, args) -> int:
     try:
         hits = query_mod.search(
-            graph, args.q, args.etype, root=args.root, limit=args.limit, raw=args.match
+            graph, args.q, args.kind or args.etype, root=args.root, limit=args.limit, raw=args.match, service=args.service
         )
     except ValueError as exc:
         _out(f"error: {exc}")
@@ -818,11 +821,8 @@ def _cmd_search(graph, args) -> int:
     if args.json:
         _out(json.dumps(hits, indent=2))
         return 0
-    for hit in hits:
-        where = f"{hit['node']}#{hit['anchor']}" if hit["anchor"] else hit["node"]
-        heading = f" — {hit['heading']}" if hit["heading"] else ""
-        _out(f"{hit['score']:.3f}  {hit['root']}/{hit['type']}  {where}{heading}")
-        _out(f"        {hit['snippet']}")
+    for line in textindex_mod.render(hits):
+        _out(line)
     if not hits:
         _out("(none)")
     return 0

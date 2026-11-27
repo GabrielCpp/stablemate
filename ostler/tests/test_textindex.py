@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from ostler import index, textindex
+from ostler import index, textindex, textrows
 from ostler.cli import main
 from ostler.model import load
 
@@ -59,7 +59,7 @@ def test_rows_for_gives_preamble_and_section_rows(repo: Path):
     page = repo / "docs/specs/area/guide.md"
     write(page, "---\ntype: concept\nslug: guide\ntitle: Guide\n---\n\nLead words.\n\n"
                 "# Guide\n\n## Setup\n\n### Install\n\nrun the installer\n\n- a bullet here\n")
-    rows = textindex.rows_for("services", page, load(repo))
+    rows = textrows.rows_for("services", page, load(repo))
     assert [(r.anchor, r.heading) for r in rows] == [
         ("", ""), ("install", "Guide > Setup > Install")]
     assert rows[0].body == "Lead words."

@@ -65,5 +65,5 @@ def test_a_book_that_carries_its_clocked_action_from_an_arrange_has_no_such_find
 def test_a_search_for_a_word_of_the_moment_finds_the_clocked_action():
     service = replace(_service(languages=("en",)), new_model=State, endpoints=(Overdue,))
     hits = search(service, "book_desk", "due time goes by", "action")
-    assert [item.name for item, _ in hits] == ["Breach"]
-    assert "clock: the ticket's due time goes by" in hits[0][0].lines
+    assert [hit["title"] for hit in hits] == ["Breach"]
+    assert "[due] [time] [goes] [by]" in hits[0]["snippet"]

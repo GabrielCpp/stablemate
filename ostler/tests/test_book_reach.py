@@ -303,7 +303,7 @@ def test_search_of_a_screen_and_an_interaction_adds_the_way_to_its_screen(module
     service = _book(*BOOK, interactions=(OpenList, ListToDetail))
     args = SimpleNamespace(service=module, term="presses a row", kind="interaction")
     assert cmd_search(service, args) == 0
-    assert capsys.readouterr().out.splitlines()[-1] == "    on Listing, reached by OpenList on Home"
+    assert capsys.readouterr().out.splitlines()[-1] == "        on Listing, reached by OpenList on Home"
     reach = {item.name: item.reach for item in items(service, module) if item.kind == "screen"}
     assert reach["Home"] == "on Home, reached by an entry"
     assert reach["Detail"] == "on Detail, reached by OpenList on Home then ListToDetail on Listing"
@@ -315,7 +315,7 @@ def test_search_finds_a_component_by_its_label_and_its_text(module, capsys):
     service = _book(*BOOK, interactions=(OpenList,))
     assert cmd_search(service, SimpleNamespace(service=module, term="draft dialog", kind="component")) == 0
     out = capsys.readouterr().out.splitlines()
-    assert out[0].startswith("component ") and out[0].endswith("Listing.draft")
-    assert out[-1] == "    on Listing, reached by OpenList on Home"
+    draft = out.index(next(line for line in out if line.endswith("books/component  shop_book/test_book_reach:Listing.draft")))
+    assert out[draft + 2] == "        on Listing, reached by OpenList on Home"
     assert cmd_search(service, SimpleNamespace(service=module, term="Draft", kind="component")) == 0
-    assert "en: Draft" in capsys.readouterr().out
+    assert "en: [Draft]" in capsys.readouterr().out
