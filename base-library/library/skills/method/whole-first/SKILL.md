@@ -47,7 +47,23 @@ it is for and where it is heading. [[vet-proposal]] says where to find it and ho
 statements rank. Read it first.
 
 Write the **frame** when the purpose is silent about the person, or when the request is new: a
-product, a milestone, a screen nobody has described. The frame has five lines:
+product, a milestone, a screen nobody has described.
+
+Dig to the **root need** first. Take the request and ask why the person wants it. Ask why again
+of the answer, and keep asking until the next answer leaves what the product can touch, or
+repeats a line the purpose already states. It takes three to five rounds. Each link names a
+person and a moment, and carries a source tag like a frame line. An answer that names a
+quality, such as faster or easier, has not answered why, so ask it again. An answer that
+names money or growth has left the product's reach, so step back one link. The last link
+inside the product's reach is the root need. Write one chain for each person in Who, because
+the one who uses it and the one who pays rarely want it for the same reason.
+
+A bakery's request to take orders online might run: phone orders tie up the counter at the
+morning rush, so walk-in customers wait, so regulars leave before they are served. The root
+need is a counter that serves the person in front of it. Online ordering is one link, and a
+pickup shelf for orders placed the day before sits on the same chain.
+
+The frame grows from the chain. It has five lines:
 
 - **Who.** Every person who meets it, kept apart from the person who asked: the one who uses
   it, the one who receives what it makes, and the one who pays to run it. Their role, and how
@@ -57,6 +73,10 @@ product, a milestone, a screen nobody has described. The frame has five lines:
 - **Today.** What they do now without it, and what that costs them.
 - **Done.** What they know or have finished when they leave.
 - **Refuses.** What makes them give up on it: setup, a wait, data they doubt, a lost edit.
+
+Done is the root need as the person sees it. Today is how they reach it now. Refuses is
+what would break their trust in it. A frame line that traces to no link of the chain
+describes another product, so cut it or ask about it.
 
 The frame speaks in the person's words and names no feature or screen. Each line carries its
 source: *stated* (the request or the purpose says it), *inferred* (it follows from a stated
@@ -75,8 +95,10 @@ the eye and the keyboard focus are after each action, what moves when something 
 where each message appears. A design that holds at the task and fails at the screen fails the
 person.
 
-**Play it back** to the requester before the design. A guess becomes a question, with your
-recommended answer, when its answers fork the product: two answers, two different designs.
+**Play it back** to the requester before the design. The chain goes first, because every
+other line rests on it. A root need the requester did not state is always a question. A guess
+becomes a question, with your recommended answer, when its answers fork the product: two
+answers, two different designs.
 Every other guess becomes a working assumption, stated in one line. The answered frame and the
 scenario land where the purpose lives, the product page or the milestone, so the next reader
 finds the person beside the purpose.
@@ -135,7 +157,8 @@ handed the argument checks the argument. For something a person perceives, such 
 the judge looks at the rendered result. The code does not show what a person sees.
 
 The judge walks the scenario through the idea, at the task and at the screen, and answers
-question 2's four things from the drawing. A guarantee the design states is a claim to walk
+question 2's four things from the drawing. It traces every journey to a link of the chain. A
+journey that serves no link and a link no journey serves are both misses. A guarantee the design states is a claim to walk
 with the scenario's real data, never a fact to credit. The judge argues for the people in the
 frame, not for the idea. It returns keep, reshape or drop for each idea, with the person and the line each
 verdict rests on. The designer does not overrule it. A disagreement goes to the owner of the
@@ -151,6 +174,7 @@ question meets a cost already spent, and that cost argues for keeping the idea.
 
 - An idea's reason is a file, a count, a passing check or a tool's reach.
 - The person is "the user", with no role, moment or volume.
+- The chain ends on a quality or on money, or the frame has a line the chain never reached.
 - The frame names a feature, or every line in it is stated.
 - The scenario has no time of day, no interruption and no failure.
 - The scenario runs on sample data, or never reaches the screen.
