@@ -1,7 +1,6 @@
 """End-to-end drives of the genesis flow (`coder/genesis/flow.py`)."""
 from __future__ import annotations
 
-import json
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -14,7 +13,6 @@ from workhorse.pyflow import WorkflowFailed
 from workhorse.pyflow.driver import read_resume
 from workhorse.pyflow.engine import RunEnv
 from workhorse.records import parse_checkpoint
-from workhorse.manifest import context_dir
 
 from workhorse_workflows.coder.genesis.flow import Genesis
 from workhorse_workflows.coder.genesis import nodes as genesis_nodes
@@ -47,11 +45,11 @@ PARAMS: _Params = {
 
 
 class _Farrier:
-    """`farrier`, as the flow uses it: install renders the context, scaffolds seed dirs."""
+    """`farrier`, as the flow uses it: install renders the launcher, scaffolds seed dirs."""
 
-    def __init__(self, *, install_ok: bool = True, instructions: bool = True) -> None:
+    def __init__(self, *, install_ok: bool = True, launcher: bool = True) -> None:
         self.install_ok = install_ok
-        self.instructions = instructions
+        self.launcher = launcher
         self.calls: list[list[str]] = []
 
     def __call__(self, args: list[str], cwd: Path) -> subprocess.CompletedProcess:
@@ -60,10 +58,10 @@ class _Farrier:
         if args[1] == "install":
             if not self.install_ok:
                 return subprocess.CompletedProcess(args, 1, "", "no packs resolved")
-            ctx = context_dir(target) / "agents-context.json"
-            ctx.parent.mkdir(parents=True, exist_ok=True)
-            ctx.write_text(json.dumps(
-                {"instructions": {"api": ["go-service.md"]} if self.instructions else {}}))
+            if self.launcher:
+                mk = target / ".agents" / "agents.mk"
+                mk.parent.mkdir(parents=True, exist_ok=True)
+                mk.write_text("# generated\n")
         else:
             param = next((a for a in args if a.startswith("dir=")), "dir=.")
             seeded = target / param.removeprefix("dir=")
@@ -140,7 +138,7 @@ def test_a_bare_directory_becomes_a_repo_the_main_loop_will_accept(
     assert (target / ".git").is_dir()
     assert (target / "api" / "go.mod").read_text() == "module example.com/api\n"
     assert (epics_root()).is_dir()
-    assert json.loads((context_dir(target) / "agents-context.json").read_text())["instructions"]
+    assert (target / ".agents" / "agents.mk").is_file()
 
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=target, capture_output=True,
                           text=True, check=True)
@@ -229,13 +227,24 @@ def test_an_invalid_repo_fails_the_run_with_no_repair_turn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Genesis is pure bootstrapping: an invalid target fails the run directly, carrying the validator's own words, rather than handing the errors to a repair turn that could only guess at a tooling failure the tool itself already reported."""
-    monkeypatch.setattr(genesis_nodes, "run_tool", _Farrier(instructions=False))
+    monkeypatch.setattr(genesis_nodes, "run_tool", _Farrier(launcher=False))
 
     with pytest.raises(WorkflowFailed) as exc:
         _run(drive_flow, env(), target)
 
     assert "genesis target is invalid" in str(exc.value), exc.value
-    assert "instructions" in str(exc.value), exc.value
+    assert "farrier install did not run" in str(exc.value), exc.value
+
+
+def test_an_agents_yml_that_selects_nothing_fails_the_run(
+    env: Callable[..., RunEnv], drive_flow: Callable[..., Any], target: Path,
+    farrier: _Farrier,
+) -> None:
+    """With no skill and no pack selected the implementation stage would run bare, so the validator refuses the repo."""
+    with pytest.raises(WorkflowFailed) as exc:
+        _run(drive_flow, env(), target, packs="")
+
+    assert "selects no skills and no packs" in str(exc.value), exc.value
 
 
 def test_a_failed_farrier_install_fails_the_run_with_farriers_words(
@@ -250,7 +259,7 @@ def test_a_failed_farrier_install_fails_the_run_with_farriers_words(
         _run(drive_flow, env(), target)
 
     assert "no packs resolved" in str(exc.value), exc.value
-    assert "agents-context.json" not in str(exc.value), exc.value
+    assert "agents.mk" not in str(exc.value), exc.value
     assert not any(call[1] == "scaffold" for call in farrier.calls), farrier.calls
 
 

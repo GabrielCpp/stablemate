@@ -16,9 +16,8 @@ from ostler import path as okf_path
 from ostler.model import find_root
 from ruamel.yaml.error import YAMLError
 from workhorse._vendor.stablemate_core.harness import repo_harnesses
-from workhorse.manifest import context_dir
-from workhorse_workflows.kit import commit_all, head_sha, load_json, run_tool
-from workhorse_workflows.kit.manifest import read_manifest
+from workhorse_workflows.kit import commit_all, head_sha, run_tool
+from workhorse_workflows.kit.manifest import read_manifest, selects_skills
 from workhorse_workflows.coder.shared.contract import declared_service_paths, service_problems
 from workhorse_workflows.coder.shared import stubs
 from workhorse_workflows.coder.shared.blueprint import blueprint
@@ -345,7 +344,7 @@ def install_farrier(
         if result.returncode != 0:
             detail = (result.stderr or result.stdout).strip()
             return FarrierInstall(note=f"farrier install failed: {detail}")
-        notes.append("farrier install: adapters + agents-context.json rendered")
+        notes.append("farrier install: adapters rendered")
 
     rendered: list[str] = []
     for entry in (part.strip() for part in scaffolds if part.strip()):
@@ -431,14 +430,10 @@ def validate_genesis(
             _declared_paths(target),
         ))
 
-    ctx_path = context_dir(target) / "agents-context.json"
-    if not ctx_path.is_file():
-        errors.append(f"no {ctx_path} — farrier install did not run, so the repo advertises no standards to load")
-    elif not load_json(ctx_path, "agents-context", logger).get("instructions"):
-        errors.append(
-            f"{ctx_path} has an empty 'instructions' map — the implementation "
-            f"stage would run with no skills and still report success"
-        )
+    if not (target / ".agents" / "agents.mk").is_file():
+        errors.append("no .agents/agents.mk — farrier install did not run, so the repo advertises no standards to load")
+    if not selects_skills(target):
+        errors.append("agents.yml selects no skills and no packs — the implementation stage would run with no skills and still report success")
 
     epics_root = okf_path.epics_root_in(target)
     if not epics_root.is_dir():

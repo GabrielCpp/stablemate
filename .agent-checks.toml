@@ -77,7 +77,7 @@ stops a run's process group with os.killpg, sending SIGTERM and then SIGKILL. Ex
 "farrier/farrier/home_entries.py" = 441
 "farrier/farrier/home_guards.py" = 443
 "farrier/farrier/outputs.py" = 742
-"farrier/farrier/renderer.py" = 890
+"farrier/farrier/renderer.py" = 809
 "farrier/tests/test_eject.py" = 634
 "farrier/tests/test_hook_managers.py" = 465
 "farrier/tests/test_user_install.py" = 559
@@ -191,7 +191,7 @@ stops a run's process group with os.killpg, sending SIGTERM and then SIGKILL. Ex
 "workflows/src/workhorse_workflows/coder/book_qa/flow.py" = 478
 "workflows/src/workhorse_workflows/coder/book_qa/nodes.py" = 950
 "workflows/src/workhorse_workflows/coder/dev/flow.py" = 705
-"workflows/src/workhorse_workflows/coder/genesis/nodes.py" = 497
+"workflows/src/workhorse_workflows/coder/genesis/nodes.py" = 492
 "workflows/src/workhorse_workflows/coder/main/flow.py" = 524
 "workflows/src/workhorse_workflows/coder/shared/backlog.py" = 562
 "workflows/src/workhorse_workflows/coder/shared/plan.py" = 443
