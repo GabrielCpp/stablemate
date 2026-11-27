@@ -12,6 +12,7 @@ from workhorse_workflows.kit import find_book_package, find_book_root, find_docs
 from workhorse_workflows.coder.book_qa.nodes import read_book_record, write_unreached_claims
 from workhorse_workflows.coder.book_qa.review import owed_claims
 from workhorse_workflows.coder.qa.nodes import (
+    LIVE_RUNBOOK_FILE,
     QA_SCRATCH_DIRNAME,
     check_sentinel_ids,
     clear_qa_evidence,
@@ -24,6 +25,7 @@ from workhorse_workflows.coder.qa.nodes import (
     run_qa_plan,
     run_regression_suite,
     stack_target,
+    unlived,
     verify_qa_evidence,
 )
 from workhorse_workflows.coder.shared.qa_support import QA_PLAN_FILE
@@ -258,6 +260,8 @@ class Qa(QaOwner):
     ) -> Continue | Await | Done:
         """Rerun the plan the owner left, gate what it claims, and send what failed back."""
         found = [QaFinding.model_validate(f) for f in findings or []]
+        if live and not (Path(self.ctx.spec_dir) / QA_PLAN_FILE).is_file():
+            return self._live_only(live, laps, blocks)
         failures = self._preflight() or self._plan_failures() or self._live_failures(live or [])
         if failures:
             return self._lap(None, failures, laps, blocks)
@@ -292,6 +296,17 @@ class Qa(QaOwner):
         if lint.status != "passed":
             return [gate_text("qa_plan.py lint", lint.notes)]
         return []
+
+    def _live_only(self, live: list[str], laps: int, blocks: int) -> Continue | Await | Done:
+        """Pass a story with no scenario plan when its runbook proves every criterion it owes."""
+        record = self.call(read_book_record, self.ctx.spec_dir)
+        judged = bool(record.services) and not record.findings
+        owed = [v.criterion for v in record.unobserved] if judged else list(range(1, len(self._criteria()) + 1))
+        gaps = unlived(live, owed, record.unreached if judged else [])
+        failures = self._live_failures(live) or ([gate_text("the live checks", "\n".join(gaps))] if gaps else [])
+        if failures:
+            return self._lap(None, failures, laps, blocks)
+        return self._finish("passed", QaPlanRun(status="passed", notes=f"every owed criterion is a live check in {LIVE_RUNBOOK_FILE}"))
 
     def _live_failures(self, live: list[str]) -> list[str]:
         """The live claims' runbook, which must stand in plan-qa form."""

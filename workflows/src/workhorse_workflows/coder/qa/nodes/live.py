@@ -110,6 +110,13 @@ def runbook_problems(spec_dir: Path, live: list[str], target_env: str) -> list[s
     return problems + _manifest_problems(sections, steps, numbers)
 
 
+def unlived(live: list[str], owed: list[int], unreached: list[str]) -> list[str]:
+    """What a story with no scenario plan still owes when its live checks are its whole proof."""
+    numbers, _ = _criteria(live)
+    problems = [f"no scenario plan stands, and ac:{n} is not a live check" for n in owed if n not in numbers]
+    return problems + [f"no scenario plan stands, and the books left a claim only a scenario shows: {c}" for c in unreached]
+
+
 @blueprint.node
 def lint_live_runbook(
     logger: logging.Logger, spec_dir: str = "", live: list[str] | None = None, target_env: str = ""

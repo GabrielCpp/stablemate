@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from workhorse_workflows.coder.qa.nodes.evidence import verify_qa_evidence
-from workhorse_workflows.coder.qa.nodes.live import LIVE_RUNBOOK_FILE, lint_live_runbook
+from workhorse_workflows.coder.qa.nodes.live import LIVE_RUNBOOK_FILE, lint_live_runbook, unlived
 from workhorse_workflows.coder.qa.nodes.hygiene import check_sentinel_ids, flush_root_screenshots
 from workhorse_workflows.coder.qa.nodes.qa import (
     QA_SCRATCH_DIRNAME,
@@ -36,5 +36,6 @@ __all__ = [
     "run_regression_suite",
     "stack_target",
     "teardown_stack",
+    "unlived",
     "verify_qa_evidence",
 ]

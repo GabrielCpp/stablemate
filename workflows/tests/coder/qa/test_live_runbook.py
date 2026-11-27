@@ -130,3 +130,62 @@ def test_a_live_claim_with_a_runbook_in_form_passes_in_one_turn(
 
     assert result.status == "passed", result
     assert agent.calls.count("qa-story") == 1, agent.calls
+
+
+BOTH = ["ac:1: the export job ran", *LIVE]
+BOTH_RUNBOOK = (
+    RUNBOOK.replace("ac2-export/trigger", "ac1-export/trigger")
+    .replace('mkdir -p "$QA_DIR/ac2-export"', 'mkdir -p "$QA_DIR/ac1-export" "$QA_DIR/ac2-export"')
+)
+
+
+def test_the_two_criteria_runbook_stands_on_its_own(tmp_path: Path) -> None:
+    assert _problems(tmp_path, BOTH_RUNBOOK, BOTH) == []
+
+
+class _LiveOnlyAgent(_Agent):
+    """An owner that leaves every criterion to a live check and writes no scenario plan."""
+
+    def __init__(self, docs: Path, lives: list[list[str]]) -> None:
+        super().__init__(docs)
+        self.lives = lives
+
+    def _qa_story(self, data: dict[str, Any], nth: int) -> dict[str, Any]:
+        (Path(data["spec_dir"]) / LIVE_RUNBOOK_FILE).write_text(BOTH_RUNBOOK, encoding="utf-8")
+        live = self.lives[min(nth, len(self.lives)) - 1]
+        return {"status": "passed", "notes": f"owner turn {nth}", "live": live}
+
+
+@pytest.fixture
+def qa_live_only(
+    docs: Path, ostler: Callable[..., _Ostler], env: Callable[..., RunEnv], drive_flow: Callable[..., Any]
+) -> Callable[[list[list[str]]], tuple[_LiveOnlyAgent, Any, Any]]:
+    def run(lives: list[list[str]]) -> tuple[_LiveOnlyAgent, Any, Any]:
+        okf = ostler()
+        agent = _LiveOnlyAgent(docs, lives)
+        return agent, drive_flow(Qa(story=STORY), env(), agent), okf
+
+    return run
+
+
+
+
+def test_a_story_whose_every_criterion_is_a_live_check_passes_on_its_runbook(
+    qa_live_only: Callable[[list[list[str]]], tuple[_LiveOnlyAgent, Any, Any]],
+) -> None:
+    """A plan must hold a scenario, so without this route a live-only story could never pass."""
+    agent, result, okf = qa_live_only([BOTH])
+
+    assert result.status == "passed", result
+    assert agent.calls.count("qa-story") == 1, agent.calls
+    assert okf.runs == 0
+
+
+def test_a_story_with_no_plan_and_a_criterion_left_unproved_goes_back_to_the_owner(
+    qa_live_only: Callable[[list[list[str]]], tuple[_LiveOnlyAgent, Any, Any]],
+) -> None:
+    agent, result, _ = qa_live_only([LIVE, BOTH])
+
+    assert result.status == "passed", result
+    report = agent.args_for("qa-story")[1]["report"]
+    assert "no scenario plan stands, and ac:1 is not a live check" in report

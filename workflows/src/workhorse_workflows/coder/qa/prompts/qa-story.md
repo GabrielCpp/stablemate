@@ -122,7 +122,9 @@ earlier assumption in the story, the plan or a finding. Do not raise the same bl
      - no Markdown table and no shell script block.
 
      No scenario covers a live claim. List each one in `live` as `ac:<n>: <what it proves>`.
-     The checks refuse a runbook off this form.
+     The checks refuse a runbook off this form. When every Acceptance Criterion you owe is a
+     live check, write no `qa_plan.py` and skip steps 2 and 3. A claim the books could not
+     state still needs a scenario.
 
    A claim the local stack could show is never a live check, and a claim a scenario could
    show is never an integration test. Write `qa_plan.py` by hand: one scenario per
