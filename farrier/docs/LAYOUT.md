@@ -315,14 +315,10 @@ workhorse-coder run
 
 There is no `workflows:` key in a pack or in `agents.yml`, no `workflows/` directory in
 a library. A leftover `workflows:` list is ignored rather than rejected. What farrier
-still generates is the launcher (`.agents/agents.mk`, tracked in the repo) and the
-per-repo context manifest. The first regenerates and verifies the adapters. The second
-is how a running workflow resolves `instruction_ref` against *this* repo's adapters.
-The manifest lives outside the repo, in `<stablemate cache dir>/farrier/<repo name>/`
-as `agents-context.json` and `agents-context.<cli>.json`. `farrier state-dir` prints
-that folder. `<repo name>` is `repo.name` from `agents.yml`, else the folder name of
-the repo's main worktree. A containerized run gets a copy of the manifests in its own
-folder under `.agents/worktrees/`. Both are emitted for every install, workflow or not.
+still generates is the launcher (`.agents/agents.mk`, tracked in the repo). It
+regenerates and verifies the adapters. A running workflow reads `agents.yml` of the repo
+it works in for its template values, so farrier writes no context manifest. An install
+removes a `.agents/agents-context*.json` an older farrier left in the repo.
 
 ## Templating
 

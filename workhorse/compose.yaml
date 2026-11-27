@@ -92,7 +92,6 @@ services:
       # every run has its own, and pointing them all at the shared source would put
       # N agents in one working directory.
       AGENT_REPO_DIR: ${AGENT_REPO_DIR:-}
-      AGENT_CONTEXT_DIR: ${AGENT_CONTEXT_DIR:-}
 
       # Write run artifacts to the persistent named volume (survives reboots).
       AGENT_RUNS_DIR: /runs

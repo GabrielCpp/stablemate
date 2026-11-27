@@ -87,20 +87,6 @@ def test_generated_skill_omits_tags_when_the_source_declares_none(tmp_path):
     assert "tags:" not in content.split("\n---\n", 1)[0]
 
 
-def test_context_manifest_publishes_tags_for_every_alias(tmp_path):
-    renderer = _renderer(tmp_path, [_skill(tmp_path, "web-tests", "tags: [web, tests]\n")])
-    manifest = renderer.context_manifest("claude")
-    tags = manifest["instruction_tags"]
-    assert set(tags) == {k for k, _ in renderer.skill_lookup.items()}
-    assert all(value == ["web", "tests"] for value in tags.values())
-    assert set(tags) <= set(manifest["instructions"])
-
-
-def test_context_manifest_omits_the_untagged(tmp_path):
-    renderer = _renderer(tmp_path, [_skill(tmp_path, "plain")])
-    assert renderer.context_manifest("claude")["instruction_tags"] == {}
-
-
 def test_a_tag_query_is_an_and(tmp_path):
     web_tests = _skill(tmp_path, "web-tests", "tags: [web, tests]\n")
     web_std = _skill(tmp_path, "web-std", "tags: [web, standards]\n")

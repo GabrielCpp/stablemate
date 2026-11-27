@@ -1,12 +1,13 @@
-"""The context manifests live in the per-user state folder, not in the repo."""
+"""An install writes no context manifest anywhere and sweeps the old in-repo copies."""
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
+import pytest
+
+from farrier._vendor.stablemate_core.base_cache import CACHE_DIR_ENV
 from farrier.install import main
-from farrier.state import repo_state_dir
 from test_skills_from import make_library
 
 
@@ -14,36 +15,25 @@ def _install(repo: Path, library: Path, *extra: str) -> int:
     return main(["install", "--repo", str(repo), "--library", str(library), *extra])
 
 
-def _repo(tmp_path: Path, name: str = "") -> tuple[Path, Path]:
+def _repo(tmp_path: Path) -> tuple[Path, Path]:
     library = make_library(tmp_path)
     repo = tmp_path / "acme"
     repo.mkdir()
-    head = f"repo:\n  name: {name}\n" if name else ""
     (repo / "agents.yml").write_text(
-        head + "agents:\n  claude: true\nskills:\n  - db\n", encoding="utf-8"
+        "agents:\n  claude: true\nskills:\n  - db\n", encoding="utf-8"
     )
     return repo, library
 
 
-def test_install_writes_the_manifests_into_the_state_dir(tmp_path):
+def test_install_writes_no_context_manifest_anywhere(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    cache = tmp_path / "cache"
+    monkeypatch.setenv(CACHE_DIR_ENV, str(cache))
     repo, library = _repo(tmp_path)
 
     assert _install(repo, library) == 0
 
-    state = repo_state_dir(repo)
-    assert json.loads((state / "agents-context.json").read_text())["instructions"]
-    assert (state / "agents-context.claude.json").is_file()
-    assert not list((repo / ".agents").glob("agents-context*.json"))
-
-
-def test_the_configured_repo_name_names_the_state_dir(tmp_path):
-    repo, library = _repo(tmp_path, "shared-name")
-
-    assert _install(repo, library) == 0
-
-    state = repo_state_dir(repo, {"name": "shared-name"})
-    assert state.name == "shared-name"
-    assert (state / "agents-context.json").is_file()
+    assert not (cache / "farrier").exists()
+    assert not list(repo.rglob("agents-context*.json"))
 
 
 def test_install_removes_the_legacy_in_repo_manifests(tmp_path):

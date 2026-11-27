@@ -25,7 +25,7 @@ from farrier.hook_managers import (
 )
 from farrier.launcher import (
     LAUNCHER_AGENTS_MK,
-    LAUNCHER_CONTEXT_MANIFEST,
+    LEGACY_CONTEXT_MANIFEST,
     LEGACY_CONTEXT_GLOB,
 )
 from farrier.managed_blocks import (
@@ -697,7 +697,7 @@ def check_outputs(
                 extra.append(path.relative_to(repo).as_posix())
     named = list(managed.files)
     if managed.repo_scaffolding:
-        named.append(LAUNCHER_CONTEXT_MANIFEST)
+        named.append(LEGACY_CONTEXT_MANIFEST)
         named.extend(
             path.relative_to(repo).as_posix()
             for path in sorted(repo.glob(LEGACY_CONTEXT_GLOB))
