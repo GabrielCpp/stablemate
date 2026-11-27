@@ -1,5 +1,35 @@
 # Changelog
 
+## [5.2.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-workflows-v5.1.0...workhorse-workflows-v5.2.0) (2026-11-27)
+
+
+### Features
+
+* **base-library:** add a testing-races skill for intermittent failures ([56ea1e9](https://github.com/GabrielCpp/stablemate/commit/56ea1e9d80597f1ba8aa5da1fd8d6bad025f08a6))
+* **base-library:** teach book writers the app's retry contract ([ec76dd2](https://github.com/GabrielCpp/stablemate/commit/ec76dd23c9935821292f44755b4c3993a447ed80))
+* **workflows:** continue a turn once on its session after a cut ([402e080](https://github.com/GabrielCpp/stablemate/commit/402e0802b67d31509875e4283aaf7d43b65e9e82))
+* **workflows:** require a plan-qa runbook for each live check ([0543f54](https://github.com/GabrielCpp/stablemate/commit/0543f548778cf1b738b2c6b555531b9b561e3949))
+* **workflows:** send unobserved criteria to scenario QA proof lanes ([6c6439f](https://github.com/GabrielCpp/stablemate/commit/6c6439ffbbb5e3df9158cfc914ac5af4df7f3095))
+
+
+### Bug Fixes
+
+* **base-library:** read a windows venv in the staged type check ([6967e33](https://github.com/GabrielCpp/stablemate/commit/6967e335e8ed3347c2af76ddd884586dc50bd466))
+* **workflows:** allow workhorse-agent 8.x ([cb5e572](https://github.com/GabrielCpp/stablemate/commit/cb5e572e0cad85e258946d8f2fd0a67b0aa62bd1))
+* **workflows:** allow workhorse-agent 8.x, ostler 8.x ([19c2054](https://github.com/GabrielCpp/stablemate/commit/19c20541b91685f8a5fa5e2b2313b4678430fa16))
+* **workflows:** keep the video of every journey a coder book run plays ([6f43a6c](https://github.com/GabrielCpp/stablemate/commit/6f43a6caff18c852ade28005b94c731af114c193))
+* **workflows:** pass a story whose every owed criterion is a live check ([81cf056](https://github.com/GabrielCpp/stablemate/commit/81cf056aeef6307857f530844f999366c4684107))
+* **workflows:** say how a new app opens its book in the refusal ([11a99bc](https://github.com/GabrielCpp/stablemate/commit/11a99bc586c79bc1f92d29f74c051a366d38bea1))
+* **workflows:** take the loop runner's plain-text reply as its summary ([68db323](https://github.com/GabrielCpp/stablemate/commit/68db323a78e9ccb6b3ebca4f4444f2fb66a21393))
+
+
+### Code Refactoring
+
+* **farrier:** keep generated machine state out of .agents ([350f01f](https://github.com/GabrielCpp/stablemate/commit/350f01f7f24c71510a01cbc02c66977c72d8ce55))
+* **workflows:** bring the dev flow back under its length ceilings ([55b1751](https://github.com/GabrielCpp/stablemate/commit/55b17519d0318de1ac2fa270575248a6c7ca7906))
+* **workflows:** check the genesis install by agents.mk and yml ([501d8dc](https://github.com/GabrielCpp/stablemate/commit/501d8dc3084c9b123dc41a5a08b7f4cd7ebdb31c))
+* **workflows:** keep the owed criteria beside the owed claims ([82666e5](https://github.com/GabrielCpp/stablemate/commit/82666e5a1a39c51c9ca2fa8a69af0d2a51c39007))
+
 ## [5.1.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-workflows-v5.0.1...workhorse-workflows-v5.1.0) (2026-11-25)
 
 

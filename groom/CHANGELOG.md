@@ -1,5 +1,34 @@
 # Changelog
 
+## [2.3.0](https://github.com/GabrielCpp/stablemate/compare/groom-v2.2.0...groom-v2.3.0) (2026-11-27)
+
+
+### Features
+
+* **groom:** read Antigravity tee transcripts ([a3a0e3f](https://github.com/GabrielCpp/stablemate/commit/a3a0e3f0487858ae6b08d15ddf70e491cdb76280))
+* **groom:** send a run's activity a window of work items at a time ([2812679](https://github.com/GabrielCpp/stablemate/commit/2812679da9f003319763046fe5ad2bc59cacb4ab))
+* **workhorse:** price copilot turns from their AI credits ([69fa1b0](https://github.com/GabrielCpp/stablemate/commit/69fa1b0fff9a042d34ce5bf8f7f0b2ca46a2c316))
+
+
+### Bug Fixes
+
+* **groom:** clear a resumed run's stale ending ([a8e991f](https://github.com/GabrielCpp/stablemate/commit/a8e991ffa0f84838542b8e34fe5334b7ab33c88c))
+* **groom:** price Antigravity turns ([ae51829](https://github.com/GabrielCpp/stablemate/commit/ae5182958f50b1b5767dbd2dfabc3b6ce8d7905a))
+* **groom:** price the current Claude models at their list rates ([981e322](https://github.com/GabrielCpp/stablemate/commit/981e322f116fd0564b4a01dda8274301130e441f))
+* **groom:** print utf-8 to a windows pipe ([29b9d0f](https://github.com/GabrielCpp/stablemate/commit/29b9d0f8340219a6718af10c5c6326f9b6b230f5))
+
+
+### Performance Improvements
+
+* **groom:** keep each run's spans and the views built from them ([bdca65b](https://github.com/GabrielCpp/stablemate/commit/bdca65bae767d705ddbeefd3fc7f15acd0e9b149))
+
+
+### Code Refactoring
+
+* **groom:** bring three files back under their length limits ([f3e42b0](https://github.com/GabrielCpp/stablemate/commit/f3e42b07e1e6699fb4592da47c285ca57b61d357))
+* **groom:** move the archive verbs out of cli ([3b027ef](https://github.com/GabrielCpp/stablemate/commit/3b027ef78c2ccc7b395042e476d15db278a95cd9))
+* **groom:** split the repo and parity tests out of test_history ([8f17cb9](https://github.com/GabrielCpp/stablemate/commit/8f17cb94f1b583d546ffac2c6aef4b3ae7776f13))
+
 ## [2.2.0](https://github.com/GabrielCpp/stablemate/compare/groom-v2.1.1...groom-v2.2.0) (2026-11-25)
 
 

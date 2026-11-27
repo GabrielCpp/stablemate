@@ -1,5 +1,25 @@
 # Changelog
 
+## [5.0.0](https://github.com/GabrielCpp/stablemate/compare/saddlebag-v4.0.0...saddlebag-v5.0.0) (2026-11-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **farrier:** agents.<harness>.skills_from is refused on every harness but claude, and claude may only name codex, antigravity or pi. Write codex: true and claude: {skills_from: codex} instead.
+
+### Features
+
+* **core:** add the per-user farrier state dir helper ([16bcf6f](https://github.com/GabrielCpp/stablemate/commit/16bcf6fc23f33bd614222e0e7d9e793bdc3915b5))
+* **core:** expand environment variables in home config paths ([5060f82](https://github.com/GabrielCpp/stablemate/commit/5060f824957d2b65240548686dc3fbf7898573af))
+* **farrier:** land codex repo prompts as name-only skills ([4b9f044](https://github.com/GabrielCpp/stablemate/commit/4b9f044bb92af8fa696416abe158b6734c12d647))
+* **farrier:** link only claude skills, to .agents/skills ([339e627](https://github.com/GabrielCpp/stablemate/commit/339e6274401fe51048f412d03f3b871b01787a69))
+* **workhorse:** run workflow turns on Antigravity ([64e2094](https://github.com/GabrielCpp/stablemate/commit/64e2094c76d9dcc5810fc0c954180367175b9f90))
+
+
+### Code Refactoring
+
+* **farrier:** stop writing the agents-context manifests ([7769eb1](https://github.com/GabrielCpp/stablemate/commit/7769eb1cd896acd9babc6bb404d1992b584417db))
+
 ## [4.0.0](https://github.com/GabrielCpp/stablemate/compare/saddlebag-v3.1.0...saddlebag-v4.0.0) (2026-11-25)
 
 

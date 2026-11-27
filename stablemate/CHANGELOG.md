@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.3.0](https://github.com/GabrielCpp/stablemate/compare/stablemate-v0.2.5...stablemate-v0.3.0) (2026-11-27)
+
+
+### Features
+
+* **stablemate:** attach an Antigravity plugin to each release ([03d31f1](https://github.com/GabrielCpp/stablemate/commit/03d31f1b5f89ce7dc630638903573a1fa5baee0c))
+
+
+### Bug Fixes
+
+* **stablemate:** require the newest release of each tool ([b16b0e5](https://github.com/GabrielCpp/stablemate/commit/b16b0e5f3273d238cc8ff29a193b8eab584f865b))
+* **stablemate:** require workhorse-workflows 5.1.1 ([c8fc375](https://github.com/GabrielCpp/stablemate/commit/c8fc375ccefff1e01483271091be0aa71969e992))
+* **stablemate:** require workhorse-workflows 5.2.0 ([21a8572](https://github.com/GabrielCpp/stablemate/commit/21a857242d4132c5579c7b8d2d8fca384abcbd6d))
+
+
+### Code Refactoring
+
+* **farrier:** leave the Antigravity plugin to the library ([32ca058](https://github.com/GabrielCpp/stablemate/commit/32ca058b4770ca53fca0d191e7ed70a52a2e127d))
+
 ## [0.2.5](https://github.com/GabrielCpp/stablemate/compare/stablemate-v0.2.4...stablemate-v0.2.5) (2026-11-25)
 
 
