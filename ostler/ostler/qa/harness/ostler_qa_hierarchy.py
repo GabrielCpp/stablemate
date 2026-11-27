@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import IO, Any
 
 from ostler_qa_elements import device_name_pattern
+from ostler_qa_hierarchy_schema import call_hierarchy_tool, schema_to_hierarchy
 from ostler_qa_settle import ANNOUNCED_ROLES, Reading
 
 BOUNDS = re.compile(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
@@ -345,6 +346,7 @@ class ResidentReader:
         self._serial = serial
         self._session: McpSession | None = None
         self._exit_hook_registered = False
+        self._tool = "inspect_view_hierarchy"
 
     def __call__(self, timeout: float) -> str:
         deadline = time.monotonic() + timeout
@@ -353,12 +355,8 @@ class ResidentReader:
             try:
                 session = self._session or self._open(deadline)
                 self._session = session
-                reply = session.request(
-                    "tools/call",
-                    {"name": "inspect_view_hierarchy", "arguments": {"device_id": session.serial}},
-                    deadline,
-                )
-                return reply_text(reply)
+                self._tool, text = call_hierarchy_tool(session, self._tool, deadline, reply_text)
+                return text
             except subprocess.TimeoutExpired:
                 self.close()
                 raise
@@ -403,7 +401,8 @@ RESIDENT = ResidentReader()
 
 def resident_reader(timeout: float) -> str:
     """The device hierarchy as `maestro hierarchy` JSON, read through the run's one resident maestro."""
-    return csv_to_hierarchy(RESIDENT(timeout))
+    raw = RESIDENT(timeout)
+    return schema_to_hierarchy(raw) or csv_to_hierarchy(raw)
 
 
 def release_device() -> None:
