@@ -11,7 +11,8 @@ import pytest
 from ostler.book import Again, Arrange, BookError, Bus, Delivery, Environment, Service
 from ostler.book.check import Finding, event_faults
 from ostler.book.domain import State
-from ostler.book.runner import Deliveries, Landings, perform
+from ostler.book.runner import perform
+from ostler.book.tapping import Deliveries, Landings
 
 from book_desk import Desk, DeskSurface, TicketChanged, ToQueue
 from book_fakes import Counter as Tally

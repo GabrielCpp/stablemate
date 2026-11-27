@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from ostler.book import cli
-from ostler.book.runner import Deliveries
+from ostler.book.tapping import Deliveries
 
 from book_desk import Tap
 from book_fakes import Arrives, Ghost, Haunting, MISSING, Remove, Shelf, Stocking, Sweep, TAKEN, shelf_book, shelf_matrices, run_shelf

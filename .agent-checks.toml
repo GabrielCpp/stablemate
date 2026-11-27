@@ -125,7 +125,7 @@ stops a run's process group with os.killpg, sending SIGTERM and then SIGKILL. Ex
 "ostler/ostler/api.py" = 624
 "ostler/ostler/artifact/kinds.py" = 408
 "ostler/ostler/book/affected.py" = 411
-"ostler/ostler/book/browser.py" = 579
+"ostler/ostler/book/browser.py" = 553
 "ostler/ostler/book/check.py" = 956
 "ostler/ostler/book/cli.py" = 1173
 "ostler/ostler/book/command.py" = 426
@@ -134,8 +134,8 @@ stops a run's process group with os.killpg, sending SIGTERM and then SIGKILL. Ex
 "ostler/ostler/book/exploration.py" = 461
 "ostler/ostler/book/inputs.py" = 849
 "ostler/ostler/book/owners.py" = 566
-"ostler/ostler/book/runner.py" = 799
-"ostler/ostler/book/screen.py" = 438
+"ostler/ostler/book/runner.py" = 658
+"ostler/ostler/book/screen.py" = 412
 "ostler/ostler/book/sources.py" = 464
 "ostler/ostler/checks.py" = 897
 "ostler/ostler/cli.py" = 1452
@@ -143,7 +143,7 @@ stops a run's process group with os.killpg, sending SIGTERM and then SIGKILL. Ex
 "ostler/ostler/doctor.py" = 610
 "ostler/ostler/environments/commands.py" = 729
 "ostler/ostler/environments/runtime.py" = 419
-"ostler/ostler/environments/spec.py" = 703
+"ostler/ostler/environments/spec.py" = 666
 "ostler/ostler/index.py" = 423
 "ostler/ostler/markdown.py" = 639
 "ostler/ostler/model.py" = 717
@@ -159,12 +159,11 @@ stops a run's process group with os.killpg, sending SIGTERM and then SIGKILL. Ex
 "ostler/tests/fixtures/book_todo/app.py" = 454
 "ostler/tests/test_book_affected.py" = 647
 "ostler/tests/test_book_entries.py" = 402
-"ostler/tests/test_book_kit.py" = 423
-"ostler/tests/test_book_web.py" = 1336
+"ostler/tests/test_book_web.py" = 1010
 "ostler/tests/test_checks.py" = 412
 "ostler/tests/test_crud.py" = 526
 "ostler/tests/test_doctor.py" = 575
-"ostler/tests/test_environments.py" = 2312
+"ostler/tests/test_environments.py" = 2226
 "ostler/tests/test_index_store.py" = 572
 "ostler/tests/test_qa_browser_records.py" = 1094
 "ostler/tests/test_qa_grpc_harness.py" = 413

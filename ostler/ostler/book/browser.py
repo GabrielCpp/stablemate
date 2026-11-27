@@ -13,109 +13,20 @@ import sys
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Callable, Iterator, Mapping, cast
-from urllib.parse import parse_qsl, urlsplit
+from typing import Any, Iterator, Mapping, cast
+from urllib.parse import urlsplit
 
 from ostler.book.asked import Asked
 from ostler.book.errors import BookError
 from ostler.book.listjudge import ListJudge, ListReader, Unfed
 from ostler.book.outcome import CannotReach, cut_by_limit
 from ostler.book.pagedata import Handed, decode, on_route
+from ostler.book.pagescripts import FIELDS
 from ostler.book.screen import ROLES, Aspect, Component, Screen, Viewport
+from ostler.book.wanted import Wanted
 from ostler.qa.harness_host import load_harness_module
 
-Wanted = Callable[[Any], bool]
-
 DEFAULT_SIZE = (1280, 720)
-
-FIELDS = """root => {
-    const KINDS = ['textbox', 'spinbutton', 'combobox', 'checkbox', 'radiogroup', 'switch', 'slider', 'listbox'];
-    const shown = (el) => el.checkVisibility ? el.checkVisibility() : !!el.offsetParent;
-    const text = (el) => (el.textContent || '').replace(/\\s+/g, ' ').trim();
-    const named = (el) => {
-        const by = el.getAttribute('aria-labelledby');
-        if (by) return by.split(/\\s+/).map((id) => document.getElementById(id)).filter(Boolean).map(text).join(' ');
-        if (el.getAttribute('aria-label')) return el.getAttribute('aria-label').trim();
-        const set = el.closest('fieldset');
-        const legend = set && set.querySelector('legend');
-        if (el.getAttribute('role') === 'radiogroup' || el.type === 'radio') return legend ? text(legend) : '';
-        if (el.labels && el.labels.length) return [...el.labels].map(text).join(' ');
-        return (el.getAttribute('title') || el.getAttribute('placeholder') || '').trim();
-    };
-    const roleOf = (el) => {
-        const given = (el.getAttribute('role') || '').split(/\\s+/)[0];
-        if (given) return KINDS.includes(given) ? given : null;
-        const tag = el.tagName;
-        if (tag === 'TEXTAREA') return 'textbox';
-        if (tag === 'SELECT') return el.multiple || el.size > 1 ? 'listbox' : 'combobox';
-        if (tag !== 'INPUT') return null;
-        const type = (el.getAttribute('type') || 'text').toLowerCase();
-        if (type === 'number') return 'spinbutton';
-        if (type === 'checkbox') return 'checkbox';
-        if (type === 'range') return 'slider';
-        if (type === 'radio') return el.closest('[role=radiogroup]') ? null : 'radiogroup';
-        return ['hidden', 'button', 'submit', 'reset', 'image', 'file', 'color'].includes(type) ? null : 'textbox';
-    };
-    const out = [], taken = [], groups = new Set();
-    for (const el of root.querySelectorAll('*')) {
-        if (!shown(el) || taken.some((outer) => outer.contains(el))) continue;
-        const role = roleOf(el);
-        if (role === null) continue;
-        if (el.type === 'radio') {
-            if (groups.has(el.name)) continue;
-            groups.add(el.name);
-        } else {
-            taken.push(el);
-        }
-        out.push([named(el), role]);
-    }
-    return out;
-}"""
-
-
-def request(method: str, path: str, **query: str) -> Wanted:
-    """Matches a request by verb, path (`/todos` also matches `/todos/{id}`, and a `{name}` in the path stands for
-    one segment, as in `/projects/{id}/variants`) and the query parameters named; a parameter not sent counts as ''."""
-    shape = "/".join("[^/]+" if re.fullmatch(r"\{[^{}/]+\}", part) else re.escape(part) for part in path.split("/"))
-    template = re.compile(f"{shape}(/.*)?")
-
-    def wanted(req: Any) -> bool:
-        parts = urlsplit(req.url)
-        on_path = template.fullmatch(parts.path) is not None
-        params = dict(parse_qsl(parts.query, keep_blank_values=True))
-        return req.method == method and on_path and all(params.get(k, "") == v for k, v in query.items())
-
-    setattr(wanted, "text", " ".join([method, path, *(f"{k}={v}" for k, v in query.items())]))
-    return wanted
-
-
-def asked(thing: Any) -> Any:
-    return getattr(thing, "request", thing)
-
-
-def answer(method: str, path: str, **query: str) -> Wanted:
-    """Matches the answer to such a request, whatever its status."""
-    wanted = request(method, path, **query)
-    return lambda response: wanted(asked(response))
-
-
-def action(route: str, name: str) -> Wanted:
-    """Matches the answer to the POST of the form action `name` of the page `route`, as `POST /?/add`."""
-
-    def wanted(response: Any) -> bool:
-        req = asked(response)
-        parts = urlsplit(req.url)
-        named = any(key == f"/{name}" for key, _ in parse_qsl(parts.query, keep_blank_values=True))
-        return req.method == "POST" and on_route(route, parts.path) and named
-
-    setattr(wanted, "text", f"POST {route}?/{name}")
-    return wanted
-
-
-def refusal(method: str, path: str) -> Wanted:
-    """Matches a 4xx or 5xx answer to such a request."""
-    wanted = request(method, path)
-    return lambda response: wanted(asked(response)) and getattr(response, "status", 0) >= 400
 
 
 def known_callers() -> None:

@@ -17,7 +17,7 @@ from ostler.book.inputs import Tried
 from ostler.book.journey import Given, JourneyResult, StepResult
 from ostler.book.model import Rule
 from ostler.book.outcome import Done, Flawed, Refusal
-from ostler.book.runner import Deliveries
+from ostler.book.tapping import Deliveries
 from ostler.book.search import actions_of
 from ostler.book.service import Service
 from ostler.book.witness import ENDPOINT, Unseen

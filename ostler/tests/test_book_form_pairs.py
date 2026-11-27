@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ostler.book import Screen, T, no_repeat
-from ostler.book.browser import request
+from ostler.book.wanted import request
 from ostler.book.entries import of_pairs
 from ostler.book.screen import Form, Lists
 from test_book_form_fields import _form_page, _read, drawn

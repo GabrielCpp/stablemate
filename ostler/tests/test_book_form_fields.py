@@ -12,7 +12,7 @@ import pytest
 
 from book_todo import run_book
 from ostler.book import Browser, Screen, T, no_repeat
-from ostler.book.browser import request
+from ostler.book.wanted import request
 from ostler.book.listing import account
 from ostler.book.screen import Form as Fields, Lists, Select
 from test_book_web import _run, _stack, _stop
