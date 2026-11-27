@@ -5,13 +5,14 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
 
 import pytest
 
-from ostler.book.environment import Environment
+from ostler.book.environment import Environment, exec_command
 from ostler.environments import commands, runtime
 from ostler.environments.render import COMPOSE_FILE
 from ostler.qa import addresses
@@ -241,6 +242,23 @@ def test_a_copy_not_rendered_runs_nothing(stack: Path):
 def test_a_run_takes_the_copy_as_an_option(tmp_path: Path):
     done = run_book(["run", "services.api", "--no-stack", "--copy", "runs-own", "--out", str(tmp_path / "out"), "--print-exec"], 1)
     assert done.returncode == 0, done.stdout + done.stderr
+
+
+def test_reexec_under_saddlebag_keeps_the_active_python_interpreter():
+    place = Environment("dev", {"api": "https://api.test"}, secrets={"ADMIN": "dev_admin"})
+    command = exec_command(place, ["run", "services.api"], present={})
+    assert command == [
+        "saddlebag",
+        "exec",
+        "--env",
+        "BOOK_SECRET_ADMIN=dev_admin",
+        "--",
+        sys.executable,
+        "-m",
+        "ostler.book",
+        "run",
+        "services.api",
+    ]
 
 
 def test_resolving_an_address_records_the_use_of_the_copy(stack: Path):

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -166,7 +167,7 @@ def exec_command(environment: Environment, argv: list[str], present: Mapping[str
     command = ["saddlebag", "exec"]
     for var, secret in missing.items():
         command += ["--env", f"{var}={secret}"]
-    return [*command, "--", "python3", "-m", "ostler.book", *argv]
+    return [*command, "--", sys.executable, "-m", "ostler.book", *argv]
 
 
 def credentials(environment: Environment, argv: list[str], print_only: bool = False) -> int | None:
