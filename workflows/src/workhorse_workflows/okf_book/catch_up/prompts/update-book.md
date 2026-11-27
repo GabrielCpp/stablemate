@@ -22,6 +22,11 @@ element listed is one whose source changed. Each file listed as unnamed is a fil
 names nowhere. Reread each, and bring the book to what the diff says:
 
 - Update each changed element, and the journeys and cells that rely on it.
+- A publish the diff adds or removes (a bus `Publish`, `PutEvents` or `publish`) changes what
+  the action emits. Rewording `does` is not enough. Declare the event, list it in the service's
+  `events`, and set `emits` and `announces` on the action, as the `ostler-book` skill's grpc
+  reference says. The environment the play runs in must name a delivery that taps the event.
+  Without one, the played report lists the event under "events with no tap" and no play sees it.
 - Add the route, screen, interaction or record that each unnamed file holds, with that file in
   its `source`. A file whose code runs when a route, screen or heard event of the book is served
   is named in the `source` of each element that runs it, however deep in the call chain and
