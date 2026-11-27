@@ -158,8 +158,9 @@ class QaOwnerResult(CoderResult):
     )
     live: list[str] = Field(
         default=[],
-        description="Each claim only the shared DEV environment can show, as `<claim id>: <what the "
-        "runbook proves>`. Its proof is `live-qa.md` in the spec dir, run after the deploy.",
+        description="Each criterion only a person working the target environment can show, as "
+        "`ac:<n>: <what the runbook proves>`. Its proof is `manual-qa.md` in the spec dir, in "
+        "the plan-qa form, and the checks refuse the turn when that runbook is missing or off it.",
     )
 
 

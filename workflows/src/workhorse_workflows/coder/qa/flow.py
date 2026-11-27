@@ -19,6 +19,7 @@ from workhorse_workflows.coder.qa.nodes import (
     ensure_stack,
     flush_root_screenshots,
     hold_copy,
+    lint_live_runbook,
     lint_qa_plan,
     run_qa_plan,
     run_regression_suite,
@@ -203,15 +204,17 @@ class Qa(QaOwner):
             return self._block(result, result.notes, "the QA turn", blocks)
         if result.live:
             self.logger.warning(
-                "QA of %s owes %d live check(s) on DEV after the deploy, in live-qa.md: %s",
+                "QA of %s leaves %d live check(s) on %s to a person: %s",
                 self.ctx.story_slug,
                 len(result.live),
+                self.target_env,
                 "; ".join(result.live),
             )
         return Continue(
             result,
             self.check,
             findings=[f.model_dump() for f in result.findings],
+            live=result.live,
             laps=laps,
             blocks=blocks,
         )
@@ -251,10 +254,11 @@ class Qa(QaOwner):
         findings: list[dict[str, Any]] | None = None,
         laps: int = 0,
         blocks: int = 0,
+        live: list[str] | None = None,
     ) -> Continue | Await | Done:
         """Rerun the plan the owner left, gate what it claims, and send what failed back."""
         found = [QaFinding.model_validate(f) for f in findings or []]
-        failures = self._preflight() or self._plan_failures()
+        failures = self._preflight() or self._plan_failures() or self._live_failures(live or [])
         if failures:
             return self._lap(None, failures, laps, blocks)
         self.logger.info("running the QA plan", extra={"activity": True})
@@ -287,6 +291,15 @@ class Qa(QaOwner):
         lint = self.call(lint_qa_plan, self.ctx.spec_dir)
         if lint.status != "passed":
             return [gate_text("qa_plan.py lint", lint.notes)]
+        return []
+
+    def _live_failures(self, live: list[str]) -> list[str]:
+        """The live claims' runbook, which must stand in plan-qa form."""
+        if not live:
+            return []
+        lint = self.call(lint_live_runbook, self.ctx.spec_dir, live, self.target_env)
+        if lint.status != "passed":
+            return [gate_text("the live-check runbook", lint.notes)]
         return []
 
     def _pass_failures(self, run: QaPlanRun) -> list[str]:

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from workhorse_workflows.coder.qa.nodes.evidence import verify_qa_evidence
+from workhorse_workflows.coder.qa.nodes.live import LIVE_RUNBOOK_FILE, lint_live_runbook
 from workhorse_workflows.coder.qa.nodes.hygiene import check_sentinel_ids, flush_root_screenshots
 from workhorse_workflows.coder.qa.nodes.qa import (
     QA_SCRATCH_DIRNAME,
@@ -20,6 +21,7 @@ from workhorse_workflows.coder.qa.nodes.regression import (
 )
 
 __all__ = [
+    "LIVE_RUNBOOK_FILE",
     "QA_SCRATCH_DIRNAME",
     "check_sentinel_ids",
     "clear_qa_evidence",
@@ -27,6 +29,7 @@ __all__ = [
     "ensure_stack",
     "hold_copy",
     "flush_root_screenshots",
+    "lint_live_runbook",
     "lint_qa_plan",
     "release_copy",
     "run_qa_plan",

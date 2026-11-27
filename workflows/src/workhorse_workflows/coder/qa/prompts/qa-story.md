@@ -14,8 +14,8 @@ The story is developed locally, on its own local stack, and it is self-contained
 repositories and that stack hold everything its QA proves: the running services, the
 infrastructure code and its tests, and the source. The infrastructure code deploys onto that
 stack, so the stack is a deployment in every sense. Its buckets, access policies, roles and
-stored records are read there, after that code applied. The one exception is a claim only the
-shared DEV environment can show, and step 1 says how it is proved.
+stored records are read there, after that code applied. The one exception is a claim only a
+person working the target environment can show, and step 1 says how it is proved.
 
 QA never fixes the product. A defect in the story's code is a finding you return, and the
 dev owner fixes it. Everything between the product and the verdict is yours: the plan, the
@@ -104,13 +104,25 @@ earlier assumption in the story, the plan or a finding. Do not raise the same bl
      beside the code it proves. Cover it with a scenario that runs it through
      `qa.tool(<runner>).run(...)` and checks the exit status and the test's name in the output
      with `qa.verify(...)`. A red test is a product finding like any failed scenario.
-   - **live check**: only the shared DEV environment shows it, after the deploy: a cloud
-     permission, a routing rule between deployed services, a secret, a scheduled job, a
+   - **live check**: only a person working the target environment,
+     `{{ workhorse_var('target_env') }}`, can show it, and no scenario can drive it: a cloud
+     permission, a routing rule between running services, a secret, a scheduled job, a
      migration on real data, a third party's configuration. Write
-     `{{ workhorse_var('spec_dir') }}/live-qa.md`, the runbook a person runs on DEV after the
-     deploy: numbered copy-paste steps, the evidence each step saves under
-     `qa/live/<claim>/`, a verdict rule per step and an evidence manifest. No scenario covers a
-     live claim. List each one in `live`.
+     `{{ workhorse_var('spec_dir') }}/manual-qa.md` in the plan-qa form, against
+     `{{ workhorse_var('target_env') }}` only:
+     - a `# ` title that names `{{ workhorse_var('target_env') }}`, and an `Inputs Needed`
+       section only when a `<placeholder>` is unavoidable;
+     - `QA_DIR="{{ workhorse_var('qa_dir') }}"` near the top, with `mkdir -p` for one
+       `$QA_DIR/ac<n>-<slug>/` folder per live criterion before the first step;
+     - numbered steps headed `## 1) ...`, `## 2) ...`, each with copy-paste commands that save
+       their evidence under `$QA_DIR/ac<n>-<slug>/` and a `Verdict:` rule, in an order that
+       continues past a non-critical failure;
+     - a cleanup section, then a final `## Evidence manifest` listing every file by criterion
+       and what it proves;
+     - no Markdown table and no shell script block.
+
+     No scenario covers a live claim. List each one in `live` as `ac:<n>: <what it proves>`.
+     The checks refuse a runbook off this form.
 
    A claim the local stack could show is never a live check, and a claim a scenario could
    show is never an integration test. Write `qa_plan.py` by hand: one scenario per
@@ -142,7 +154,8 @@ earlier assumption in the story, the plan or a finding. Do not raise the same bl
 4. **Record.** Judge whether the run reached its objective and write `qa.md` (below). Write
    `{{ workhorse_var('qa_dir') }}/jira-comment.md` as the report brief below says: each
    Acceptance Criterion, its verdict and the evidence path that proves it. A live claim's
-   verdict in both files is `owed after deploy`, with the runbook's path. Then return
+   verdict in both files is `owed: run manual-qa.md on {{ workhorse_var('target_env') }}`, with the
+   runbook's path. Then return
    `passed` when the scored run passed, `findings` when it fails on product defects with one
    finding per defect, and `blocked` only as described below.
 
