@@ -23,6 +23,11 @@ LOCAL = Environment("local", {"api": "http://127.0.0.1:8080"})
 DEV = Environment("dev", {"api": DEV_API})
 
 
+class Orders(State):
+    def rows(self) -> tuple[object, ...]:
+        return ()
+
+
 class CheckUp(Action[object, State]):
     source = ("https://docs.acme.io/orders#ping",)
 
@@ -53,7 +58,7 @@ AXES = Axes(
 
 service = Service(
     "orders",
-    new_model=State,
+    new_model=Orders,
     journeys=(),
     stack=lambda _: None,
     surface=lambda env: None,
