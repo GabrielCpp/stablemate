@@ -213,3 +213,18 @@ def test_url_whose_whole_host_comes_from_a_variable_passes(book_workspace: Path)
     code = "from . import fixtures\n" + CLEAN_SERVICE
     module = _write_book(book_workspace, "orders", code, extra=extra)
     assert environment_faults(module) == []
+
+
+def test_xml_namespace_in_clark_notation_passes_but_a_url_beside_it_fails(book_workspace: Path) -> None:
+    extra = {
+        "services/orders/sheets.py": (
+            'SHEET_NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"\n'
+            'CELL = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}c"\n'
+            'HOOK = "https://hooks.acme.io/{order}"\n'
+        ),
+    }
+    code = "from . import sheets\n" + CLEAN_SERVICE
+    module = _write_book(book_workspace, "orders", code, extra=extra)
+    faults = environment_faults(module)
+    assert [f.name for f in faults] == ["services/orders/sheets.py:3"]
+    assert "hardcodes URL" in faults[0].problem

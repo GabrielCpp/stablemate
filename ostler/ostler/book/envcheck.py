@@ -65,6 +65,10 @@ def _reserved_host(host: str | None) -> bool:
     return len(concrete) < 2
 
 
+def _clark_namespace(text: str, match: re.Match[str]) -> bool:
+    return match.start() > 0 and text[match.start() - 1] == "{" and "}" in match.group(0)
+
+
 def _docstring_nodes(tree: ast.AST) -> set[int]:
     ids: set[int] = set()
     for node in ast.walk(tree):
@@ -164,6 +168,8 @@ def _scan_text(text: str, allow_urls: bool, templated: bool = False) -> list[str
         return problems
     reported_hosts: set[str] = set()
     for match in URL_RE.finditer(cleaned):
+        if _clark_namespace(cleaned, match):
+            continue
         raw_url = match.group(0).rstrip(".,;:)")
         host = _url_host(raw_url)
         if templated and host == EXPR_SENTINEL:
