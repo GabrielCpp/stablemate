@@ -1,6 +1,6 @@
 ---
 name: whole-first
-description: "Load when an idea falls into a trap or silo ('nobody writes it today' as the reason, a fix that stops at one piece), when designing a story, screen or rule that joins a product, or proposing an unasked improvement."
+description: "Load before designing a product, milestone, story or screen, when an idea falls into a trap or silo ('nobody writes it today' as the reason, a fix that stops at one piece), or when proposing an unasked improvement."
 tags: [standards, review, process]
 ---
 
@@ -16,8 +16,9 @@ An idea can fail in two ways that every local check passes.
   change meets its target and moves something nobody measured.
 
 Both come from one move. The idea rests on the nearest fact in view, and nobody holds it
-against the whole it joins. Each step of the argument checks out, so rereading the argument
-finds nothing. The questions below need answers the local evidence cannot supply.
+against the person it serves or the whole it joins. Each step of the argument checks out, so
+rereading the argument finds nothing. The questions below need answers the local evidence
+cannot supply.
 
 ## Five reasons that never count
 
@@ -37,16 +38,54 @@ the questions below:
 
 Such a fact can be evidence once the idea has a reason. It is never the reason.
 
-## 1. Who needs it, and which line of the purpose says so?
+## 1. Who is the person, and what is their moment?
 
-Name the person, and what they experience with the idea and without it. Then cite the line of
-the project's purpose that makes their experience matter. The purpose is what the project wrote
-about what it is for and where it is heading. Read it before reading the idea. [[vet-proposal]]
-says where to find it and how its statements rank.
+Picture the person before the idea. The **moment** is the situation they are in when they reach
+for the product: what just happened, what they need next, and what else is pulling at them.
+The project's purpose may already name them. The purpose is what the project wrote about what
+it is for and where it is heading. [[vet-proposal]] says where to find it and how its
+statements rank. Read it first.
 
-An idea with no person behind it is dropped, however cheap it is. Cheapness is how such ideas
-pile up. An idea whose person is real but whose need the purpose does not mention goes to the
-owner of the purpose as a question. Nobody builds it on a guess.
+Write the **frame** when the purpose is silent about the person, or when the request is new: a
+product, a milestone, a screen nobody has described. The frame has five lines:
+
+- **Who.** Every person who meets it, kept apart from the person who asked: the one who uses
+  it, the one who receives what it makes, and the one who pays to run it. Their role, and how
+  much they carry: teams, tools, records, volume.
+- **Moment.** What happens just before they reach for it, how often, on which device, with how
+  much time, and who is watching.
+- **Today.** What they do now without it, and what that costs them.
+- **Done.** What they know or have finished when they leave.
+- **Refuses.** What makes them give up on it: setup, a wait, data they doubt, a lost edit.
+
+The frame speaks in the person's words and names no feature or screen. Each line carries its
+source: *stated* (the request or the purpose says it), *inferred* (it follows from a stated
+line, named), or *guess*. Each line names the design choice it settles. Cut a line that settles
+none.
+
+Then walk the moment as a **scenario**. One concrete person, a time of day and a real task, in
+six to ten lines from the way in to the way out. Include the moment they are interrupted and
+the moment something fails. Run it on the person's real data, never on sample data: the
+largest record, the oldest one the tool they use today left behind, one in another language or
+format, and one that tool left half finished. Every fact the scenario needs and the frame lacks
+is a guess, and joins the frame.
+
+Walk it a second time at the **screen**: the size of the window and what sits beside it, where
+the eye and the keyboard focus are after each action, what moves when something changes, and
+where each message appears. A design that holds at the task and fails at the screen fails the
+person.
+
+**Play it back** to the requester before the design. A guess becomes a question, with your
+recommended answer, when its answers fork the product: two answers, two different designs.
+Every other guess becomes a working assumption, stated in one line. The answered frame and the
+scenario land where the purpose lives, the product page or the milestone, so the next reader
+finds the person beside the purpose.
+
+Then hold the idea against the frame. Name the person, and what they experience with the idea
+and without it, and cite the line of the purpose or the frame that makes it matter. An idea
+with no person behind it is dropped, however cheap it is. Cheapness is how such ideas pile up.
+An idea whose person is real but whose need neither the purpose nor the frame names goes to
+the owner of the purpose as a question. Nobody builds it on a guess.
 
 An improvement found while doing other work is the same case. Name its person and its line
 before it takes time from the work it was found in. If it names neither, record it and leave
@@ -56,13 +95,14 @@ it.
 
 Draw the whole before designing the piece. The whole is whatever the piece joins:
 
-- in a product, the journeys a person takes through it, from the way in to the way out,
+- in a product, the journeys a person takes through it, from the way in to the way out, and
+  the work around it: the tool, meeting or task they come from and go back to,
 - in a format or a language, every kind of item it has, including kinds with no example today,
 - in a running system, every receiver of what the change moves, measured before the change.
 
 Keep the drawing at the level of the whole. A page of a product is one box. A rule of a format
 is one row. Draw it from the project's own description of itself where one exists, and from the
-person's account where none does. Then place the piece in it and answer four things:
+frame's scenario where none does. Then place the piece in it and answer four things:
 
 - **What comes in.** Where a person or an input arrives from. A piece nothing reaches is an
   open loop.
@@ -83,9 +123,10 @@ question asked inside its frame, questions 1 and 2 included. Hand the judgement 
 fresh context: a new agent started from a written brief, never a fork of the designer. A person
 who has not followed the work counts too.
 
-The brief carries three things:
+The brief carries four things:
 
 - the project's purpose, quoted, including where it is heading,
+- the frame and the scenario as the requester answered them,
 - the drawing of the whole from question 2, or the project's own description of itself,
 - the idea as it would ship: the design, the mockup, the rule or the built result.
 
@@ -93,20 +134,26 @@ It carries none of the reasoning, the measurements or the history behind the ide
 handed the argument checks the argument. For something a person perceives, such as a screen,
 the judge looks at the rendered result. The code does not show what a person sees.
 
-The judge argues for the people the purpose names, not for the idea. It returns keep, reshape
-or drop for each idea, with the person and the line each verdict rests on. The designer does
-not overrule it. A disagreement goes to the owner of the purpose as one question, with both
-shapes and their cost.
+The judge walks the scenario through the idea, at the task and at the screen, and answers
+question 2's four things from the drawing. A guarantee the design states is a claim to walk
+with the scenario's real data, never a fact to credit. The judge argues for the people in the
+frame, not for the idea. It returns keep, reshape or drop for each idea, with the person and the line each
+verdict rests on. The designer does not overrule it. A disagreement goes to the owner of the
+purpose as one question, with both shapes and their cost.
 
 ## Order
 
-Questions 1 and 2 come before the design. Question 3 comes after the design and before
-anything is built. Asked after building, each question meets a cost already spent, and that
-cost argues for keeping the idea.
+The frame and its playback come first, before any design. Question 2 comes before the design.
+Question 3 comes after the design and before anything is built. Asked after building, each
+question meets a cost already spent, and that cost argues for keeping the idea.
 
 ## Smells
 
 - An idea's reason is a file, a count, a passing check or a tool's reach.
+- The person is "the user", with no role, moment or volume.
+- The frame names a feature, or every line in it is stated.
+- The scenario has no time of day, no interruption and no failure.
+- The scenario runs on sample data, or never reaches the screen.
 - A rule, a page or a step was designed for the one case that showed the need.
 - A piece works on its own, and nobody can say where a person comes from or goes next.
 - A change states only its own target as done.
