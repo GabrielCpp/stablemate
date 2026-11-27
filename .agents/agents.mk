@@ -104,7 +104,6 @@ define agent_launch
 	$(agent_stage_credentials) \
 	$(agent_stage_config) \
 	$(agent_share_with_container) \
-	$(agent_stage_context) \
 	echo "[agent] workflow  : $(1)"; \
 	test -z "$(PROFILE)" || echo "[agent] profile   : $(PROFILE) (from $$run_config)"; \
 	echo "[agent] run id    : $$run_id"; \
@@ -122,7 +121,6 @@ define agent_launch
 	AGENT_SOURCE_MODE=worktree \
 	AGENT_WORKTREE_ROOT="$$worktree_root" \
 	AGENT_REPO_DIR="$$worktree_root/$$repo_name" \
-	AGENT_CONTEXT_DIR="$$run_context" \
 	REPO_URL="$(AGENT_REPO)" \
 	REPO_NAME="$$repo_name" \
 	REPO_BRANCH="$(AGENT_BASE_BRANCH)" \
@@ -200,13 +198,6 @@ define agent_share_with_container
 		echo "[agent]   container's commits stay writable from the host)"; \
 	fi; \
 	chmod g+s "$$worktree_root";
-endef
-
-define agent_stage_context
-	run_context="$$worktree_root/context"; \
-	mkdir -p "$$run_context"; \
-	state_dir="$$($(FARRIER) state-dir --repo "$(AGENT_REPO)")"; \
-	cp "$$state_dir"/agents-context*.json "$$run_context"/ 2>/dev/null || true;
 endef
 
 # RUN names a launched run by its compose project (`<workflow>-<run-id>`), which is
