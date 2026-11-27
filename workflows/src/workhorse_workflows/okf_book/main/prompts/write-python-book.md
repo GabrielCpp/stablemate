@@ -91,6 +91,11 @@ python -m ostler.book missing {{ module }} --app {{ app_root }}{% if source_fold
 {% endfor %}
 ```
 
+`missing` also lists each function whose calls reach a bus send, through shared packages too. Model
+each one as an Event the carrying action `emits`, with the function in that action's `source`, and
+give an environment a delivery that taps it. A send no served request runs goes in
+`App(ignore=...)` as `<path>::<Type.method>`. Never drop an environment's delivery to quiet it.
+
 Write the book yourself. A subagent may answer a narrow question about the app's source, and
 never writes or plays a part of the book: each one loads the skill, the book and the source again,
 and each of its waits on a play rebuilds that context.

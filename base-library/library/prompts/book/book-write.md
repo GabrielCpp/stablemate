@@ -35,8 +35,9 @@ Work through the entries in batches of about eight files, and run
 `ostler book check <module> --app <repo root>` after each batch.
 
 **Done when** `ostler book missing <module> --app <repo root>` lists no file that serves a
-request. Each remaining file is named by an element's `source` or matched by an
-`App(ignore=...)` pattern.
+request and no publish. Each remaining file is named by an element's `source` or matched by an
+`App(ignore=...)` pattern. Each publish it lists is an Event in `events.py`, emitted by the action
+whose `source` names the publishing function, and an environment's delivery taps it.
 
 ## 3. Reasons pass
 

@@ -198,6 +198,14 @@ never modelled here: the book refers to it, as [neighbours.md](neighbours.md) sa
   `heard` is the event the listener's handler decodes, and `reads` the fields of it the handler
   touches.
 
+  `ostler book missing` lists the publishes for you in a Go app. It reads the app's call graph and
+  names each function under the roots whose calls reach an EventBridge, SNS, SQS, Kinesis or
+  Firehose send. The path counts through shared packages and libraries, and the message counts
+  whether it is a protobuf, a struct or a map. Each listed function goes in the `source` of an
+  action that `emits` its event, as `path/to/file.go::Type.method`. A send no served request runs
+  goes in `App(ignore=...)` under the same pointer. An environment then names a delivery that taps
+  the bus, or `missing` lists the event under "Events no environment taps".
+
   An event's id field refers to the Id kind of the book that owns the record, never to a record the
   listener restates. In the owner's own book it is `Id(Ticket, Str())`. In a listener that declares
   the event itself, name the owner's record as [neighbours.md](neighbours.md) does and take its
