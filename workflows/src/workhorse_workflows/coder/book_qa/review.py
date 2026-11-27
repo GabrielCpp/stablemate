@@ -58,6 +58,13 @@ def owed_claims(record: BookQaRecord, criteria: list[str]) -> list[str]:
     return [*record.unreached, *(_unseen_claim(v, criteria) for v in record.unobserved)]
 
 
+def owed_criteria(record: BookQaRecord, count: int) -> tuple[list[int], list[str]]:
+    """The criterion numbers the scenario seat owes, and the book claims it owes beside them."""
+    if record.services and not record.findings:
+        return [v.criterion for v in record.unobserved], list(record.unreached)
+    return list(range(1, count + 1)), []
+
+
 def _unseen_claim(verdict: ReviewVerdict, criteria: list[str]) -> str:
     n = verdict.criterion
     text = criteria[n - 1] if 1 <= n <= len(criteria) else f"criterion {n} of the story"

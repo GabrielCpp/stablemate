@@ -10,7 +10,7 @@ from workhorse.pyflow import AgentTimeout, Await, Continue, Done
 
 from workhorse_workflows.kit import find_book_package, find_book_root, find_docs_root
 from workhorse_workflows.coder.book_qa.nodes import read_book_record, write_unreached_claims
-from workhorse_workflows.coder.book_qa.review import owed_claims
+from workhorse_workflows.coder.book_qa.review import owed_claims, owed_criteria
 from workhorse_workflows.coder.qa.nodes import (
     LIVE_RUNBOOK_FILE,
     QA_SCRATCH_DIRNAME,
@@ -300,9 +300,7 @@ class Qa(QaOwner):
     def _live_only(self, live: list[str], laps: int, blocks: int) -> Continue | Await | Done:
         """Pass a story with no scenario plan when its runbook proves every criterion it owes."""
         record = self.call(read_book_record, self.ctx.spec_dir)
-        judged = bool(record.services) and not record.findings
-        owed = [v.criterion for v in record.unobserved] if judged else list(range(1, len(self._criteria()) + 1))
-        gaps = unlived(live, owed, record.unreached if judged else [])
+        gaps = unlived(live, *owed_criteria(record, len(self._criteria())))
         failures = self._live_failures(live) or ([gate_text("the live checks", "\n".join(gaps))] if gaps else [])
         if failures:
             return self._lap(None, failures, laps, blocks)
@@ -313,9 +311,7 @@ class Qa(QaOwner):
         if not live:
             return []
         lint = self.call(lint_live_runbook, self.ctx.spec_dir, live, self.target_env)
-        if lint.status != "passed":
-            return [gate_text("the live-check runbook", lint.notes)]
-        return []
+        return [gate_text("the live-check runbook", lint.notes)] if lint.status != "passed" else []
 
     def _pass_failures(self, run: QaPlanRun) -> list[str]:
         """The gates a passed run must also clear before the story is believed."""
