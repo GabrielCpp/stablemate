@@ -61,6 +61,7 @@ from ostler.book.search import KINDS, actions_of, cmd_explain, cmd_search
 from ostler.book.witness import WitnessReport, witnessed
 from ostler.book.service import Service
 from ostler.book.stack import Stack
+from ostler.book.publishes import unemitted, untapped
 from ostler.book.sources import head_of, missing_files, no_code, stale
 from ostler.book.surface import Surface
 from ostler.book.touching import aims, touches
@@ -1107,11 +1108,26 @@ def cmd_missing(service: Service[Any], args: argparse.Namespace) -> int:
         for path, listed in found.calls.items():
             for call in listed:
                 print(f"- {path}: {call.name}" + (f" ({STREAMING[call.kind]})" if call.kind else ""))
+    sent = unemitted(service, args.app)
+    if sent.unread or sent.found:
+        print("\n## Publishes no action emits")
+        if sent.unread:
+            print(f"- not read: {sent.unread}")
+        for publish in sent.found:
+            print(f"- {publish.path}::{publish.symbol} sends through {publish.via}")
+        print("  model each as an Event the action that runs it emits, with that function in the action's source, "
+              "or leave it out with an ignore pattern `<path>::<Type.method>`")
+    quiet = untapped(service)
+    if quiet:
+        print("\n## Events no environment taps")
+        print(f"- {', '.join(quiet)}: give an environment a delivery that taps the bus, or no play sees them emitted")
     closing = f"\n{len(found.unnamed)} of {found.total} files are in no element and under no ignore pattern"
     if calls:
         closing += f", and {calls} {'call a contract lists is' if calls == 1 else 'calls a contract lists are'} declared by no element"
+    if sent.found:
+        closing += f", and {len(sent.found)} {'function publishes' if len(sent.found) == 1 else 'functions publish'} with no action emitting"
     print(closing)
-    if found.unnamed or calls:
+    if found.unnamed or calls or sent.found or sent.unread or quiet:
         return 1
     print("nothing missing")
     return 0

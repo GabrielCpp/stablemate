@@ -343,16 +343,20 @@ def registration_faults(service: Service[Any], module: str) -> list[Finding]:
 
 
 def delivery_faults(service: Service[Any], module: str) -> list[Finding]:
-    """A hearing that builds a detail is delivered only where an environment names a delivery, and a delivery serves only such a hearing."""
+    """A hearing that builds a detail is delivered only where an environment names a delivery, and a delivery serves such a
+    hearing or taps an event an action emits."""
+    from ostler.book.sources import actions
+
     building = [o for o in service.outside if o.delivers()]
     delivering = [e for e in service.environments.values() if e.delivery is not None]
+    emitting = any(getattr(a, "emits", ()) for a in actions(service))
     out: list[Finding] = []
     if building and not delivering:
         out += [Finding(f"outside {module}.{o.__name__}", "builds the detail of its event and no environment names a delivery: "
                         "the hearing is performed by the surface until an environment names a delivery", told=True) for o in building]
-    if delivering and not building:
-        out += [Finding(f"environment {e.name}", "names a delivery and no outside event builds a detail: nothing is delivered "
-                        "until a hearing defines detail", told=True) for e in delivering]
+    if delivering and not building and not emitting:
+        out += [Finding(f"environment {e.name}", "names a delivery, no outside event builds a detail and no action emits: "
+                        "nothing is delivered or tapped", told=True) for e in delivering]
     return out
 
 

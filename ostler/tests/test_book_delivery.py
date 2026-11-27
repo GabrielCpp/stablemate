@@ -14,7 +14,7 @@ from ostler.book.domain import State
 from ostler.book.runner import perform
 from ostler.book.tapping import Deliveries, Landings
 
-from book_desk import Desk, DeskSurface, TicketChanged, ToQueue
+from book_desk import Desk, DeskSurface, Open, TicketChanged, ToQueue
 from book_fakes import Counter as Tally
 from book_fakes import no_stack
 
@@ -194,3 +194,12 @@ def test_the_check_notes_a_delivery_in_a_book_with_no_hearing_that_builds_a_deta
 
 def test_the_check_says_nothing_of_delivery_when_the_book_uses_one_for_a_hearing_with_a_detail():
     assert _told(_book(outside=(Opens,), delivery=Bus("zeta-bus", client=Stub()))) == []
+
+
+class Opened(Arrange[str]):
+    does = "A ticket is opened."
+    carries = Open
+
+
+def test_the_check_says_nothing_of_a_delivery_that_taps_an_event_an_action_emits():
+    assert _told(_book(outside=(Opened,), delivery=Bus("zeta-bus", client=Stub()))) == []

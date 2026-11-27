@@ -201,3 +201,80 @@ def test_a_book_that_declares_every_call_of_its_contract_prints_as_before(tmp_pa
     out = capsys.readouterr().out
     assert out == ("## What the book names\n- api/notifications.proto: Send (endpoint), StreamNotifications (endpoint)\n"
                    "\n## Files no element names\n\n## Left out by the book\n\n0 of 1 files are in no element and under no ignore pattern\nnothing missing\n")
+
+
+M = "example.com/shop"
+SEND = "(*github.com/aws/aws-sdk-go-v2/service/eventbridge.Client).PutEvents"
+GRAPH = [
+    f"(*{M}/cmd/orders/app.App).placeOrder\t(*{M}/cmd/orders/app.App).publishPlaced\tstatic method call\t{{root}}/cmd/orders/app/orders.go",
+    f"(*{M}/cmd/orders/app.App).publishPlaced\t(*{M}/pkg/eventing.Publisher).Publish\tdynamic method call\t{{root}}/cmd/orders/app/orders.go",
+    f"(*{M}/pkg/eventing.Publisher).Publish\t(*{M}/pkg/eventing.Publisher).Publish$1\tstatic function closure call\t{{root}}/pkg/eventing/publish.go",
+    f"(*{M}/pkg/eventing.Publisher).Publish$1\t{SEND}\tdynamic method call\t{{root}}/pkg/eventing/publish.go",
+    f"(*{M}/cmd/orders/app.App).listOrders\t{M}/pkg/pages.Each\tstatic function call\t{{root}}/cmd/orders/app/orders.go",
+    f"{M}/pkg/pages.Each\t(*{M}/pkg/eventing.Publisher).Publish\tdynamic function call\t{{root}}/pkg/pages/each.go",
+]
+
+
+@pytest.fixture
+def go_app(tmp_path: Path, monkeypatch) -> Path:
+    root = _repo(tmp_path, {"go.mod": f"module {M}\n", "cmd/orders/app/orders.go": "package app\n"})
+    monkeypatch.setattr("ostler.book.publishes.call_graph", lambda app_root, roots: ([line.format(root=root) for line in GRAPH], ""))
+    return root
+
+
+def _action(*source: str, emits: tuple[Any, ...] = ()) -> Any:
+    return type("PlaceOrder", (), {"source": source, "emits": emits})
+
+
+def _orders(*carried: Any, ignore: tuple[str, ...] = (), delivery: Any = None) -> Service[Any]:
+    endpoints = tuple(SimpleNamespace(__name__=f"E{i}", source=("cmd/orders/app/orders.go",), carries=a, method="POST", path=f"/e{i}") for i, a in enumerate(carried)) or (
+        SimpleNamespace(__name__="E", source=("cmd/orders/app/orders.go",), carries=None, method="POST", path="/e"),)
+    return cast("Service[Any]", SimpleNamespace(name="orders", endpoints=endpoints, records=(), screens=(), interactions=(), outside=(),
+                                                environments={"local": SimpleNamespace(delivery=delivery)},
+                                                app=App(roots=("cmd/orders",), verified="VERIFIED", ignore=ignore), documentation=None))
+
+
+PLACED = SimpleNamespace(name="OrderPlaced")
+
+
+def test_a_function_under_the_roots_that_reaches_a_transport_through_shared_code_is_listed_and_exits_1(go_app, capsys):
+    code = _run(_orders(), go_app)
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "## Publishes no action emits\n- cmd/orders/app/orders.go::App.publishPlaced sends through (*pkg/eventing.Publisher).Publish\n" in out
+    assert "and 1 function publishes with no action emitting" in out
+
+
+def test_a_call_through_a_function_value_is_not_followed(go_app, capsys):
+    _run(_orders(), go_app)
+    out = capsys.readouterr().out
+    assert "listOrders" not in out
+    assert "placeOrder" not in out
+
+
+def test_an_action_that_emits_and_names_the_publishing_function_clears_it(go_app, capsys):
+    book = _orders(_action("cmd/orders/app/orders.go::App.publishPlaced", emits=(PLACED,)), delivery=object())
+    assert _run(book, go_app) == 0
+    assert out_ends(capsys) == "nothing missing"
+
+
+def test_an_action_that_names_the_function_and_emits_nothing_leaves_it_listed(go_app, capsys):
+    assert _run(_orders(_action("cmd/orders/app/orders.go::App.publishPlaced")), go_app) == 1
+    assert "::App.publishPlaced sends through" in capsys.readouterr().out
+
+
+def test_an_ignore_pattern_on_the_function_clears_it(go_app, capsys):
+    assert _run(_orders(ignore=("cmd/orders/app/orders.go::App.publishPlaced",)), go_app) == 0
+
+
+def test_an_emitted_event_with_no_delivery_in_any_environment_is_listed_and_exits_1(go_app, capsys):
+    book = _orders(_action("cmd/orders/app/orders.go::App.publishPlaced", emits=(PLACED,)))
+    assert _run(book, go_app) == 1
+    assert "## Events no environment taps\n- OrderPlaced (PlaceOrder): give an environment a delivery" in capsys.readouterr().out
+
+
+def test_a_call_graph_that_cannot_be_read_is_reported_and_exits_1(tmp_path, monkeypatch, capsys):
+    root = _repo(tmp_path, {"go.mod": f"module {M}\n", "cmd/orders/app/orders.go": "package app\n"})
+    monkeypatch.setattr("ostler.book.publishes.call_graph", lambda app_root, roots: ([], "go is not on PATH"))
+    assert _run(_orders(), root) == 1
+    assert "## Publishes no action emits\n- not read: go is not on PATH\n" in capsys.readouterr().out
