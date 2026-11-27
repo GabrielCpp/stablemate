@@ -155,7 +155,7 @@ spends the context it was meant to save. `find_by_tags("backend", "entrypoint")`
 returns the one skill to open first and lets it do the fanning out. Exactly one
 skill per layer should carry it.
 
-Tags land in the generated skill's `metadata:` block and in the context manifest,
+Tags land in the generated skill's `metadata:` block,
 so `make agent-install` is what makes a new tag visible to a workflow.
 
 A tag is only as good as the frontmatter around it. `tags:` must sit on its own
