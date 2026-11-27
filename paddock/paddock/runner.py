@@ -19,20 +19,14 @@ from pathlib import Path
 from typing import Any
 
 from paddock import homeconfig, locks, manifest, names, paths, project as project_mod, reap
+from paddock.errors import RoundInterrupted, RunError
 from paddock.loader import Benchmark
 from paddock.names import RunName
 from paddock._vendor.stablemate_core.config import ARTIFACTS_DIR_ENV, CONFIG_PATH_ENV, config_path
 from paddock.registry import Input, Score, Step, Task
+from paddock.staging import check_data, copy_data, git
 
 logger = logging.getLogger(__name__)
-
-
-class RunError(RuntimeError):
-    """A task that could not be run, or a result that must not be recorded."""
-
-
-class RoundInterrupted(RunError):
-    """A round that stopped before it finished and left its workspace to be resumed."""
 
 
 ROUND_FILE = "round.json"
@@ -243,43 +237,6 @@ class RunResult:
         return all(outcome.status == "ok" for outcome in self.outcomes)
 
 
-def _git(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True, check=False)
-
-
-def _clone_repo(data: Path, stage: Path) -> None:
-    """Clone the repository *data* into *stage* at its HEAD, with no remote to push the round's work to."""
-    if _git("status", "--porcelain", cwd=data).stdout.strip():
-        logger.warning("%s has uncommitted changes; the run copies its HEAD and will not see them", data)
-    cloned = _git("clone", "--quiet", "--no-hardlinks", str(data), str(stage), cwd=data.parent)
-    if cloned.returncode != 0:
-        raise RunError(f"could not copy {data} to {stage}: {cloned.stderr.strip()}")
-    for remote in _git("remote", cwd=stage).stdout.split():
-        if _git("remote", "remove", remote, cwd=stage).returncode != 0:
-            raise RunError(f"could not strip remote {remote!r} from the copy of {data}")
-
-
-def _copy_data(data: Path, stage: Path) -> None:
-    """Clone *data* into *stage*: one repository as is, a folder of repositories one per name."""
-    if (data / ".git").exists():
-        _clone_repo(data, stage)
-        return
-    children = names.repo_children(data)
-    stage.mkdir(parents=True)
-    for child in children:
-        _clone_repo(child, stage / child.name)
-
-
-def _check_data(benchmark: Benchmark) -> None:
-    """Refuse a `data/` that is neither a repository nor a folder of them."""
-    data = benchmark.data
-    if (data / ".git").exists():
-        return
-    for child in names.repo_children(data):
-        if not (child / ".git").exists():
-            raise RunError(f"benchmark {benchmark.name!r}: {child} is not a git repository")
-
-
 @contextmanager
 def run_scope(config: Path) -> Iterator[None]:
     """Answer this process's config lookups as the run's own config does, then restore the operator's."""
@@ -306,7 +263,7 @@ def execute(
     echo: bool = True,
 ) -> RunResult:
     source = checkout or paths.checkout_root()
-    _check_data(benchmark)
+    check_data(benchmark)
     data_commit = names.data_commit(benchmark.data)
     if not data_commit:
         raise RunError(f"benchmark {benchmark.name!r}: {benchmark.data} is not a git repository with a commit")
@@ -322,7 +279,7 @@ def execute(
     logger.info("run %s", name)
 
     config = homeconfig.materialize(benchmark.home_config, task.config, workspace / "config.toml", stage=stage)
-    _copy_data(benchmark.data, stage)
+    copy_data(benchmark.data, stage)
 
     pinned = project_mod.pin(source, work=workspace, enabled=pin_project)
     run = _new_run(benchmark, task, name, config, pinned, source, echo)
@@ -357,7 +314,7 @@ def resume(
     pin_requested = bool(state["pin_requested"])
     source = (checkout or paths.checkout_root()).resolve()
     if pin_requested:
-        if _git("cat-file", "-e", f"{name.stablemate}^{{commit}}", cwd=source).returncode != 0:
+        if git("cat-file", "-e", f"{name.stablemate}^{{commit}}", cwd=source).returncode != 0:
             raise RunError(
                 f"{source} does not have commit {name.stablemate}, so round {name} cannot resume on the code it started on"
             )
