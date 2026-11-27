@@ -34,7 +34,8 @@ Each one takes the first proof that fits:
   environment instead of DEV: a title naming the environment, `QA_DIR="<spec>/qa"` with
   `mkdir -p` per `ac<n>-<slug>/` folder, numbered `## 1) ...` steps that each save evidence
   under `$QA_DIR/ac<n>-<slug>/` and state a `Verdict:` rule, a cleanup section and a final
-  `## Evidence manifest`, with no table and no script block. No scenario covers it.
+  `## Evidence manifest`, with no table and no script block. No scenario covers it. When
+  every criterion is a live check, write no `qa_plan.py` and skip steps 2 and 3.
 
 A criterion the local stack could show is never a live check.
 
