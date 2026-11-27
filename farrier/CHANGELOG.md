@@ -1,5 +1,47 @@
 # Changelog
 
+## [8.0.0](https://github.com/GabrielCpp/stablemate/compare/farrier-v7.0.0...farrier-v8.0.0) (2026-11-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **farrier:** agents.<harness>.skills_from is refused on every harness but claude, and claude may only name codex, antigravity or pi. Write codex: true and claude: {skills_from: codex} instead.
+
+### Features
+
+* **base-library:** ship the groom MCP record ([a30a004](https://github.com/GabrielCpp/stablemate/commit/a30a004b6549db3b31cb17e55a99cd54121b5f1e))
+* **core:** add the per-user farrier state dir helper ([16bcf6f](https://github.com/GabrielCpp/stablemate/commit/16bcf6fc23f33bd614222e0e7d9e793bdc3915b5))
+* **core:** expand environment variables in home config paths ([5060f82](https://github.com/GabrielCpp/stablemate/commit/5060f824957d2b65240548686dc3fbf7898573af))
+* **farrier:** build an Antigravity plugin with every stablemate tool ([37d3bb1](https://github.com/GabrielCpp/stablemate/commit/37d3bb1dd9ef1b34b6d6c73bb91b14d49c40c3c5))
+* **farrier:** drive Antigravity from the plugin's workhorse launchers ([228b3af](https://github.com/GabrielCpp/stablemate/commit/228b3af4a65569f172d36b4d3d10e70c268dc181))
+* **farrier:** land codex repo prompts as name-only skills ([4b9f044](https://github.com/GabrielCpp/stablemate/commit/4b9f044bb92af8fa696416abe158b6734c12d647))
+* **farrier:** land prompts as name-only skills where no prompt folder ([1cfc1fb](https://github.com/GabrielCpp/stablemate/commit/1cfc1fb66a55856e87f7dbd58a76d55275fdc4e1))
+* **farrier:** link only claude skills, to .agents/skills ([339e627](https://github.com/GabrielCpp/stablemate/commit/339e6274401fe51048f412d03f3b871b01787a69))
+* **farrier:** print where the home config lives with config path ([2f3b33b](https://github.com/GabrielCpp/stablemate/commit/2f3b33b2782d02bd6a47b42d5001e4bf7d8b732a))
+* **workhorse:** run workflow turns on Antigravity ([64e2094](https://github.com/GabrielCpp/stablemate/commit/64e2094c76d9dcc5810fc0c954180367175b9f90))
+
+
+### Bug Fixes
+
+* **base-library:** link ostler-book references from the skill page ([f2b4009](https://github.com/GabrielCpp/stablemate/commit/f2b40099f498608a97a48b316eaae9dec3ff69be))
+* **farrier:** give Antigravity agents its own tools and delegation ([2a493e4](https://github.com/GabrielCpp/stablemate/commit/2a493e4d42826b91d297f682b0224df8aaf678d6))
+* **farrier:** leave dot files and folders out of a guard install ([3441e44](https://github.com/GabrielCpp/stablemate/commit/3441e4479516be3a33abbda30bd4225ca381ea34))
+* **farrier:** make guards bite in Antigravity ([0c9a48c](https://github.com/GabrielCpp/stablemate/commit/0c9a48cb056149da9277cf60bfb238191c86f58d))
+* **farrier:** name the stablemate config in user library errors ([a1dfb69](https://github.com/GabrielCpp/stablemate/commit/a1dfb691729c089590e0611d0177309d5058ea6f))
+* **farrier:** restamp the vendored base-library digest ([5916429](https://github.com/GabrielCpp/stablemate/commit/59164290a5f93394edf47d87a18cbd57140a6bed))
+* **farrier:** stamp the library copy with the worked example in it ([08756c1](https://github.com/GabrielCpp/stablemate/commit/08756c11c2af9fa7b8048a203df65f8fb51d8cca))
+* **farrier:** stop config get claiming an unset key has no default ([5007150](https://github.com/GabrielCpp/stablemate/commit/5007150c7b10c04c0699bf5a2c70ad3102c82786))
+
+
+### Code Refactoring
+
+* **base-library:** split three skills under agy's 24 KB read ([e979125](https://github.com/GabrielCpp/stablemate/commit/e97912599d3e8c27a30c63bc2e4eaf02897b3f70))
+* **farrier:** bring home_guards back under its length ceiling ([22dffcc](https://github.com/GabrielCpp/stablemate/commit/22dffcc10491faca27a1e934862c7ea0e342b1ee))
+* **farrier:** keep generated machine state out of .agents ([350f01f](https://github.com/GabrielCpp/stablemate/commit/350f01f7f24c71510a01cbc02c66977c72d8ce55))
+* **farrier:** leave the Antigravity plugin to the library ([32ca058](https://github.com/GabrielCpp/stablemate/commit/32ca058b4770ca53fca0d191e7ed70a52a2e127d))
+* **farrier:** stop writing the agents-context manifests ([7769eb1](https://github.com/GabrielCpp/stablemate/commit/7769eb1cd896acd9babc6bb404d1992b584417db))
+* **workhorse:** read the render context from agents.yml ([5d9a397](https://github.com/GabrielCpp/stablemate/commit/5d9a397817e87492e0ae957c1eee77332db0ef58))
+
 ## [7.0.0](https://github.com/GabrielCpp/stablemate/compare/farrier-v6.1.0...farrier-v7.0.0) (2026-11-25)
 
 

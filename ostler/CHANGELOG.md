@@ -1,5 +1,48 @@
 # Changelog
 
+## [8.0.0](https://github.com/GabrielCpp/stablemate/compare/ostler-v7.0.0...ostler-v8.0.0) (2026-11-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **farrier:** agents.<harness>.skills_from is refused on every harness but claude, and claude may only name codex, antigravity or pi. Write codex: true and claude: {skills_from: codex} instead.
+
+### Features
+
+* **base-library:** give book writers one whole worked example ([7b9d695](https://github.com/GabrielCpp/stablemate/commit/7b9d695ce40a0bbad7e08ef816b78ca8feea4c1a))
+* **core:** add the per-user farrier state dir helper ([16bcf6f](https://github.com/GabrielCpp/stablemate/commit/16bcf6fc23f33bd614222e0e7d9e793bdc3915b5))
+* **core:** expand environment variables in home config paths ([5060f82](https://github.com/GabrielCpp/stablemate/commit/5060f824957d2b65240548686dc3fbf7898573af))
+* **farrier:** land codex repo prompts as name-only skills ([4b9f044](https://github.com/GabrielCpp/stablemate/commit/4b9f044bb92af8fa696416abe158b6734c12d647))
+* **farrier:** link only claude skills, to .agents/skills ([339e627](https://github.com/GabrielCpp/stablemate/commit/339e6274401fe51048f412d03f3b871b01787a69))
+* **ostler:** find a tab and an image on a screen by role ([e973d2d](https://github.com/GabrielCpp/stablemate/commit/e973d2dd7290074de533f7c77b07fe730a024c5f))
+* **ostler:** judge a screen's phases under a condition and a viewport ([da57f89](https://github.com/GabrielCpp/stablemate/commit/da57f8907c97360727c3a3e49568fd673fb29db4))
+* **ostler:** let a select state why its choices are unlisted ([e762706](https://github.com/GabrielCpp/stablemate/commit/e762706867c582b41cd2c6bf09d0b6ad14bc1da0))
+* **ostler:** let a stack address carry its own host name ([328b2e1](https://github.com/GabrielCpp/stablemate/commit/328b2e1361021a4695bfe1a7f0567606b13775ce))
+* **ostler:** play the stack environment under a lease ([be0a85e](https://github.com/GabrielCpp/stablemate/commit/be0a85e5f37adf9b6886b4ff194c00c78237e23c))
+* **workhorse:** run workflow turns on Antigravity ([64e2094](https://github.com/GabrielCpp/stablemate/commit/64e2094c76d9dcc5810fc0c954180367175b9f90))
+
+
+### Bug Fixes
+
+* add static checks for hardcoded environment ([fd049e7](https://github.com/GabrielCpp/stablemate/commit/fd049e748ea135b026e182ae8bd4fbe138174329))
+* **ostler:** ask no answer of a surface for an outside event ([622b79e](https://github.com/GabrielCpp/stablemate/commit/622b79e168f2a301746c9e221f6b8fa4409091b6))
+* **ostler:** judge only requests to the environment's own hosts ([d8fcd6a](https://github.com/GabrielCpp/stablemate/commit/d8fcd6a89a031dea638e2d90be7d4a759f7d6fd9))
+* **ostler:** keep the active python interpreter under saddlebag ([5720e74](https://github.com/GabrielCpp/stablemate/commit/5720e7470cce46e43f630486a3745488375d1997))
+* **ostler:** lock the shared browser without fcntl on windows ([3e0c93c](https://github.com/GabrielCpp/stablemate/commit/3e0c93c123cda47e6b125e0e48d4d69c45e9f6e4))
+* **ostler:** read a redirect as an answer instead of following it ([e7fef49](https://github.com/GabrielCpp/stablemate/commit/e7fef49048e6e26507ee021b01cf3910c1913afe))
+* **ostler:** read a split book's shared decisions from every surface ([bf762a8](https://github.com/GabrielCpp/stablemate/commit/bf762a8f2dd24239143d51ccccb862cce25a53c5))
+* **ostler:** read maestro mcp inspect_screen schema replies ([40989cc](https://github.com/GabrielCpp/stablemate/commit/40989cc4d3a442dcc47377452c07722df2b3063e))
+* **ostler:** report a milestone the checkout's product does not read ([9f74ed0](https://github.com/GabrielCpp/stablemate/commit/9f74ed08d163de20a9c5bd601c60e73f87c5a40e))
+* **ostler:** start both values of an input pair from a fresh world ([8a4339d](https://github.com/GabrielCpp/stablemate/commit/8a4339da73a9cffaa7b0b348c628b449409cf531))
+* **ostler:** type the inert book parts in the lease test ([16ea938](https://github.com/GabrielCpp/stablemate/commit/16ea93819380b01199bface68301eed645ba26c1))
+
+
+### Code Refactoring
+
+* **farrier:** stop writing the agents-context manifests ([7769eb1](https://github.com/GabrielCpp/stablemate/commit/7769eb1cd896acd9babc6bb404d1992b584417db))
+* **ostler:** bring eight files back under their length ceilings ([e37b8c0](https://github.com/GabrielCpp/stablemate/commit/e37b8c0477269d176f1b94c20c7f4e2762ea4975))
+* **ostler:** keep the runner and twins tests under length limits ([0420bdd](https://github.com/GabrielCpp/stablemate/commit/0420bddca4287c8c51393a6df6662d7582360ccf))
+
 ## [7.0.0](https://github.com/GabrielCpp/stablemate/compare/ostler-v6.1.0...ostler-v7.0.0) (2026-11-25)
 
 

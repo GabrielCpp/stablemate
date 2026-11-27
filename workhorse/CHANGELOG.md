@@ -1,5 +1,42 @@
 # Changelog
 
+## [8.0.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-agent-v7.0.0...workhorse-agent-v8.0.0) (2026-11-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **farrier:** agents.<harness>.skills_from is refused on every harness but claude, and claude may only name codex, antigravity or pi. Write codex: true and claude: {skills_from: codex} instead.
+
+### Features
+
+* **core:** add the per-user farrier state dir helper ([16bcf6f](https://github.com/GabrielCpp/stablemate/commit/16bcf6fc23f33bd614222e0e7d9e793bdc3915b5))
+* **core:** expand environment variables in home config paths ([5060f82](https://github.com/GabrielCpp/stablemate/commit/5060f824957d2b65240548686dc3fbf7898573af))
+* **farrier:** land codex repo prompts as name-only skills ([4b9f044](https://github.com/GabrielCpp/stablemate/commit/4b9f044bb92af8fa696416abe158b6734c12d647))
+* **farrier:** link only claude skills, to .agents/skills ([339e627](https://github.com/GabrielCpp/stablemate/commit/339e6274401fe51048f412d03f3b871b01787a69))
+* **workhorse:** map Antigravity turns into groom transcripts ([aeac748](https://github.com/GabrielCpp/stablemate/commit/aeac748b1587f04feb1e000375c7b169d154d72e))
+* **workhorse:** price copilot turns from their AI credits ([69fa1b0](https://github.com/GabrielCpp/stablemate/commit/69fa1b0fff9a042d34ce5bf8f7f0b2ca46a2c316))
+* **workhorse:** run workflow turns on Antigravity ([64e2094](https://github.com/GabrielCpp/stablemate/commit/64e2094c76d9dcc5810fc0c954180367175b9f90))
+
+
+### Bug Fixes
+
+* **workhorse:** import the runner on hosts without SIGKILL ([fbde23e](https://github.com/GabrielCpp/stablemate/commit/fbde23eee5c2e755cfff4ec203c6cdde67183962))
+* **workhorse:** keep the claude cli from updating itself mid-run ([7c708b0](https://github.com/GabrielCpp/stablemate/commit/7c708b0b21556cdb225c0ff78c812a1ab0cae04a))
+* **workhorse:** leave an answered operator wait out of the run budget ([8120786](https://github.com/GabrielCpp/stablemate/commit/81207860f75b44c97aca965a55c350a06646e61b))
+* **workhorse:** leave usage-cap waits out of the run's wall budget ([0acacb8](https://github.com/GabrielCpp/stablemate/commit/0acacb8f8855888ec27e02c781c3ce7c218526fc))
+* **workhorse:** name agy's default model so its turns can be priced ([0a9e1d4](https://github.com/GabrielCpp/stablemate/commit/0a9e1d48811a03939e197461bb20d3f1fa59133e))
+* **workhorse:** name the home install in the missing-skill refusal ([56dec0d](https://github.com/GabrielCpp/stablemate/commit/56dec0dc8a019e5af7042a2861909929b9933b72))
+* **workhorse:** read the reset time from codex's try-again message ([94aed2a](https://github.com/GabrielCpp/stablemate/commit/94aed2a9f8ff92cd8c53a34449a3962fff85344e))
+* **workhorse:** start the artifacts repo for a greenfield repo's book ([5fddec2](https://github.com/GabrielCpp/stablemate/commit/5fddec2f74ecec91c41ae5b98610a182e6209f71))
+
+
+### Code Refactoring
+
+* **farrier:** keep generated machine state out of .agents ([350f01f](https://github.com/GabrielCpp/stablemate/commit/350f01f7f24c71510a01cbc02c66977c72d8ce55))
+* **farrier:** leave the Antigravity plugin to the library ([32ca058](https://github.com/GabrielCpp/stablemate/commit/32ca058b4770ca53fca0d191e7ed70a52a2e127d))
+* **workhorse:** keep the run writer under its length ceiling ([630df0a](https://github.com/GabrielCpp/stablemate/commit/630df0a2c81c06d0db4f7482152c52e3ddd8b17e))
+* **workhorse:** read the render context from agents.yml ([5d9a397](https://github.com/GabrielCpp/stablemate/commit/5d9a397817e87492e0ae957c1eee77332db0ef58))
+
 ## [7.0.0](https://github.com/GabrielCpp/stablemate/compare/workhorse-agent-v6.1.0...workhorse-agent-v7.0.0) (2026-11-25)
 
 
