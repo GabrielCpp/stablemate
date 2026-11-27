@@ -126,8 +126,8 @@ to `[REDACTED <n> chars]` with the header *name* kept, so authentication stays a
 
 `console`, `requests` and `responses` are capped at 50,000 records, the `*Count` key reports
 the true total, and a `truncated` block names any list the cap actually bit. `pageErrors` and
-`failedRequests` are uncapped. Full reference: stablemate's
-`ostler/docs/QA-RUN.md`.
+`failedRequests` are uncapped. Full reference:
+[QA-RUN.md](https://github.com/GabrielCpp/stablemate/blob/main/ostler/docs/QA-RUN.md).
 
 **Schema-checked workflow artifacts** (a workflow's plan/review/qa docs under `<artifacts_dir>/specs/<story id>/`)
 ```bash

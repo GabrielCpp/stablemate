@@ -9,7 +9,7 @@ tags: [standards, docs]
 This skill is about the **writing** — the levers that make an agent take the same process
 every run. Its neighbours own the other two halves: [[ostler-repo-docs]] decides *which surface*
 material belongs on (root `CLAUDE.md`, nested, README, `docs/`), and [[farrier-agent-library]] owns
-the plumbing (library layout, `agents.yml` selection, `make agent-install`). The packaging
+the plumbing (library layout, `agents.yml` selection, `farrier install`). The packaging
 differs across all three; the writing does not.
 
 When the document is a **skill**, also read
@@ -86,7 +86,7 @@ becomes a coin flip.
 **Sprawl** is the failure mode here: a document simply too long, even when every line is live
 and unique. Attention thins across the excess, and every extra line is one more to keep
 relevant. The cure is the ladder — disclose reference behind pointers, and split by branch or
-sequence so each path carries only what it needs. `make check-skills` fails a `SKILL.md` past
+sequence so each path carries only what it needs. `check_skills.py` fails a `SKILL.md` past
 its line budget with nothing disclosed, because sprawl is the one failure here that a machine
 can see.
 
@@ -148,7 +148,7 @@ forbidden behaviour into context and makes it *more* available, not less: the ne
 weak modifier that the strongly-activated concept overruns, so the ban half-reads as an
 instruction. Prompt the **positive** — state the target behaviour so the banned one is never
 spoken. A prohibition earns its place only as a hard guardrail you cannot phrase positively
-(this repo has a few: no environment in a workflow, no private name in the tree), and even
+(stablemate's own code keeps a few: no environment in a workflow, no private name in the tree), and even
 then pair it with the positive target.
 
 ## Pruning
@@ -177,16 +177,14 @@ then pair it with the positive target.
 ## Verification before calling the work done
 
 ```bash
-make check-skills        # sprawl budget, disclosure reachable, no skill driving a prompt
-make check-library       # the frontmatter fence still parses (a broken one loses tags silently)
+python <this skill's dir>/scripts/check_skills.py --root <library repo>   # sprawl budget, disclosure reachable, no skill driving a prompt
+farrier library check --strict --library <library dir>                   # the frontmatter fence still parses (a broken one loses tags silently)
 ```
 
-**[scripts/check_skills.py](scripts/check_skills.py)** is what the first one runs, and it
-installs here so it travels with the doctrine — a repo that takes this skill takes the guard
-that makes it hold. Run it directly (`python …/check_skills.py --root .`) in a repo with no
-such target; with no `.agent-checks.toml` it sweeps the whole tree for `SKILL.md`, which is
-the right default for a library repo. Reach for it when wiring this doctrine into a repo that
-has none, or when a skill's exemption needs declaring.
+**[scripts/check_skills.py](scripts/check_skills.py)** installs beside this skill so it
+travels with the doctrine. A repo that takes this skill takes the guard that makes it hold.
+With no `.agent-checks.toml` it sweeps the whole tree for `SKILL.md`, which is the right
+default for a library repo. Declare a skill's exemption in that file when one is needed.
 
 Then read it top to bottom once and ask of every line: does this change behaviour versus the
 default? Anything that fails goes to its rung on the hierarchy, or goes away.

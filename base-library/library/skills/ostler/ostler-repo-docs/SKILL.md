@@ -128,8 +128,8 @@ the one canonical example, and the **index of links** to everything you moved. S
 and the README stops doing its only job.
 
 File naming follows what the repo already does — one topic per file, `SCREAMING-KEBAB.md`
-under the package's own `docs/`: `workhorse/docs/GUARDRAILS.md`, `workhorse/docs/DOCKER.md`,
-`farrier/docs/LAYOUT.md`, `ostler/docs/ARTIFACT-CONTRACTS.md`. Long-form docs live with their
+under the package's own `docs/`: `api/docs/GUARDRAILS.md`, `api/docs/DOCKER.md`,
+`web/docs/LAYOUT.md`, `worker/docs/ARTIFACT-CONTRACTS.md`. Long-form docs live with their
 package, not at the repo root.
 
 ### The two rules that make an extraction safe

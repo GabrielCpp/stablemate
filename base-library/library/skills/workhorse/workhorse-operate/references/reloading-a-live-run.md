@@ -68,4 +68,4 @@ block on a long poll: if the turn is still streaming, say the reload is pending 
 on.
 
 Full mechanics — what closes, what the spans are stamped with, what a `--core` reload
-re-execs — are in stablemate's `workhorse/docs/RELOAD.md`.
+re-execs — are in [RELOAD.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/RELOAD.md).

@@ -6,8 +6,7 @@ description: >
   a document an agent reads. For ostler: the planning-graph CLI and Python API, the executable service book for HTTP and gRPC services,
   and how to write a repo's README and CLAUDE.md. For groom:
   the operator-gate dashboard and the telemetry store behind it. For saddlebag:
-  signing in and running commands with secrets the agent never sees. For paddock:
-  writing, running and reading benchmarks of a workflow. The coder-* commands run
+  signing in and running commands with secrets the agent never sees. The coder-* commands run
   each coder subflow by hand, one command per subflow: coder-docs, coder-dev,
   coder-review, coder-qa, coder-book-qa, coder-fix and coder-fix-ci. book-write
   and book-catch-up run the okf-book flows.
@@ -22,7 +21,6 @@ skills:
   - farrier/*
   - groom/*
   - ostler/*
-  - paddock/*
   - saddlebag/*
   - workhorse/*
 prompts:

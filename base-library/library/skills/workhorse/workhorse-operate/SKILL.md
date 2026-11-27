@@ -204,7 +204,7 @@ all wheels, so after `pipx upgrade stablemate` send `reload --core`. After it, w
 procedure, with the source-tree check and the `--at-boundary` / `--core` choice, is
 **[references/reloading-a-live-run.md](references/reloading-a-live-run.md)**; the
 engine mechanics — what closes, what the spans are stamped with, what a `--core` reload
-re-execs — are stablemate's `workhorse/docs/RELOAD.md`.
+re-execs — are in [RELOAD.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/RELOAD.md).
 
 ## What this skill is not
 

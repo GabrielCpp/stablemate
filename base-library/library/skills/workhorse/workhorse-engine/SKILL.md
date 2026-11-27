@@ -12,14 +12,14 @@ A workflow is a **Python package**, not a YAML document. Its states are methods 
 `Blueprint`. There is no `workflow.yaml`, no `script:` node, no `outputs:` list, and no
 stdout protocol — a node **returns a typed value**.
 
-The engine API is documented in `workhorse/docs/AUTHORING.md`; this skill is about the
-code you write against it.
+The engine API is documented in [AUTHORING.md](https://github.com/GabrielCpp/stablemate/blob/main/workhorse/docs/AUTHORING.md). This skill
+is about the code you write against it.
 
 ---
 
 ## Separation of concerns — workhorse is generic, keep workflow logic in the workflow
 
-Workhorse (`workhorse/**`, including `templates.py`, the pyflow driver,
+Workhorse (the `workhorse` package, including its templates, the pyflow driver
 and the Jinja globals it registers) is a **generic engine shared by every workflow**. It
 must never learn the shape of one workflow's data.
 
@@ -161,13 +161,12 @@ process that must outlive its node has to be started detached and owned explicit
 
 ## No environment — arguments and workflow parameters only
 
-`os.environ`, `os.getenv` and their kin are **prohibited** anywhere under
-`src/workhorse_workflows/`. Everything a node or a state needs is an argument, or a field
-on the `Workflow` subclass (settable with `--param`). `make check-no-env` enforces it, as
-its own target from the repo root. What that target runs is
-**[scripts/check_no_env.py](scripts/check_no_env.py)**, installed beside this skill so the
-rule travels with the guard; point it at another workflow repo by declaring that repo's
-package under `[check-no-env]` in its `.agent-checks.toml`.
+`os.environ`, `os.getenv` and their kin are **prohibited** anywhere in a
+workflow distribution's package. Everything a node or a state needs is an argument, or a field
+on the `Workflow` subclass (settable with `--param`). **[scripts/check_no_env.py](scripts/check_no_env.py)**
+enforces it. It installs beside this skill so the rule travels with the guard. Point it at
+your distribution by declaring its package under `[check-no-env]` in the repo's
+`.agent-checks.toml`.
 
 The reason is the checkpoint. A run's inputs are recorded there, so a resume days later on
 another machine replays what the run actually started with; a value read from the
@@ -176,13 +175,13 @@ in the artifacts says so. It is also absent from the run's telemetry and unreach
 `--params`, which splits the operator contract across two spellings no test compares.
 
 The **process boundary** is where the environment legitimately lives, and it is outside
-this package: `workhorse/cli/run.py` and `workhorse/supervisor.py` translate `$FOO` into
-`--params` once, on the way in. That is why `repo_dir` reaches every workflow without any
+the workflow: the workhorse CLI and its supervisor translate `$FOO` into `--params` once,
+on the way in. That is why `repo_dir` reaches every workflow without any
 of them reading `AGENT_REPO_DIR`.
 
 The ambient paths — `repo_dir`, `workspace`, `library_dirs` — are the shape that used to
 be an environment read: wanted by every second node, chosen by no state. They are fields,
-and `Workflow.injects` (see `coder/shared/paths.AMBIENT`) fills them into any node or sub-flow
+and `Workflow.injects` fills them into any node or sub-flow
 declaring a parameter of the same name that was not passed one. A callsite value always
 wins; an empty field injects nothing, so the target's own default stands.
 
@@ -196,11 +195,11 @@ def collect(logger: Logger, repo_dir: str = "") -> Docs:
 ```
 
 A secret follows the same rule from the other side: it must never become a `--param`, because
-params are checkpointed to disk and echoed in logs and telemetry. `kit/credentials.py`
+params are checkpointed to disk and echoed in logs and telemetry. `workhorse_workflows.kit.credentials`
 resolves the GitHub token with `saddlebag.secret_value`, from the saddlebag secret that
 `workflow.githubTokenSecret` in `agents.yml` names, and never from a variable. A node that
 needs a secret asks saddlebag for it there. A token reaches a git subprocess in that
-command's own environment, never in `os.environ`. The full rule is in `workflows/README.md`.
+command's own environment, never in `os.environ`. The full rule is in the [workflows README](https://github.com/GabrielCpp/stablemate/blob/main/workflows/README.md).
 
 ## Idempotency, not just determinism
 

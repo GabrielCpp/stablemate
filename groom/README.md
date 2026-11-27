@@ -18,6 +18,9 @@ spans, per-node timings and error status, filterable without leaving the browser
 
 ## How it works
 
+Changing groom's code? Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first. It holds
+the stack constraints, the accessibility contract and the package layout.
+
 - Each run pushes its telemetry to `groom` over OTLP. A run on groom's own host also
   advertises its run directory, workspace and pid. `groom` reads both from local disk
   to answer the run's gates and to show its checkout path. A container run whose

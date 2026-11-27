@@ -6,6 +6,10 @@ tags: [cli, tests, benchmark]
 
 # paddock
 
+paddock is stablemate's development tool. It ships in no pipx package and runs from a
+stablemate checkout, so no pack selects this skill. A repo that develops stablemate names it
+in its `agents.yml`.
+
 paddock answers one question: what did this commit of the code under test do on this
 data, under this config? Use it to tell whether a workflow change, a prompt change or a
 model swap made your runs better or worse. Every run is a **measurement**, and

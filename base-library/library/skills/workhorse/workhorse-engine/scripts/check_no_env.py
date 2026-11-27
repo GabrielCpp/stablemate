@@ -107,7 +107,7 @@ def main() -> int:
     print(
         "\nA workflow's inputs must be arguments or workflow parameters, so the "
         "checkpoint records them and --params can set them. Translate the variable at "
-        "the process boundary (workhorse/cli/run.py, workhorse/entrypoint.sh) instead.",
+        "the process boundary (the workhorse CLI or the container entrypoint) instead.",
         file=sys.stderr,
     )
     for name, why in declared.get("allow", {}).items():

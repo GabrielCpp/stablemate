@@ -1,5 +1,15 @@
 # What belongs in the base library
 
+> **The reader has `pipx install stablemate` and nothing else.** Every skill here is
+> written for an agent on a machine where stablemate is an installed package. That
+> machine has no stablemate checkout, no `uv run` inside one, no root `Makefile`, and no
+> source file or doc of this repo on disk. A skill runs the installed commands (`farrier`,
+> `ostler`, `groom`, `saddlebag`, `workhorse-<workflow>`) and the scripts it ships beside
+> its `SKILL.md`. It names a doc of this repo only by its GitHub URL. Material for
+> people changing stablemate's own code goes in that package's `docs/`, not in a skill.
+> paddock is the one exception. It ships in no pipx package, so no pack selects its
+> skill, and this repo names it in `agents.yml`.
+
 Read [README.md](README.md) first — it says what this directory *is*. This file says
 what may be **added** to it, because that is the decision that keeps getting made
 wrongly, and it is invisible once it lands: a file that does not belong here still

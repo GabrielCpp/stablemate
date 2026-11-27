@@ -9,12 +9,12 @@ witness and report.
 ```python
 class Install(Command):
     does = "Render the selected skills into the repository."
-    program = "farrier"
+    program = "acme"
     argv = ("install", Flag("--repo", "repo"), Flag("--library", "library"))
     args = Object("InstallArgs", repo=Field(Str(), required=False), library=Field(Str(), required=False))
     answers = (Exit(0, Lines(opaque=("Wired ",)), "files written"), Exit(1, STDERR, "no config"))
     carries = RunInstall
-    source = ("farrier/farrier/cli.py::_run_install",)
+    source = ("acme/cli.py::_run_install",)
 ```
 
 A step is `Install(InstallArgs(repo="."))`, a fixture whose fields are the `args` names. Leave a flag out by

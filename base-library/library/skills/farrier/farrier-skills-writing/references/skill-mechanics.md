@@ -41,7 +41,7 @@ a moment they did not choose. And a skill that says "now run `/commit`" has hidd
 dependency behind a name the model cannot resolve on its own.
 
 When two prompts need the same material, it lives in neither: push it to a skill they both
-point at, or to a plain file under the package's `docs/`. `make check-skills` enforces this
+point at, or to a plain file under the package's `docs/`. `check_skills.py` enforces this
 direction.
 
 There is no router skill here, and there should not be: every skill in this library is
@@ -50,7 +50,7 @@ piled-up cognitive load from *user-invoked* skills, which this library does not 
 
 ## Frontmatter
 
-Farrier reads four keys off a `SKILL.md`, and **`tags` is required** — `make check-library`
+Farrier reads four keys off a `SKILL.md`, and **`tags` is required**, and `farrier library check --strict`
 fails without it:
 
 ```yaml
@@ -69,8 +69,8 @@ A prompt takes `description` plus the optional slash-command keys farrier passes
 the loss is silent: a leading `*` opens an alias, `{` opens a flow mapping, a `#` truncates
 the line, `&` becomes an anchor. The failure does not error — the skill still installs, with
 its description replaced by a plausible-looking fallback and its tags gone, so it silently
-stops matching tag queries. That is the entire reason `make check-library` exists; read
-`farrier/farrier/library_check.py` if you want the full list of shapes.
+stops matching tag queries. That is the entire reason `farrier library check` exists, and its
+report names each shape it finds.
 
 `name` is unique library-wide and the group segment is stripped on install, so the installed
 name already carries the consuming repo's prefix. Do not repeat the group in the name:
@@ -83,7 +83,7 @@ directories beside its `SKILL.md`, and farrier ships them to the same relative p
 generated output:
 
 ```
-library/skills/stablemate/<name>/
+library/skills/<group>/<name>/
   SKILL.md
   references/<topic>.md      # disclosed reference, reached by a link from the body
   scripts/<tool>.sh          # arrives verbatim and executable
@@ -94,7 +94,7 @@ Three properties to write against:
 1. **Link relatively, from the body.** `[references/topic.md](references/topic.md)` resolves
    both in the library and after install, because the renderer preserves the relative path.
    A pointer is what makes the file reachable at all — an asset nothing links to is material
-   with no pointer, and `make check-skills` fails it.
+   with no pointer, and `check_skills.py` fails it.
 2. **The pointer still does its two jobs.** Say what is over there and name the branches that
    reach it. "See the reference for details" is a dead end: an agent cannot tell whether
    following it is worth the turn.
@@ -124,10 +124,10 @@ Two cuts, both spending one of the two loads — so both have to earn it:
 
 The `.claude/`, `.codex/` and `.github/` copies are **generated** and carry a `do_not_edit`
 metadata key. Edit the library source, then re-install — see [[farrier-agent-library]] for the
-command and for adding the skill to `base-library/packs/stablemate.yml`, without which it
+command and for adding the skill to a pack under the library's `packs/`, without which it
 ships to nobody.
 
 ```bash
-make check-skills        # sprawl budget, disclosure reachable, no skill driving a prompt
-make check-library       # the frontmatter fence parses, and tags survived it
+python <skill dir>/scripts/check_skills.py --root <library repo>   # sprawl budget, disclosure reachable, no skill driving a prompt
+farrier library check --strict --library <library dir>             # the frontmatter fence parses, and tags survived it
 ```
