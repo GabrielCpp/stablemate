@@ -178,3 +178,31 @@ def test_aws_arn_or_uuid_inside_environment_still_fails(book_workspace: Path) ->
     faults = environment_faults(module)
     assert len(faults) == 1
     assert "hardcodes AWS ARN" in faults[0].problem
+
+
+def _citations_book(root: Path, use: str) -> str:
+    extra = {
+        "services/orders/links.py": 'GUIDE = "https://docs.acme.io/orders#guide"\n',
+        "services/orders/steps.py": f"from .links import GUIDE\n\n\n{use}\n",
+    }
+    code = "from . import steps\n" + CLEAN_SERVICE
+    return _write_book(root, "orders", code, extra=extra)
+
+
+def test_citation_constant_used_only_as_source_in_another_file_passes(book_workspace: Path) -> None:
+    module = _citations_book(book_workspace, "class Cite:\n    source = (GUIDE,)")
+    assert environment_faults(module) == []
+
+
+def test_citation_constant_used_outside_source_in_another_file_fails(book_workspace: Path) -> None:
+    module = _citations_book(book_workspace, "class Cite:\n    source = (GUIDE,)\n    url = GUIDE")
+    faults = environment_faults(module)
+    assert [f.name for f in faults] == ["services/orders/links.py:1"]
+    assert "hardcodes URL" in faults[0].problem
+
+
+def test_url_whose_whole_host_comes_from_a_variable_passes(book_workspace: Path) -> None:
+    extra = {"services/orders/fixtures.py": "named = 'acme'\nSITE = f\"https://{named}\"\nAPI = f\"https://{named}/rest/api/3\"\n"}
+    code = "from . import fixtures\n" + CLEAN_SERVICE
+    module = _write_book(book_workspace, "orders", code, extra=extra)
+    assert environment_faults(module) == []

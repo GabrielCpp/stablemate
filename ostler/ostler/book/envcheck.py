@@ -69,7 +69,7 @@ def _mark_subtree(node: ast.AST, target: set[int]) -> None:
         target.add(id(child))
 
 
-def _allowed_url_nodes(tree: ast.Module) -> set[int]:
+def _direct_allowed(tree: ast.Module) -> set[int]:
     allowed: set[int] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and _callee_name(node.func) in HOST_DECLARATIONS:
@@ -78,27 +78,49 @@ def _allowed_url_nodes(tree: ast.Module) -> set[int]:
             _mark_subtree(node.value, allowed)
         elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.target.id == "source" and node.value:
             _mark_subtree(node.value, allowed)
+    return allowed
 
-    top_values: dict[str, ast.AST] = {}
+
+def _top_values(tree: ast.Module) -> dict[str, ast.AST]:
+    values: dict[str, ast.AST] = {}
     for stmt in tree.body:
         if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name):
-            top_values[stmt.targets[0].id] = stmt.value
+            values[stmt.targets[0].id] = stmt.value
         elif isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name) and stmt.value is not None:
-            top_values[stmt.target.id] = stmt.value
+            values[stmt.target.id] = stmt.value
+    return values
 
-    loads: dict[str, list[int]] = {name: [] for name in top_values}
+
+def _imported_uses(tree: ast.Module, allowed: set[int]) -> dict[str, list[bool]]:
+    aliases: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                aliases[alias.asname or alias.name] = alias.name
+    uses: dict[str, list[bool]] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id in aliases:
+            uses.setdefault(aliases[node.id], []).append(id(node) in allowed)
+        elif isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Load):
+            uses.setdefault(node.attr, []).append(id(node) in allowed)
+    return uses
+
+
+def _allowed_url_nodes(tree: ast.Module, outside_uses: dict[str, list[bool]] | None = None) -> set[int]:
+    allowed = _direct_allowed(tree)
+    top_values = _top_values(tree)
+    loads: dict[str, list[bool]] = {name: [] for name in top_values}
     for node in ast.walk(tree):
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id in loads:
-            loads[node.id].append(id(node))
-
+            loads[node.id].append(id(node) in allowed)
     for name, value in top_values.items():
-        uses = loads[name]
-        if uses and all(use in allowed for use in uses):
+        uses = loads[name] + (outside_uses or {}).get(name, [])
+        if uses and all(uses):
             _mark_subtree(value, allowed)
     return allowed
 
 
-def _scan_text(text: str, allow_urls: bool) -> list[str]:
+def _scan_text(text: str, allow_urls: bool, templated: bool = False) -> list[str]:
     problems: list[str] = []
     for match in ARN_RE.finditer(text):
         problems.append(f"hardcodes AWS ARN {match.group(0)!r}: resolve environment resources through the surface or Reference instead")
@@ -124,6 +146,8 @@ def _scan_text(text: str, allow_urls: bool) -> list[str]:
     for match in URL_RE.finditer(text):
         raw_url = match.group(0).rstrip(".,;:)")
         host = urlsplit(raw_url).hostname
+        if templated and host == "placeholder":
+            continue
         if not _reserved_host(host):
             if host:
                 reported_hosts.add(host.lower())
@@ -150,15 +174,18 @@ def _joined_skeleton(node: ast.JoinedStr) -> tuple[str, str]:
     return "".join(rendered), "".join(display)
 
 
-def _file_faults(label: str, path: Path) -> list[Finding]:
+def _parse(path: Path) -> ast.Module | None:
+    try:
+        return ast.parse(path.read_text(encoding="utf-8"))
+    except (SyntaxError, UnicodeDecodeError, OSError):
+        return None
+
+
+def _file_faults(label: str, tree: ast.Module, outside_uses: dict[str, list[bool]]) -> list[Finding]:
     from ostler.book.check import Finding
 
-    try:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-    except (SyntaxError, UnicodeDecodeError, OSError):
-        return []
     docstrings = _docstring_nodes(tree)
-    allowed_urls = _allowed_url_nodes(tree)
+    allowed_urls = _allowed_url_nodes(tree, outside_uses)
     joined_children = {id(part) for node in ast.walk(tree) if isinstance(node, ast.JoinedStr) for part in node.values}
     seen: set[tuple[int, str]] = set()
     out: list[Finding] = []
@@ -171,7 +198,7 @@ def _file_faults(label: str, path: Path) -> list[Finding]:
                     out.append(Finding(f"{label}:{lineno}", problem))
         elif isinstance(node, ast.JoinedStr):
             skeleton, display = _joined_skeleton(node)
-            for problem in _scan_text(skeleton, id(node) in allowed_urls):
+            for problem in _scan_text(skeleton, id(node) in allowed_urls, templated=True):
                 shown = problem.replace("placeholder", "{...}") if "{...}" in display else problem
                 if (lineno, shown) not in seen:
                     seen.add((lineno, shown))
@@ -210,9 +237,16 @@ def _candidate_files(module: str) -> list[tuple[str, Path]]:
 
 
 def environment_faults(module: str) -> list[Finding]:
+    parsed = [(label, tree) for label, path in _candidate_files(module) if (tree := _parse(path)) is not None]
+    uses_by_file = [_imported_uses(tree, _direct_allowed(tree)) for _, tree in parsed]
     out: list[Finding] = []
-    for label, path in _candidate_files(module):
-        out.extend(_file_faults(label, path))
+    for index, (label, tree) in enumerate(parsed):
+        outside: dict[str, list[bool]] = {}
+        for other, uses in enumerate(uses_by_file):
+            if other != index:
+                for name, flags in uses.items():
+                    outside.setdefault(name, []).extend(flags)
+        out.extend(_file_faults(label, tree, outside))
     return out
 
 
