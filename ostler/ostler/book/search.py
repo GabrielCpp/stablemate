@@ -64,7 +64,7 @@ def actions_of(service: Service[Any], module: str) -> list[type[Action[Any, Any]
         if interaction.carries is not None:
             found[interaction.carries] = None
     for sub in subclasses(Action):
-        if sub.__module__.startswith(module) and not replaced(sub):
+        if (sub.__module__ == module or sub.__module__.startswith(f"{module}.")) and not replaced(sub):
             found[sub] = None
     return list(found)
 

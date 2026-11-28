@@ -464,8 +464,13 @@ def move(step: object, request: object, model: Model, surface: Surface) -> StepR
         detail, wrong = occurrence(hearing, model)
         if wrong:
             return StepResult(step, None, None, model.rows(), (), False, wrong)
-    expected = expected_emissions(action, request, model) if action is not None else ()
+    before = model.copy() if action is not None else None
     model_outcome = spoken(surface, model.perform(request))
+    expected = (
+        expected_emissions(action, request, before)
+        if action is not None and before is not None and isinstance(model_outcome, Done)
+        else ()
+    )
     reduced = trace(model)
     try:
         if hearing is not None and Deliveries.role is not None and hearing.heard is not None:

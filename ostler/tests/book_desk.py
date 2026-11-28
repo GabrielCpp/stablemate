@@ -8,11 +8,12 @@ import threading
 from dataclasses import dataclass, replace
 from typing import Any
 
-from ostler.book import Arrange, Done, Event, Field, Object, Str
+from ostler.book import Arrange, Done, Event, Field, Object, Rule, Str
 from ostler.book.cast import SOLE
 from ostler.book.delivery import Delivery
 from ostler.book.domain import Action, Collection, Create, State, Unique, Update
 from ostler.book.http import Id
+from ostler.book.outcome import Refusal
 
 from book_fakes import Quiet
 
@@ -118,10 +119,12 @@ class OpenQuietly(Open):
 class UpsertTicket(Action[str, Tickets]):
     """Emits `Changed` only when creating a ticket that was not yet in `s.tickets`."""
 
+    rules = (Rule("blank ticket", lambda a, s, by: a == "", 400),)
     emits = (Changed,)
 
     @staticmethod
     def emits_when(event: type[Event], a: str, s: Tickets, by: Any) -> bool:
+        assert a != ""
         return a not in s.tickets
 
     @staticmethod
@@ -220,7 +223,9 @@ class Emitter(Quiet):
         self.bug = bug
         self.tickets: list[str] = []
 
-    def perform(self, step: Any) -> Done:
+    def perform(self, step: Any) -> Done | Refusal:
+        if step.of == "":
+            return Refusal("blank ticket", 400)
         created = step.of not in self.tickets
         if created:
             self.tickets.append(step.of)

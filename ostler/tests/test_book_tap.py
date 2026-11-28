@@ -335,3 +335,14 @@ def test_multi_event_emissions_canonicalize_each_buffered_event_against_its_own_
     assert Deliveries.line() == "emissions: 2 proven, 0 fail, 0 unproven"
 
 
+def test_emits_when_is_not_called_when_action_rules_refuse_the_call():
+    tap = Tap()
+    Deliveries.begin(tap)
+    model = Tickets(DAY)
+    surface = Emitter(tap)
+    refused = perform(step := Upserts(""), step, model, surface)
+    assert refused.ok, refused.note
+    assert Deliveries.line() == ""
+
+
+

@@ -13,9 +13,9 @@ import pytest
 from ostler.book import Answer, Endpoint, Screen, T
 from ostler.book.screen import Button, Select
 from ostler.book import decisions
-from ostler.book.domain import State
+from ostler.book.domain import Action, State
 from ostler.book.index import services_of
-from ostler.book.search import cmd_search, items, search
+from ostler.book.search import actions_of, cmd_search, items, search
 
 from test_book_web import _service
 
@@ -184,3 +184,16 @@ def test_the_books_under_a_namespaced_root_are_found_one_repository_folder_deep(
         (tmp_path / "services" / file).write_text("")
     assert services_of(str(tmp_path)) == ["services.acme.api", "services.acme.groom.http", "services.globex.api"]
     assert services_of(str(tmp_path), "services.acme") == ["services.acme.api", "services.acme.groom.http"]
+
+
+def test_actions_of_excludes_sibling_packages_sharing_a_module_name_prefix(
+    module: str,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    sibling_mod_name = f"{module}-retention.model.actions"
+    sibling_mod = SimpleNamespace()
+    monkeypatch.setitem(os.sys.modules, sibling_mod_name, sibling_mod)
+    sibling_action = type("SweepRetention", (Action,), {"__module__": sibling_mod_name})
+    setattr(sibling_mod, "SweepRetention", sibling_action)
+    assert sibling_action not in actions_of(_book(languages=("en",)), module)
+
