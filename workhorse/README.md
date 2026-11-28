@@ -199,7 +199,7 @@ default_cli = "opencode"
 |---|---|---|---|---|
 | `claude` | `claude -p` (stream-json) | `sonnet` | yes (`/compact`) | states `--autocompact` |
 | `codex` | `codex exec --json` | CLI default | no — ladder reframes on overflow | ignored |
-| `copilot` | `copilot -p --output-format json` | CLI default | no — ladder reframes on overflow | ignored |
+| `copilot` | `copilot --prompt=<prompt> --output-format json` | CLI default | no — ladder reframes on overflow | ignored |
 | `opencode` | `opencode run --format json` | — (node names it) | no — ladder reframes on overflow | ignored |
 | `pi` | `pi --mode json` | — (node names it) | yes (rpc `compact`) | ignored |
 

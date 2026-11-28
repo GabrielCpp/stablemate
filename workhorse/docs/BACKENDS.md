@@ -70,7 +70,7 @@ CLI's opaque internal retry loop.
 |---|---|---|---|
 | `claude` | `claude -p` (stream-json) | `sonnet` | yes (`/compact`) |
 | `codex` | `codex exec --json` | CLI default | no — ladder reframes on overflow |
-| `copilot` | `copilot -p --output-format json` | CLI default | no — ladder reframes on overflow |
+| `copilot` | `copilot --prompt=<prompt> --output-format json` | CLI default | no — ladder reframes on overflow |
 | `opencode` | `opencode run --format json` | — (node names it) | no — ladder reframes on overflow |
 | `antigravity` | `agy -p --output-format stream-json` | CLI default | yes (`/compact`) |
 | `pi` | `pi --mode json` | — (node names it) | yes (`pi --mode rpc`, `compact`) |

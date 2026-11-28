@@ -544,7 +544,7 @@ def test_copilot_effort_maps_to_native_flag(tmp_path: Path):
     _run_turn(CopilotBackend(fake), "BASE PROMPT", "n", sidp, effort="high")
     cmd = captured["cmd"]
     assert cmd[cmd.index("--effort") + 1] == "high"
-    assert "BASE PROMPT" in cmd and "ultrathink" not in " ".join(cmd)
+    assert "--prompt=BASE PROMPT" in cmd and "ultrathink" not in " ".join(cmd)
 
 
 def test_codex_run_turn_fresh_then_resume(tmp_path: Path):
@@ -689,11 +689,11 @@ def test_copilot_run_turn_fresh_then_resume(tmp_path: Path):
         turn.TurnState(result_text="ANSWER", session_id="sess-1")
     )
 
-    out = _run_turn(CopilotBackend(fake), "PROMPT", "n", sidp)
+    out = _run_turn(CopilotBackend(fake), "---\nPROMPT", "n", sidp)
 
     assert out == "ANSWER"
     cmd = captured["cmd"]
-    assert cmd[0] == "copilot" and "-p" in cmd and "PROMPT" in cmd
+    assert cmd[0] == "copilot" and "--prompt=---\nPROMPT" in cmd
     assert cmd[cmd.index("--output-format") + 1] == "json"
     assert "--allow-all" in cmd and "--no-ask-user" in cmd
     assert "--session-id" not in cmd

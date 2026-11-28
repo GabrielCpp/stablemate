@@ -1,4 +1,4 @@
-"""GitHub Copilot CLI (``copilot -p --output-format json``) — event vocabulary and adapter."""
+"""GitHub Copilot CLI (``copilot --prompt=<prompt> --output-format json``) — event vocabulary and adapter."""
 
 from __future__ import annotations
 
@@ -166,7 +166,7 @@ class CopilotTranscript(acp.DiffTrackingMapper):
 
 
 class CopilotBackend(JsonlBackend):
-    """GitHub Copilot CLI (``copilot -p --output-format json``)."""
+    """GitHub Copilot CLI (``copilot --prompt=<prompt> --output-format json``)."""
 
     name = "copilot"
     default_model = None
@@ -178,8 +178,7 @@ class CopilotBackend(JsonlBackend):
         def command(argv_prompt: str, attachment: Path | None, sid: str | None) -> list[str]:
             cmd = [
                 "copilot",
-                "-p",
-                argv_prompt,
+                f"--prompt={argv_prompt}",
                 "--output-format",
                 "json",
                 "--allow-all",
