@@ -18,7 +18,7 @@ from ostler.book import tapping
 from ostler.book.runner import perform
 from ostler.book.tapping import Deliveries, Landings
 
-from book_desk import Breaches, Desk, Emitter, Lapses, Opens, OpensQuietly, ScanTap, Scanner, Tap, Tickets, ToQueue, Upserts, Writes
+from book_desk import Breaches, Desk, Emitter, Lapses, Opens, OpensAndAudits, OpensQuietly, ScanTap, Scanner, Tap, Tickets, ToQueue, Upserts, Writes
 
 DAY = date(2026, 11, 14)
 
@@ -327,4 +327,11 @@ def test_emits_when_reads_state_before_reduce_and_skips_tap_and_unproven_when_fa
     assert perform(step := Upserts("T-24"), step, model_no_tap, surface_no_tap).ok
     assert perform(step := Upserts("T-24"), step, model_no_tap, surface_no_tap).ok
     assert Deliveries.line() == "emissions: 0 proven, 0 fail, 1 unproven"
+
+
+def test_multi_event_emissions_canonicalize_each_buffered_event_against_its_own_schema():
+    result, _, _ = _run(OpensAndAudits("T-25"))
+    assert result.ok, result.note
+    assert Deliveries.line() == "emissions: 2 proven, 0 fail, 0 unproven"
+
 

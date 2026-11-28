@@ -149,6 +149,34 @@ class Opens:
         return f"opens {self.of}"
 
 
+class Audited(Event):
+    """A ticket opening was recorded in the audit log with its outcome."""
+
+    name = "ticket.audited"
+    source = "zeta.audit"
+    detail = Object(ticket_id=Field(Id(Ticket)), outcome=Field(Str()))
+
+
+class OpenAndAudit(Action[str, Tickets]):
+    """Emits two events with distinct schemas from a single tap batch."""
+
+    emits = (Changed, Audited)
+
+    @staticmethod
+    def reduce(a: str, s: Tickets, by: Any) -> Create:
+        return Create(Tickets.tickets, Ticket(a, "high"))
+
+    @staticmethod
+    def announces(event: type[Event], a: str, s: Tickets, by: Any) -> dict[str, Any] | None:
+        if event is Audited:
+            return {"ticket_id": a, "outcome": "opened"}
+        return {"ticket_id": a, "snapshot": {"priority": s.tickets[a].priority}}
+
+
+class OpensAndAudits(Opens):
+    carries = OpenAndAudit
+
+
 class OpensQuietly(Opens):
     carries = OpenQuietly
 
@@ -202,6 +230,8 @@ class Emitter(Quiet):
             self.tap.waiting.append(("ticket.changed", {"ticket_id": "S-" + step.of, "snapshot": {"priority": "low"}}))
         if self.bug not in ("silent", "stranger"):
             self.tap.waiting.append(("ticket.changed", {"ticket_id": step.of, "snapshot": {"priority": "low" if self.bug == "wrong" else "high"}}))
+            if isinstance(step, OpensAndAudits):
+                self.tap.waiting.append(("ticket.audited", {"ticket_id": step.of, "outcome": "opened"}))
         return Done()
 
     def rows(self) -> tuple[object, ...]:

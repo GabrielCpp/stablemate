@@ -137,19 +137,25 @@ class Deliveries:
         most = Landings.bound()
         off: list[str] = []
         for reads in range(1, most + 1):
-            for tapped, detail in cls.role.tapped():
-                owned, strange = ownership(event.detail, detail, ids)
-                if owned or not strange:
-                    cls.buffer.append((tapped, canonical(event.detail, detail, app=True, ids=ids, where=event.name)))
+            cls.buffer.extend(cls.role.tapped())
             off = []
-            for position, (tapped, seen) in enumerate(cls.buffer):
+            position = 0
+            while position < len(cls.buffer):
+                tapped, raw = cls.buffer[position]
                 if tapped != event.name:
+                    position += 1
                     continue
+                owned, strange = ownership(event.detail, raw, ids)
+                if not (owned or not strange):
+                    del cls.buffer[position]
+                    continue
+                seen = canonical(event.detail, raw, app=True, ids=ids, where=event.name)
                 off = differences(wanted, seen)
                 if not off:
                     del cls.buffer[position]
                     Landings.longest = max(Landings.longest, reads)
                     return ""
+                position += 1
         Landings.missed = True
         if not off:
             return f"{name} should emit {event.name} about a record this run made; the tap read none in {most} reads"
