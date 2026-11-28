@@ -190,7 +190,7 @@ def _schedule_tail(container_id: str) -> None:
 async def _ensure_volumes(container_id: str) -> None:
     """Fill in the workspace/runs volume names for a container we've only heard about via a sidecar push so far (pushes carry no docker-level metadata — only what the container's own env exposes)."""
     wf = state.WORKFLOWS.get(container_id)
-    if wf and wf.native:
+    if wf and (wf.native or wf.containerless):
         return
     if wf and wf.workspace_volume:
         return
@@ -231,6 +231,8 @@ def _sync_native_row(run: RunTelemetry, fired: list[alerts.Alert] | None = None)
     else:
         gate = None
     gates = {gate.file_path: gate} if gate is not None else {}
+    if before is not None and not run.terminal and sidecar_hub.get(run.run_id) is not None:
+        gates = {**{path: held for path, held in before.gates.items() if not held.kind}, **gates}
     if run.terminal:
         new_state = WorkflowState.FINISHED
     elif gates:

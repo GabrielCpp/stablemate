@@ -68,13 +68,23 @@ def prune_workflows(present_ids: set[str]) -> list[str]:
     removed = [
         cid
         for cid, wf in WORKFLOWS.items()
-        if not wf.native and cid not in present_ids
+        if not wf.native and not wf.containerless and cid not in present_ids
     ]
     for cid in removed:
         WORKFLOWS.pop(cid, None)
         for key in [k for k in _gate_locks if k.startswith(f"{cid}::")]:
             _gate_locks.pop(key, None)
     return removed
+
+
+def drop_sidecar_row(key: str) -> None:
+    """Drop the row a sidecar made on its own, never a native run's row, which its telemetry keeps."""
+    wf = WORKFLOWS.get(key)
+    if wf is None or wf.native:
+        return
+    WORKFLOWS.pop(key, None)
+    for lock in [k for k in _gate_locks if k.startswith(f"{key}::")]:
+        _gate_locks.pop(lock, None)
 
 
 def evict_runs(run_ids: list[str]) -> None:

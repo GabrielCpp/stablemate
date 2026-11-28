@@ -162,19 +162,29 @@ async def feed_ws(
         state.remove_feed(queue)
 
 
+def _hello_key(identity: dict) -> str:
+    """What a sidecar's row and connection are keyed by: its container, else its run."""
+    return str(identity.get("container_id") or "")[:12] or str(identity.get("run_id") or "")
+
+
 async def _apply_hello(container_id: str, data: dict) -> None:
-    """Fold a sidecar's on-connect ``hello`` into the fleet."""
+    """Fold a sidecar's ``hello`` into the fleet."""
     identity = data.get("identity") or {}
     snapshot = data.get("snapshot") or {}
-    await native._ensure_volumes(container_id)
-    wf = state.upsert_workflow(
-        container_id,
-        name=identity.get("name"),
-        repo_name=identity.get("repo_name"),
-        repo_branch=identity.get("repo_branch"),
-        run_id=identity.get("run_id") or None,
-        workflow_type=identity.get("workflow") or None,
-    )
+    containerless = not identity.get("container_id")
+    if not containerless:
+        await native._ensure_volumes(container_id)
+    wf = state.WORKFLOWS.get(container_id)
+    if wf is None or not wf.native:
+        wf = state.upsert_workflow(
+            container_id,
+            name=identity.get("name"),
+            repo_name=identity.get("repo_name"),
+            repo_branch=identity.get("repo_branch"),
+            run_id=identity.get("run_id") or None,
+            workflow_type=identity.get("workflow") or None,
+            containerless=containerless,
+        )
     wf.current_node = snapshot.get("current_node") or wf.current_node
     wf.gates.clear()
     if snapshot.get("terminal"):
@@ -250,12 +260,18 @@ async def dashboard_sidecar(socket: WebSocket) -> None:
                 continue
             mtype = data.get("type")
             if mtype == "hello":
-                container_id = str((data.get("identity") or {}).get("container_id", ""))[:12]
-                if not container_id:
+                key = _hello_key(data.get("identity") or {})
+                if not key:
                     continue
-                conn = sidecar_hub.SidecarConnection(container_id, socket)
-                sidecar_hub.register(conn)
-                await _apply_hello(container_id, data)
+                if conn is not None and conn.container_id != key:
+                    sidecar_hub.unregister(conn)
+                    state.drop_sidecar_row(conn.container_id)
+                    live.mark_fleet()
+                    conn = None
+                if conn is None:
+                    conn = sidecar_hub.SidecarConnection(key, socket)
+                    sidecar_hub.register(conn)
+                await _apply_hello(key, data)
             elif conn is None:
                 continue
             elif mtype == "rpc_result":
@@ -278,5 +294,8 @@ async def dashboard_sidecar(socket: WebSocket) -> None:
     finally:
         if conn is not None:
             sidecar_hub.unregister(conn)
+            wf = state.WORKFLOWS.get(conn.container_id)
+            if wf is not None and wf.containerless:
+                state.drop_sidecar_row(conn.container_id)
             live.mark_fleet()
             live.mark_run(conn.container_id)

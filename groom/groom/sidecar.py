@@ -31,6 +31,8 @@ PUSH_TIMEOUT = float(os.environ.get("GROOM_PUSH_TIMEOUT", "1.0"))
 
 RELOAD_EXIT_CODE = 3
 
+DOCKERENV = Path("/.dockerenv")
+
 _SKIP_DIR_NAMES = {".git", "node_modules", "__pycache__", ".venv"}
 _GIT_STATE_FILES = ("index", "HEAD")
 WORKSPACE_INTERVAL_S = 2.0
@@ -50,15 +52,35 @@ class _WatchFilter(DefaultFilter):
 _WATCH_FILTER = _WatchFilter(ignore_dirs=sorted(_SKIP_DIR_NAMES))
 
 
+def _container_id() -> str:
+    """The container this sidecar runs in: named by ``GROOM_CONTAINER_ID``, else the hostname inside Docker, else nothing."""
+    named = os.environ.get("GROOM_CONTAINER_ID", "")
+    if named:
+        return named
+    return socket.gethostname()[:12] if DOCKERENV.exists() else ""
+
+
+def _repo_name(start: dict) -> str:
+    for key in ("root", "path"):
+        value = start.get(key)
+        if isinstance(value, str) and value:
+            return Path(value).name
+    return ""
+
+
 def _identity() -> dict:
-    """Who this container is, for the dashboard row and for joining it to telemetry."""
+    """Who this run is, for the dashboard row and for joining it to telemetry: the latest run's record first, the environment while the record lacks the field."""
+    record = _run_record()
+    start = record.get("repo_start")
+    start = start if isinstance(start, dict) else {}
+    repo = _repo_name(start) or os.environ.get("REPO_NAME", "")
     return {
-        "container_id": socket.gethostname()[:12],
-        "name": os.environ.get("REPO_NAME", socket.gethostname()),
-        "repo_name": os.environ.get("REPO_NAME", ""),
-        "repo_branch": os.environ.get("REPO_BRANCH", ""),
-        "run_id": os.environ.get("AGENT_RUN_ID", ""),
-        "workflow": os.environ.get("WORKFLOW", ""),
+        "container_id": _container_id(),
+        "name": repo or socket.gethostname(),
+        "repo_name": repo,
+        "repo_branch": str(start.get("branch") or "") or os.environ.get("REPO_BRANCH", ""),
+        "run_id": str(record.get("run_id") or "") or os.environ.get("AGENT_RUN_ID", ""),
+        "workflow": str(record.get("workflow") or "") or os.environ.get("WORKFLOW", ""),
     }
 
 
@@ -105,18 +127,21 @@ def _current_node() -> str:
         return ""
 
 
-def _terminal() -> str:
-    """The latest run's terminal state (non-empty ⇒ the workflow FINISHED), read from ``<latest>/run.json`` — the pull-side complement to the watch loop, which only ever reports the current node."""
+def _run_record() -> dict:
+    """The latest run's ``run.json`` as a dict, or an empty one while there is none or it cannot be read."""
     run_dir = _latest_run_dir()
     if run_dir is None:
-        return ""
-    run_json = run_dir / "run.json"
-    if not run_json.is_file():
-        return ""
+        return {}
     try:
-        return json.loads(run_json.read_text()).get("terminal") or ""
+        record = json.loads((run_dir / "run.json").read_text())
     except (OSError, json.JSONDecodeError):
-        return ""
+        return {}
+    return record if isinstance(record, dict) else {}
+
+
+def _terminal() -> str:
+    """The latest run's terminal state (non-empty ⇒ the workflow FINISHED), read from ``<latest>/run.json`` — the pull-side complement to the watch loop, which only ever reports the current node."""
+    return str(_run_record().get("terminal") or "")
 
 
 _GATE_SCAN_HEAD = 512
@@ -426,9 +451,23 @@ class ReloadRequested(Exception):
     """Raised inside a session when groom sends ``reload``; unwinds the session so :func:`_serve` returns :data:`RELOAD_EXIT_CODE`."""
 
 
-def _hello_frame() -> dict:
-    """Full-state advertise sent on every (re)connect."""
-    return {"type": "hello", "identity": _identity(), "snapshot": snapshot()}
+def _hello_frame(identity: dict | None = None) -> dict:
+    """Full-state advertise sent on every (re)connect, and again when the run's identity changes."""
+    return {"type": "hello", "identity": identity if identity is not None else _identity(), "snapshot": snapshot()}
+
+
+class _Announced:
+    """The identity the groom host last heard, so a change in the run record can say hello again."""
+
+    def __init__(self, identity: dict) -> None:
+        self._identity = identity
+
+    def refresh(self) -> dict | None:
+        identity = _identity()
+        if identity == self._identity:
+            return None
+        self._identity = identity
+        return _hello_frame(identity)
 
 
 async def _handle_rpc(ws, msg: dict) -> None:
@@ -484,19 +523,19 @@ class _WorkspaceThrottle:
             self._timer = None
 
 
-async def _watch_loop(outbox: asyncio.Queue, stop: asyncio.Event) -> None:
+async def _watch_loop(outbox: asyncio.Queue, stop: asyncio.Event, announced: _Announced) -> None:
     """Feed the outbox from the filesystem watch until ``stop`` is set."""
     roots = _watch_roots()
     if not roots:
         return
     throttle = _WorkspaceThrottle(outbox, WORKSPACE_INTERVAL_S)
     try:
-        await _watch(roots, outbox, stop, throttle)
+        await _watch(roots, outbox, stop, throttle, announced)
     finally:
         throttle.cancel()
 
 
-async def _watch(roots: list[Path], outbox: asyncio.Queue, stop: asyncio.Event, throttle: _WorkspaceThrottle) -> None:
+async def _watch(roots: list[Path], outbox: asyncio.Queue, stop: asyncio.Event, throttle: _WorkspaceThrottle, announced: _Announced) -> None:
     async for changes in awatch(*roots, watch_filter=_WATCH_FILTER, stop_event=stop):
         for change, raw_path in changes:
             changed = Path(raw_path)
@@ -504,17 +543,20 @@ async def _watch(roots: list[Path], outbox: asyncio.Queue, stop: asyncio.Event, 
                 for frame in (_classify_event(changed), _turn_announce(changed)):
                     if frame is not None:
                         outbox.put_nowait(frame)
+            if _under_mount(changed, RUNS_DIR) is not None and (hello := announced.refresh()) is not None:
+                outbox.put_nowait(hello)
             if _under_mount(changed, RUNS_DIR) is None and _under_mount(changed, WORKSPACE_DIR) is not None:
                 throttle.touch()
 
 
 async def _run_session(ws) -> None:
     """One connected session: advertise, then serve filesystem deltas (outbound via a queue fed by the watch task) and RPC/reload (inbound) until the socket drops or a reload is requested."""
-    await ws.send(json.dumps(_hello_frame()))
+    hello = _hello_frame()
+    await ws.send(json.dumps(hello))
 
     outbox: asyncio.Queue = asyncio.Queue()
     stop = asyncio.Event()
-    watcher = tasks.spawn(_watch_loop(outbox, stop), name="sidecar-watch")
+    watcher = tasks.spawn(_watch_loop(outbox, stop, _Announced(hello["identity"])), name="sidecar-watch")
     sender = asyncio.create_task(_sender_loop(ws, outbox))
     try:
         async for raw in ws:

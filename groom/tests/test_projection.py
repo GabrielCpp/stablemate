@@ -621,7 +621,7 @@ def test_the_row_says_whether_a_sidecar_is_connected_by_reading_the_hub():
         sidecar_hub.CONNECTIONS.clear()
 
 
-def test_a_native_row_never_claims_a_sidecar():
+def test_a_native_row_claims_the_sidecar_connected_for_its_run():
     from groom import sidecar_hub
 
     class _Socket:
@@ -631,6 +631,7 @@ def test_a_native_row_never_claims_a_sidecar():
     sidecar_hub.CONNECTIONS.clear()
     try:
         sidecar_hub.register(sidecar_hub.SidecarConnection("abc123", _Socket()))
-        assert projection.run_row(_wf("abc123", native=True))["sidecar"] is False
+        assert projection.run_row(_wf("abc123", native=True))["sidecar"] is True
+        assert projection.run_row(_wf("other1", native=True))["sidecar"] is False
     finally:
         sidecar_hub.CONNECTIONS.clear()

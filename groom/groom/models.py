@@ -74,6 +74,7 @@ class WorkflowContainer:
     exit_code: int | None = None
     gates: dict[str, GateInfo] = field(default_factory=dict)
     native: bool = False
+    containerless: bool = False
     activity: str = ""
     pid: int | None = None
     last_session: tuple[int, str] | None = None
