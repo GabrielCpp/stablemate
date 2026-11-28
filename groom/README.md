@@ -114,6 +114,30 @@ to use the working tree instead of the installed copy.
 > `--host 0.0.0.0`. That choice prints a one-line exposure warning, and
 > `--allow-non-loopback` acknowledges it. Only do that on a trusted network.
 
+## Attach a run that is not in a container
+
+A run on another machine, with no Docker around it, can still show its Files and Diff
+tabs. Reach groom from that machine, then start the sidecar next to the run:
+
+```bash
+GROOM_HOST=127.0.0.1 GROOM_PORT=8787 \
+GROOM_RUNS_DIR=/path/to/runs GROOM_WORKSPACE_DIR=/path/to/workspace \
+groom-sidecar
+```
+
+`GROOM_HOST` and `GROOM_PORT` name the groom the sidecar dials, for example the local end
+of an ssh tunnel. `GROOM_RUNS_DIR` holds the run directories and `GROOM_WORKSPACE_DIR` holds
+the checkout.
+
+The sidecar takes the run id, the workflow, the repo name and the branch from the latest
+run directory's `run.json`. It says hello again when that record appears or changes, so
+you can start it before the run. Outside Docker it sends no container id, and groom keys
+the row by the run id. Two sidecars on one host with different runs make two rows. Set
+`GROOM_CONTAINER_ID` to name a container yourself.
+
+A run that also pushes telemetry to this groom is one row, not two. When the sidecar
+drops, a row it made alone goes with it. A row built from telemetry stays.
+
 ## Telemetry collector (OTLP) + AFK alerting
 
 `groom` is also the default local **OpenTelemetry collector** for `workhorse`
