@@ -83,6 +83,36 @@ def test_commit_paths_takes_a_tracked_file_under_an_ignored_folder(tmp_path: Pat
     assert _tracked(root) == {"epics/one/story.md"}
 
 
+def _track_story_under_ignored_epics(root: Path) -> None:
+    _write(root, ".gitignore", "epics/\n")
+    _write(root, "epics/s/story.md", "status: started\n")
+    subprocess.run(["git", "add", "-f", "--", ".gitignore", "epics/s/story.md"], cwd=str(root), check=True)
+    subprocess.run(["git", "commit", "-q", "-m", "track the story"], cwd=str(root), check=True)
+
+
+def test_commit_paths_skips_an_untracked_ignored_sibling_of_a_tracked_file(tmp_path: Path) -> None:
+    root = make_git_repo(tmp_path / "acme")
+    _track_story_under_ignored_epics(root)
+    _write(root, "epics/s/story.md", "status: QA passed\n")
+    _write(root, "epics/s/context.md", "notes\n")
+
+    assert commit_paths(root, "docs: x", "epics/s/story.md", "epics/s/context.md", verify=False) is True
+    assert _tracked(root) == {"epics/s/story.md"}
+    assert (root / "epics/s/context.md").exists()
+    assert _git(root, "ls-files", "epics/s/context.md") == ""
+    assert _git(root, "diff", "--cached", "--name-only") == ""
+
+
+def test_commit_paths_is_false_for_only_an_untracked_ignored_file(tmp_path: Path) -> None:
+    root = make_git_repo(tmp_path / "acme")
+    _track_story_under_ignored_epics(root)
+    _write(root, "epics/s/context.md", "notes\n")
+    before = _git(root, "rev-parse", "HEAD")
+
+    assert commit_paths(root, "docs: x", "epics/s/context.md", verify=False) is False
+    assert _git(root, "rev-parse", "HEAD") == before
+
+
 def test_commit_paths_with_no_pathspecs_commits_nothing(tmp_path: Path) -> None:
     """The regression this file exists for."""
     root = make_git_repo(tmp_path / "acme")

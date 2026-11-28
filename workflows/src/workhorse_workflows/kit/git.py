@@ -7,6 +7,8 @@ from pathlib import Path
 from git import Git, Repo
 from git.exc import GitCommandError, GitError
 
+from workhorse_workflows.kit.staging import staged_or_tracked, stage_paths
+
 _LOCK_WAITS = (0.2, 0.5, 1.0, 2.0, 4.0, 8.0)
 _INDEX_LOCK = "index.lock"
 
@@ -127,6 +129,10 @@ def commit_paths(path: str | Path, message: str, *pathspecs: str, verify: bool =
     if not repo.git.status("--porcelain", *scope).strip():
         return False
     stage_paths(repo, *pathspecs)
+    known = [spec for spec in pathspecs if staged_or_tracked(repo, spec)]
+    if not known:
+        return False
+    scope = ["--", *known]
     try:
         repo.git.diff("--cached", "--quiet", *scope)
         return False
@@ -138,22 +144,6 @@ def commit_paths(path: str | Path, message: str, *pathspecs: str, verify: bool =
         repo.git.reset("-q", "--", *scope)
         raise
     return True
-
-
-def stage_paths(repo: Repo, *pathspecs: str) -> None:
-    """Stage the files ``pathspecs`` name that git can stage. A tracked file is staged even under an ignored folder, which a plain add refuses."""
-    present = [spec for spec in pathspecs if _matches(repo, spec)]
-    tracked = [spec for spec in present if repo.git.ls_files("--cached", "--", spec).strip()]
-    untracked = [spec for spec in present if spec not in tracked]
-    if tracked:
-        repo.git.add("--force", "--", *tracked)
-    if untracked:
-        repo.git.add("--", *untracked)
-
-
-def _matches(repo: Repo, spec: str) -> bool:
-    """Does ``spec`` name a file git can stage: one in the index or one untracked and not ignored. A deletion already staged names neither, and the commit's pathspec carries it."""
-    return bool(repo.git.ls_files("--cached", "--others", "--exclude-standard", "--", spec).strip())
 
 
 def _refusal(path: str | Path, message: str, pathspecs: tuple[str, ...]) -> str:
