@@ -292,6 +292,7 @@ def run_row(
         "exit_hint": hint,
         "pid": tel.pid if (tel and tel.pid) else wf.pid,
         "native": bool(wf.native),
+        "containerless": bool(wf.containerless),
         "sidecar": sidecar_hub.get(wf.container_id) is not None,
         "checkout": bool(wf.native) and localfs.is_local_dir(wf.workspace_volume),
         "figures": tel.figures if tel else None,
@@ -463,9 +464,7 @@ def repo_entries(
 
 def handle(wf: WorkflowContainer) -> str:
     """The id the detail pane shows — whole, not a fragment."""
-    if wf.native or wf.containerless:
-        return wf.run_id or wf.container_id
-    return wf.container_id[:12]
+    return (wf.run_id or wf.container_id) if wf.native or wf.containerless else wf.container_id[:12]
 
 
 def cli_label(tel: RunTelemetry | None) -> str:

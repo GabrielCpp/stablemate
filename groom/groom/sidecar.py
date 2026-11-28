@@ -7,7 +7,6 @@ import base64
 import contextlib
 import json
 import os
-import socket
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -18,7 +17,7 @@ from websockets.exceptions import ConnectionClosed
 
 from workhorse import control
 
-from groom import gitdiff, tasks
+from groom import gitdiff, sidecar_identity, tasks
 from groom.checkpoints import parse_position
 from groom.gates import AWAITING, extract_question, status_of
 from groom.relpath import safe_relpath
@@ -36,6 +35,7 @@ DOCKERENV = Path("/.dockerenv")
 _SKIP_DIR_NAMES = {".git", "node_modules", "__pycache__", ".venv"}
 _GIT_STATE_FILES = ("index", "HEAD")
 WORKSPACE_INTERVAL_S = 2.0
+MOUNT_POLL_S = 2.0
 
 
 class _WatchFilter(DefaultFilter):
@@ -52,36 +52,8 @@ class _WatchFilter(DefaultFilter):
 _WATCH_FILTER = _WatchFilter(ignore_dirs=sorted(_SKIP_DIR_NAMES))
 
 
-def _container_id() -> str:
-    """The container this sidecar runs in: named by ``GROOM_CONTAINER_ID``, else the hostname inside Docker, else nothing."""
-    named = os.environ.get("GROOM_CONTAINER_ID", "")
-    if named:
-        return named
-    return socket.gethostname()[:12] if DOCKERENV.exists() else ""
-
-
-def _repo_name(start: dict) -> str:
-    for key in ("root", "path"):
-        value = start.get(key)
-        if isinstance(value, str) and value:
-            return Path(value).name
-    return ""
-
-
 def _identity() -> dict:
-    """Who this run is, for the dashboard row and for joining it to telemetry: the latest run's record first, the environment while the record lacks the field."""
-    record = _run_record()
-    start = record.get("repo_start")
-    start = start if isinstance(start, dict) else {}
-    repo = _repo_name(start) or os.environ.get("REPO_NAME", "")
-    return {
-        "container_id": _container_id(),
-        "name": repo or socket.gethostname(),
-        "repo_name": repo,
-        "repo_branch": str(start.get("branch") or "") or os.environ.get("REPO_BRANCH", ""),
-        "run_id": str(record.get("run_id") or "") or os.environ.get("AGENT_RUN_ID", ""),
-        "workflow": str(record.get("workflow") or "") or os.environ.get("WORKFLOW", ""),
-    }
+    return sidecar_identity.identity(RUNS_DIR, DOCKERENV)
 
 
 def _push(path: str, payload: dict) -> None:
@@ -107,15 +79,8 @@ def push_exited(exit_code: int) -> None:
     _push("/push/exited", {"exit_code": exit_code})
 
 
-def _latest_run_dir() -> Path | None:
-    if not RUNS_DIR.is_dir():
-        return None
-    run_dirs = sorted(p for p in RUNS_DIR.iterdir() if p.is_dir())
-    return run_dirs[-1] if run_dirs else None
-
-
 def _current_node() -> str:
-    run_dir = _latest_run_dir()
+    run_dir = sidecar_identity.latest_run_dir(RUNS_DIR)
     if run_dir is None:
         return ""
     checkpoint = run_dir / "checkpoint.json"
@@ -127,21 +92,9 @@ def _current_node() -> str:
         return ""
 
 
-def _run_record() -> dict:
-    """The latest run's ``run.json`` as a dict, or an empty one while there is none or it cannot be read."""
-    run_dir = _latest_run_dir()
-    if run_dir is None:
-        return {}
-    try:
-        record = json.loads((run_dir / "run.json").read_text())
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return record if isinstance(record, dict) else {}
-
-
 def _terminal() -> str:
     """The latest run's terminal state (non-empty ⇒ the workflow FINISHED), read from ``<latest>/run.json`` — the pull-side complement to the watch loop, which only ever reports the current node."""
-    return str(_run_record().get("terminal") or "")
+    return str(sidecar_identity.run_record(RUNS_DIR).get("terminal") or "")
 
 
 _GATE_SCAN_HEAD = 512
@@ -343,7 +296,7 @@ def _run_base(run: str) -> Path:
     """The run dir a turn-record RPC is talking about — named, or the latest."""
     if run:
         return RUNS_DIR / safe_relpath(run)
-    latest = _latest_run_dir()
+    latest = sidecar_identity.latest_run_dir(RUNS_DIR)
     if latest is None:
         raise ValueError("no run directory")
     return latest
@@ -456,18 +409,8 @@ def _hello_frame(identity: dict | None = None) -> dict:
     return {"type": "hello", "identity": identity if identity is not None else _identity(), "snapshot": snapshot()}
 
 
-class _Announced:
-    """The identity the groom host last heard, so a change in the run record can say hello again."""
-
-    def __init__(self, identity: dict) -> None:
-        self._identity = identity
-
-    def refresh(self) -> dict | None:
-        identity = _identity()
-        if identity == self._identity:
-            return None
-        self._identity = identity
-        return _hello_frame(identity)
+def _announced(heard: dict) -> sidecar_identity.Announced:
+    return sidecar_identity.Announced(heard, _identity, _hello_frame)
 
 
 async def _handle_rpc(ws, msg: dict) -> None:
@@ -523,19 +466,34 @@ class _WorkspaceThrottle:
             self._timer = None
 
 
-async def _watch_loop(outbox: asyncio.Queue, stop: asyncio.Event, announced: _Announced) -> None:
-    """Feed the outbox from the filesystem watch until ``stop`` is set."""
-    roots = _watch_roots()
-    if not roots:
-        return
+async def _watch_loop(outbox: asyncio.Queue, stop: asyncio.Event, announced: sidecar_identity.Announced) -> None:
+    """Feed the outbox from the filesystem watch until ``stop`` is set, taking up a mount that appears later and saying hello again when it does."""
     throttle = _WorkspaceThrottle(outbox, WORKSPACE_INTERVAL_S)
+    roots = _watch_roots()
     try:
-        await _watch(roots, outbox, stop, throttle, announced)
+        while not stop.is_set():
+            ending = asyncio.Event()
+            follower = asyncio.create_task(sidecar_identity.follow_mounts(_watch_roots, roots, stop, ending, MOUNT_POLL_S))
+            try:
+                if roots:
+                    await _watch(roots, outbox, ending, throttle, announced)
+                else:
+                    await ending.wait()
+            finally:
+                follower.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await follower
+            if stop.is_set():
+                return
+            roots = _watch_roots()
+            hello = announced.refresh(force=True)
+            if hello is not None:
+                outbox.put_nowait(hello)
     finally:
         throttle.cancel()
 
 
-async def _watch(roots: list[Path], outbox: asyncio.Queue, stop: asyncio.Event, throttle: _WorkspaceThrottle, announced: _Announced) -> None:
+async def _watch(roots: list[Path], outbox: asyncio.Queue, stop: asyncio.Event, throttle: _WorkspaceThrottle, announced: sidecar_identity.Announced) -> None:
     async for changes in awatch(*roots, watch_filter=_WATCH_FILTER, stop_event=stop):
         for change, raw_path in changes:
             changed = Path(raw_path)
@@ -556,7 +514,7 @@ async def _run_session(ws) -> None:
 
     outbox: asyncio.Queue = asyncio.Queue()
     stop = asyncio.Event()
-    watcher = tasks.spawn(_watch_loop(outbox, stop, _Announced(hello["identity"])), name="sidecar-watch")
+    watcher = tasks.spawn(_watch_loop(outbox, stop, _announced(hello["identity"])), name="sidecar-watch")
     sender = asyncio.create_task(_sender_loop(ws, outbox))
     try:
         async for raw in ws:

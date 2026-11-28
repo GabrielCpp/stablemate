@@ -238,7 +238,7 @@ function sidecarTrack(runs) {
   let lost = snap.sidecarLost;
   let still = snap.stillDown;
   for (const row of runs) {
-    if (row.native) continue;
+    if (row.native || row.containerless) continue;
     if (row.sidecar) {
       if (lost[row.id] !== undefined) lost = Object.assign({}, lost, { [row.id]: undefined });
       if (still[row.id]) still = Object.assign({}, still, { [row.id]: false });
@@ -251,7 +251,7 @@ function sidecarTrack(runs) {
 
 function sidecarDown(id) {
   const row = store.get().runs.find((run) => run.id === id);
-  return !!row && !row.native && !row.sidecar;
+  return !!row && !row.native && !row.containerless && !row.sidecar;
 }
 
 // --------------------------------------------------------------------------- //
@@ -684,7 +684,13 @@ function HeadLive({ head }) {
   return html`<span class="pulse ${head.live}">${label}</span>`;
 }
 
-function RunHead({ head, runId, onClose, sidecar }) {
+function runChip(row, live) {
+  if (row.native) return row.sidecar ? "host · sidecar" : "host";
+  if (row.containerless) return "sidecar";
+  return live ? "docker · sidecar" : "docker";
+}
+
+function RunHead({ head, runId, onClose, sidecar, chip }) {
   const meta =
     head.state + (head.node ? " · node " + head.node : "") +
     (head.cli ? " · " + head.cli : "") + (head.pid ? " · pid " + head.pid : "");
@@ -701,7 +707,7 @@ function RunHead({ head, runId, onClose, sidecar }) {
     ${head.live_label ? html`<${HeadLive} head=${head} />` : null}
     <span class="run-id" title="Run id — click to select">${head.handle}</span>
     ${head.ended ? html`<${CopyButton} what="run id" text=${head.handle} />` : null}
-    ${sidecar ? html`<span id="run-sidecar-chip" class="chip">${sidecar === "live" ? "docker · sidecar" : "docker"}</span>` : null}
+    ${sidecar ? html`<span id="run-sidecar-chip" class="chip">${chip}</span>` : null}
     ${head.ended ? null : html`<span class="meta">${meta}</span>`}
     ${head.exit_hint
       ? html`<span class=${"exit-hint " + (head.exit_ok ? "exit-ok" : "exit-err")}>${head.exit_hint}</span>`
@@ -3063,7 +3069,7 @@ function DetailBody({ ended }) {
   useHoldPlace();
   const row = ended ? null : runs.find((run) => run.id === selected);
   const running = !!row && row.state !== "finished";
-  const container = running && !row.native;
+  const container = running && !row.native && !row.containerless;
   const live = running && (row.checkout || row.sidecar);
   const stale = container && !row.sidecar && !!snap.diffKept[selected];
   const hasDiff = live || stale;
@@ -3089,7 +3095,7 @@ function DetailBody({ ended }) {
   if (!detail.found) return html`<div class="detail-empty">Run not found.</div>`;
   const strip = !ended && detail.ended ? detail.ended : null;
   return html`
-    <${RunHead} head=${strip ? liveEndedHead(detail.head, strip) : detail.head} runId=${detail.run_id} onClose=${ended ? null : closeDetail} sidecar=${live ? "live" : stale ? "lost" : ""} />
+    <${RunHead} head=${strip ? liveEndedHead(detail.head, strip) : detail.head} runId=${detail.run_id} onClose=${ended ? null : closeDetail} sidecar=${live ? "live" : stale ? "lost" : ""} chip=${row ? runChip(row, live) : ""} />
     ${strip ? html`<${EndedStrip} ended=${strip} runId=${detail.run_id} />` : null}
     ${detail.gates.length ? html`<${GateStrip} detail=${detail} collapsed=${gatesCollapsed} />` : null}
     <${DetailTabs} id=${selected} tab=${tab} hasDiff=${hasDiff} stale=${stale} runDiff=${runDiff} repos=${checkoutNames(snap)} checkout=${checkoutFor(selected, snap)} view=${diffViewFor(selected, snap)} problems=${problems} />

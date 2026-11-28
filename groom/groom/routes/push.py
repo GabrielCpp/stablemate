@@ -19,10 +19,34 @@ from groom import (
 from groom.alerting import _NOT_A_DEATH_EXIT, _QUESTION_NOTIFY_LIMIT
 from groom.models import (
     GateInfo,
+    WorkflowContainer,
     WorkflowState,
 )
 from groom.native_attend import _attend_gates
 from groom.routes.gates import _answer, _workflow_by_run_id
+
+
+async def _push_row(data: dict, **fields: object) -> tuple[str, WorkflowContainer | None]:
+    """The row a push names, made or updated: keyed by its container id, else its run id. A native row keeps the identity its telemetry gave it."""
+    key = state.row_key(data)
+    if not key:
+        return "", None
+    containerless = not data.get("container_id")
+    if not containerless:
+        await native._ensure_volumes(key)
+    existing = state.WORKFLOWS.get(key)
+    if existing is not None and existing.native:
+        return key, state.upsert_workflow(key, **fields)
+    wf = state.upsert_workflow(
+        key,
+        name=data.get("name"),
+        repo_name=data.get("repo_name"),
+        repo_branch=data.get("repo_branch"),
+        run_id=key if containerless else None,
+        containerless=containerless,
+        **fields,
+    )
+    return key, wf
 
 
 @post("/api/run/{run_id:str}/outbox", include_in_schema=False)
@@ -84,18 +108,9 @@ async def refresh() -> dict:
 
 @post("/push/progress", include_in_schema=False)
 async def push_progress(data: dict) -> dict:
-    container_id = str(data.get("container_id", ""))[:12]
-    if not container_id:
+    container_id, wf = await _push_row(data, current_node=data.get("current_node"), state=WorkflowState.RUNNING)
+    if wf is None:
         return {"ok": False}
-    await native._ensure_volumes(container_id)
-    state.upsert_workflow(
-        container_id,
-        name=data.get("name"),
-        repo_name=data.get("repo_name"),
-        repo_branch=data.get("repo_branch"),
-        current_node=data.get("current_node"),
-        state=WorkflowState.RUNNING,
-    )
     live.mark_fleet()
     live.mark_run(container_id)
     return {"ok": True}
@@ -104,19 +119,13 @@ async def push_progress(data: dict) -> dict:
 @post("/push/blocked", include_in_schema=False)
 async def push_blocked(data: dict) -> dict:
     """Used both by groom-sidecar and by the await_operator.py backstop push — same shape, same handling, whichever gets there first (or both; the second call is just a harmless re-render)."""
-    container_id = str(data.get("container_id", ""))[:12]
     file_path = str(data.get("file_path", ""))
-    if not container_id or not file_path:
+    if not file_path:
         return {"ok": False}
-    await native._ensure_volumes(container_id)
+    container_id, wf = await _push_row(data, state=WorkflowState.BLOCKED)
+    if wf is None:
+        return {"ok": False}
     question = str(data.get("question", ""))
-    wf = state.upsert_workflow(
-        container_id,
-        name=data.get("name"),
-        repo_name=data.get("repo_name"),
-        repo_branch=data.get("repo_branch"),
-        state=WorkflowState.BLOCKED,
-    )
     wf.gates[file_path] = GateInfo(workflow_id=container_id, file_path=file_path, question=question)
 
     live.mark_fleet()
@@ -130,19 +139,14 @@ async def push_blocked(data: dict) -> dict:
 @post("/push/exited", include_in_schema=False)
 async def push_exited(data: dict) -> dict:
     """The workflow process ended (fired once by the container entrypoint via ``groom-sidecar --exit-code``)."""
-    container_id = str(data.get("container_id", ""))[:12]
-    if not container_id:
-        return {"ok": False}
-    await native._ensure_volumes(container_id)
     exit_code = data.get("exit_code")
-    wf = state.upsert_workflow(
-        container_id,
-        name=data.get("name"),
-        repo_name=data.get("repo_name"),
-        repo_branch=data.get("repo_branch"),
+    container_id, wf = await _push_row(
+        data,
         state=WorkflowState.FINISHED,
         exit_code=int(exit_code) if isinstance(exit_code, (int, str)) and str(exit_code).lstrip("-").isdigit() else None,
     )
+    if wf is None:
+        return {"ok": False}
     wf.gates.clear()
     attend.release(container_id)
     if wf.exit_code is not None and wf.exit_code not in _NOT_A_DEATH_EXIT:

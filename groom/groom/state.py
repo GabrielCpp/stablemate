@@ -44,6 +44,11 @@ def gate_lock(container_id: str, file_path: str) -> asyncio.Lock:
     return lock
 
 
+def row_key(identity: dict) -> str:
+    """What a sidecar's row and connection are keyed by: its container, else its run."""
+    return str(identity.get("container_id") or "")[:12] or str(identity.get("run_id") or "")
+
+
 def upsert_workflow(container_id: str, **fields: object) -> WorkflowContainer:
     wf = WORKFLOWS.get(container_id)
     if wf is None:

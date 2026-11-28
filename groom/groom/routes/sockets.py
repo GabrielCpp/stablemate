@@ -162,11 +162,6 @@ async def feed_ws(
         state.remove_feed(queue)
 
 
-def _hello_key(identity: dict) -> str:
-    """What a sidecar's row and connection are keyed by: its container, else its run."""
-    return str(identity.get("container_id") or "")[:12] or str(identity.get("run_id") or "")
-
-
 async def _apply_hello(container_id: str, data: dict) -> None:
     """Fold a sidecar's ``hello`` into the fleet."""
     identity = data.get("identity") or {}
@@ -260,7 +255,7 @@ async def dashboard_sidecar(socket: WebSocket) -> None:
                 continue
             mtype = data.get("type")
             if mtype == "hello":
-                key = _hello_key(data.get("identity") or {})
+                key = state.row_key(data.get("identity") or {})
                 if not key:
                     continue
                 if conn is not None and conn.container_id != key:

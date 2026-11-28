@@ -631,7 +631,6 @@ def test_a_native_row_claims_the_sidecar_connected_for_its_run():
     sidecar_hub.CONNECTIONS.clear()
     try:
         sidecar_hub.register(sidecar_hub.SidecarConnection("abc123", _Socket()))
-        assert projection.run_row(_wf("abc123", native=True))["sidecar"] is True
-        assert projection.run_row(_wf("other1", native=True))["sidecar"] is False
+        assert [projection.run_row(_wf(cid, native=True))["sidecar"] for cid in ("abc123", "other1")] == [True, False]
     finally:
         sidecar_hub.CONNECTIONS.clear()

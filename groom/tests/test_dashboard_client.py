@@ -153,3 +153,31 @@ def test_a_run_row_prints_its_figures_in_words_and_keeps_the_coverage_when_narro
     assert "figures.priced_turns" in figures and "figures.turns" in figures
     assert "items_total" in figures
     assert "narrow=${Boolean(selected)}" in src
+
+
+def test_the_header_chip_says_where_the_run_lives():
+    if _skipped():
+        return
+    src = CLIENT.read_text()
+    start = src.index("function runChip")
+    body = src[start : src.index("\n}\n", start) + 3]
+    script = (
+        body
+        + "const out = ["
+        + "runChip({native: false, containerless: false}, true),"
+        + "runChip({native: false, containerless: false}, false),"
+        + "runChip({native: false, containerless: true}, true),"
+        + "runChip({native: true, containerless: false, sidecar: false}, true),"
+        + "runChip({native: true, containerless: true, sidecar: true}, true)];"
+        + "console.log(JSON.stringify(out));"
+    )
+    result = subprocess.run([_node(), "-e", script], capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == '["docker · sidecar","docker","sidecar","host","host · sidecar"]'
+
+
+def test_a_sidecar_attached_run_is_not_tracked_as_a_lost_container():
+    src = CLIENT.read_text()
+    assert "row.native || row.containerless" in src
+    assert "!row.native && !row.containerless && !row.sidecar" in src
+    assert "running && !row.native && !row.containerless" in src

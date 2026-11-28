@@ -565,3 +565,8 @@ Those commands, the schema and its one footgun, and worked SQL are in
 [docs/STORE.md](docs/STORE.md).
 
 Run `ostler book files services.stablemate.groom.http` for the full design, groom's own book.
+
+The sidecar waits for `GROOM_RUNS_DIR` and `GROOM_WORKSPACE_DIR` when they do not exist
+yet, and watches each one once it appears. The `/push/progress`, `/push/blocked` and
+`/push/exited` routes take `run_id` as the key when `container_id` is absent or empty. The
+run page names where the run lives in its header chip: `docker`, `host` or `sidecar`.
